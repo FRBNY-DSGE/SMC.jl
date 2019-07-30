@@ -1,1 +1,1 @@
-# SMC.jl: Sequential Monte Carlo
+# Sequential Monte Carlo
