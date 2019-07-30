@@ -1,1 +1,1 @@
-# BayesianSamplers
+# SMC.jl: Sequential Monte Carlo
