@@ -53,8 +53,31 @@ SMC is broken up into three main steps:
 """
 function smc(m::AbstractModel, data::Matrix{Float64};
              verbose::Symbol = :low,
+
+             # Pulled from model
+             parallel::Bool = false, n_parts::Int = 5_000, n_blocks::Int = 1,
+             n_steps::Int = 1, use_chand_recursion::Bool = true,
+
+             # CHECK AGAINST abstractdsgemodel
+             # Ensure this doesn't break all of our scripts.
+             # Like, maybe have a wrapper that grabs these following settings (the Δ)
+             λ::Float64 = 2.0,
+             n_Φ::Int64 = 200,
+
+             # Correction Settings
+             resampling_method::Symbol = :systematic,
+             threshold_ratio:: = ,
+
+             # Mutation Settings
+             c::, # step size
+             α::, # mixture_proportion
+             accept::, # target_accept
+             target::, # target_accept -> these equal???
+
              old_data::Matrix{Float64} = Matrix{Float64}(undef, size(data, 1), 0),
              old_cloud::ParticleCloud  = ParticleCloud(m, 0),
+             adaptive_tempering_target::Float64 = 0.95,
+
              recompute_transition_equation::Bool = true, run_test::Bool = false,
              filestring_addl::Vector{String} = Vector{String}(),
              continue_intermediate::Bool = false, intermediate_stage_start::Int = 0,
@@ -91,13 +114,13 @@ function smc(m::AbstractModel, data::Matrix{Float64};
     end
 
     # General
-    parallel = get_setting(m, :use_parallel_workers)
-    n_parts  = get_setting(m, :n_particles)
-    n_blocks = get_setting(m, :n_smc_blocks)
-    n_steps  = get_setting(m, :n_mh_steps_smc)
+    #parallel = get_setting(m, :use_parallel_workers)
+    #n_parts  = get_setting(m, :n_particles)
+    #n_blocks = get_setting(m, :n_smc_blocks)
+    #n_steps  = get_setting(m, :n_mh_steps_smc)
     n_params = n_parameters(m)
 
-    use_chand_recursion = get_setting(m, :use_chand_recursion)
+    #use_chand_recursion = get_setting(m, :use_chand_recursion)
     if any(isnan.(data)) & use_chand_recursion
         error("Cannot use Chandrasekhar recursions with missing data")
     end
@@ -117,20 +140,20 @@ function smc(m::AbstractModel, data::Matrix{Float64};
     ϕ_n    = 0.                   # Instantiate ϕ_n and ϕ_prop variables for
     ϕ_prop = 0.                   # reference in respective while loop conditions
     resampled_last_period = false # Ensures proper resetting of ESS_bar after resample
-    λ      = get_setting(m, :λ)
-    n_Φ    = get_setting(m, :n_Φ)
-    tempering_target   = get_setting(m, :adaptive_tempering_target_smc)
+    #λ      = get_setting(m, :λ)
+    #n_Φ    = get_setting(m, :n_Φ)
+    tempering_target   = adaptive_tempering_target#get_setting(m, :adaptive_tempering_target_smc)
     use_fixed_schedule = tempering_target == 0.0
 
     # Step 2 (Correction) settings
-    resampling_method = get_setting(m, :resampler_smc)
-    threshold_ratio   = get_setting(m, :resampling_threshold)
+    #resampling_method = get_setting(m, :resampler_smc)
+    #threshold_ratio   = get_setting(m, :resampling_threshold)
     threshold         = threshold_ratio * n_parts
 
     # Step 3 (Mutation) settings
-    c      = get_setting(m, :step_size_smc)
-    α      = get_setting(m, :mixture_proportion)
-    target = accept = get_setting(m, :target_accept)
+    #c      = get_setting(m, :step_size_smc)
+    #α      = get_setting(m, :mixture_proportion)
+    #target = accept = get_setting(m, :target_accept)
 
     para_symbols    = [θ.key for θ in m.parameters]
     fixed_para_inds = findall([θ.fixed for θ in m.parameters])
