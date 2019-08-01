@@ -135,24 +135,24 @@ function smc(m::AbstractModel, data::Matrix{S};
     function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                               blocks_free::Vector{Vector{Int64}},
                               blocks_all::Vector{Vector{Int64}},
-                              ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0,
+                              ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
                               old_data::T = Matrix{S}(undef, size(data, 1), 0),
                               use_chand_recursion::Bool = false,
                               verbose::Symbol = :low) where {S<:AbstractFloat, T<:AbstractMatrix}
         return mutation(m, data, p, d_μ, d_Σ, blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
-                        old_data = old_data, use_chand_recursion = use_chand_recursion,
-                        verbose = verbose)
+                        n_mh_steps = n_mh_steps, old_data = old_data,
+                        use_chand_recursion = use_chand_recursion, verbose = verbose)
     end
     @everywhere function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                                           blocks_free::Vector{Vector{Int64}},
-                                          blocks_all::Vector{Vector{Int64}},
-                                          ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0,
+                                          blocks_all::Vector{Vector{Int64}}, ϕ_n::S,
+                                          ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
                                           old_data::T = Matrix{S}(undef, size(data, 1), 0),
                                           use_chand_recursion::Bool = false,
                                           verbose::Symbol = :low) where {S<:Float64, T<:Matrix}
         return mutation(m, data, p, d_μ, d_Σ, blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
-                        old_data = old_data, use_chand_recursion = use_chand_recursion,
-                        verbose = verbose)
+                        n_mh_steps = n_mh_steps, old_data = old_data,
+                        use_chand_recursion = use_chand_recursion, verbose = verbose)
     end
 
     # General
