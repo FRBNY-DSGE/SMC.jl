@@ -1,9 +1,10 @@
 """
 ```
-one_draw(m::AbstractModel, data::Matrix{Float64}; use_chand_recursion::Bool = true,
-         verbose::Symbol = :low)
+one_draw(m::AbstractModel, data::Matrix{Float64};
+         use_chand_recursion::Bool = true, verbose::Symbol = :low)
 ```
-Finds and returns one valid draw from parameter distribution, along with its log likelihood and log posterior.
+Finds and returns one valid draw from parameter distribution, along with its
+log likelihood and log posterior.
 """
 function one_draw(m::AbstractModel, data::Matrix{Float64};
                   use_chand_recursion::Bool = true, verbose::Symbol = :low)
@@ -22,8 +23,7 @@ function one_draw(m::AbstractModel, data::Matrix{Float64};
                 draw_loglh = draw_logpost = -Inf
             end
         catch err
-            if isa(err, ParamBoundsError)  ||
-               isa(err, SingularException) ||
+            if isa(err, ParamBoundsError) || isa(err, SingularException) ||
                isa(err, LinearAlgebra.LAPACKException)
                 draw_loglh = draw_logpost = -Inf
             else
@@ -41,7 +41,6 @@ end
 
 """
 ```
-initial_draw!(m::AbstractModel, data::Matrix{Float64}, c::ParticleCloud)
 initial_draw!(m::AbstractModel, data::Matrix{Float64}, c::Cloud)
 ```
 
@@ -49,8 +48,7 @@ Draw from a general starting distribution (set by default to be from the prior) 
 initialize the SMC algorithm. Returns a tuple (logpost, loglh) and modifies the
 particle objects in the particle cloud in place.
 """
-function initial_draw!(m::AbstractModel, data::Matrix{Float64},
-                       c::Union{Cloud, ParticleCloud};
+function initial_draw!(m::AbstractModel, data::Matrix{Float64}, c::Cloud;
                        parallel::Bool = false, use_chand_recursion::Bool = true,
                        verbose::Symbol = :low)
     n_parts = length(c)
@@ -101,9 +99,9 @@ end
 
 """
 ```
-initialize_likelihoods!(m::AbstractModel, data::Matrix{Float64},
-                        c::Union{Cloud, ParticleCloud};
-                        parallel::Bool = false, verbose::Symbol = :low)
+function initialize_likelihoods!(m::AbstractModel, data::Matrix{Float64},
+                                 c::Union{Cloud, ParticleCloud};
+                                 parallel::Bool = false, verbose::Symbol = :low)
 ```
 This function is made for transfering the log-likelihood values saved in the
 Cloud from a previous estimation to each particle's respective old_loglh
@@ -146,17 +144,17 @@ end
 
 """
 ```
-function initialize_cloud_settings!(m::AbstractModel, cloud::ParticleCloud;
-                                    tempered_update::Bool = false)
+function initialize_cloud_settings!(m::AbstractModel, cloud::Cloud;
+                                    tempered_update::Bool = false,
+                                    n_parts::Int = 5_000, n_Φ::Int = 300, c::S = 0.5,
+                                    accept::S = 0.25) where {S<:AbstractFloat}
 ```
 Initializes stage index, number of Φ stages, c, resamples, acceptance, and sampling time.
 """
-function initialize_cloud_settings!(m::AbstractModel,
-                                    cloud::Union{ParticleCloud,Cloud};
+function initialize_cloud_settings!(m::AbstractModel, cloud::Cloud;
                                     tempered_update::Bool = false,
-                                    n_parts::Int = 5_000,
-                                    n_Φ::Int = 300,
-                                    c::S = 0.5, accept::S = 0.25) where {S<:AbstractFloat}
+                                    n_parts::Int = 5_000, n_Φ::Int = 300, c::S = 0.5,
+                                    accept::S = 0.25) where {S<:AbstractFloat}
     if tempered_update
         cloud.ESS = [cloud.ESS[end]]
     else
