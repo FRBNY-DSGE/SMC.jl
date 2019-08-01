@@ -87,7 +87,9 @@ end
 function generate_free_blocks(n_free_para, n_blocks)
 ```
 
-Return a Vector{Vector{Int64}} where each internal Vector{Int64} contains a subset of the range 1:n_free_para of randomly permuted indices. This is used to index out random blocks of free parameters from the covariance matrix for the mutation step.
+Return a Vector{Vector{Int64}} where each internal Vector{Int64} contains a subset of the range
+1:n_free_para of randomly permuted indices. This is used to index out random blocks of free
+parameters from the covariance matrix for the mutation step.
 """
 function generate_free_blocks(n_free_para::Int64, n_blocks::Int64)
     rand_inds = shuffle(1:n_free_para)
@@ -107,16 +109,16 @@ function generate_free_blocks(n_free_para::Int64, n_blocks::Int64)
     return blocks_free
 end
 
-function isempty(c::ParticleCloud)
-    length(c.particles) == 0
-end
-
 """
 ```
 function generate_all_blocks(blocks_free, free_para_inds)
 ```
 
-Return a Vector{Vector{Int64}} where each internal Vector{Int64} contains indices corresponding to those in `blocks_free` but mapping to `1:n_para` (as opposed to `1:n_free_para`). These blocks are used to reconstruct the particle vector by inserting the mutated free parameters into the size `n_para,` particle vector, which also contains fixed parameters.
+Return a Vector{Vector{Int64}} where each internal Vector{Int64} contains indices
+corresponding to those in `blocks_free` but mapping to `1:n_para` (as opposed to
+`1:n_free_para`). These blocks are used to reconstruct the particle vector by
+inserting the mutated free parameters into the size `n_para,` particle vector,
+which also contains fixed parameters.
 """
 function generate_all_blocks(blocks_free::Vector{Vector{Int64}}, free_para_inds::Vector{Int64})
     n_free_para = length(free_para_inds)
@@ -138,30 +140,6 @@ end
 
 function get_cloud(m::AbstractModel; filepath::String = rawpath(m, "estimate", "smc_cloud.jld"))
     return load(filepath, "cloud")
-end
-
-function init_stage_print(cloud::ParticleCloud;
-                          verbose::Symbol=:low, use_fixed_schedule::Bool = true)
-    if use_fixed_schedule
-        println("--------------------------")
-            println("Iteration = $(cloud.stage_index) / $(cloud.n_Φ)")
-    else
-        println("--------------------------")
-            println("Iteration = $(cloud.stage_index)")
-    end
-	println("--------------------------")
-        println("phi = $(cloud.tempering_schedule[cloud.stage_index])")
-	println("--------------------------")
-        println("c = $(cloud.c)")
-        println("ESS = $(cloud.ESS[cloud.stage_index])   ($(cloud.resamples) total resamples.)")
-	println("--------------------------")
-    if VERBOSITY[verbose] >= VERBOSITY[:high]
-        μ = weighted_mean(cloud)
-        σ = weighted_std(cloud)
-        for n=1:length(cloud.particles[1])
-            println("$(cloud.particles[1].keys[n]) = $(round(μ[n], digits = 5)), $(round(σ[n], digits = 5))")
-	    end
-    end
 end
 
 function init_stage_print(cloud::Cloud, para_symbols::Vector{Symbol};
@@ -188,38 +166,6 @@ function init_stage_print(cloud::Cloud, para_symbols::Vector{Symbol};
     end
 end
 
-function end_stage_print(cloud::ParticleCloud;
-                         verbose::Symbol=:low, use_fixed_schedule::Bool = true)
-    total_sampling_time_minutes = cloud.total_sampling_time/60
-    if use_fixed_schedule
-        expected_time_remaining_sec = (cloud.total_sampling_time/cloud.stage_index)*(cloud.n_Φ - cloud.stage_index)
-        expected_time_remaining_minutes = expected_time_remaining_sec/60
-    end
-
-    println("--------------------------")
-    if use_fixed_schedule
-        println("Iteration = $(cloud.stage_index) / $(cloud.n_Φ)")
-        println("time elapsed: $(round(total_sampling_time_minutes, digits = 4)) minutes")
-        println("estimated time remaining: $(round(expected_time_remaining_minutes, digits = 4)) minutes")
-    else
-        println("Iteration = $(cloud.stage_index)")
-        println("time elapsed: $(round(total_sampling_time_minutes, digits = 4)) minutes")
-    end
-    println("--------------------------")
-        println("phi = $(cloud.tempering_schedule[cloud.stage_index])")
-    println("--------------------------")
-        println("c = $(cloud.c)")
-        println("accept = $(cloud.accept)")
-        println("ESS = $(cloud.ESS[cloud.stage_index])   ($(cloud.resamples) total resamples.)")
-    println("--------------------------")
-    if VERBOSITY[verbose] >= VERBOSITY[:high]
-        μ = weighted_mean(cloud)
-        σ = weighted_std(cloud)
-        for n=1:length(cloud.particles[1])
-            println("$(cloud.particles[1].keys[n]) = $(round(μ[n], digits = 5)), $(round(σ[n], digits = 5))")
-        end
-    end
-end
 function end_stage_print(cloud::Cloud, para_symbols::Vector{Symbol};
                          verbose::Symbol=:low, use_fixed_schedule::Bool = true)
     total_sampling_time_minutes = cloud.total_sampling_time/60
