@@ -23,6 +23,7 @@ Execute one proposed move of the Metropolis-Hastings algorithm for a given param
 ### Keyword Arguments:
 - `c::Float64`: The scaling parameter for the proposed covariance matrix
 - `α::Float64`: The mixing proportion
+- `n_mh_steps::Int`: Number of Metropolis Hastings steps to attempt
 - `old_data::Matrix{Float64}`: The matrix of old data to be used in calculating the
     old_loglh, old_logpost in time tempering
 
@@ -33,13 +34,12 @@ Execute one proposed move of the Metropolis-Hastings algorithm for a given param
 """
 function mutation(m::AbstractModel, data::Matrix{S}, p::Vector{S},
                   d_μ::Vector{S}, d_Σ::Matrix{S},
-                  blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
-                  ϕ_n::S, ϕ_n1::S; c::S = 1., α::S = 1.,
+                  blocks_free::Vector{Vector{Int}}, blocks_all::Vector{Vector{Int}},
+                  ϕ_n::S, ϕ_n1::S; c::S = 1., α::S = 1., n_mh_steps::Int = 1,
                   old_data::T = T(undef, size(data, 1), 0),
                   use_chand_recursion::Bool = false,
-                  verbose::Symbol = :low) where {S<:Float64, T<:AbstractMatrix}
+                  verbose::Symbol = :low) where {S<:AbstractFloat, T<:AbstractMatrix}
 
-    n_steps     = get_setting(m, :n_mh_steps_smc)
     n_free_para = length([!θ.fixed for θ in m.parameters])
     step_prob   = rand() # Draw initial step probability
 
