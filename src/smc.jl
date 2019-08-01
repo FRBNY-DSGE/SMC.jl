@@ -17,16 +17,53 @@ smc(m::AbstractModel)
     of draws for an estimation with new data)
 
 ### Keyword Arguments:
-- `verbose`: Desired frequency of function progress messages printed to standard out.
+- `verbose::Symbol`: Desired frequency of function progress messages printed to standard out.
 	- `:none`: No status updates will be reported.
 	- `:low`: Status updates for SMC initialization and recursion will be included.
 	- `:high`: Status updates for every iteration of SMC is output, which includes
     the mean and standard deviation of each parameter draw after each iteration,
     as well as calculated acceptance rate, ESS, and number of times resampled.
 
+- `parallel::Bool`: Flag for running algorithm in parallel.
+- `n_parts::Int`: Number of particles.
+- `n_blocks::Int`: Number of parameter blocks in mutation step.
+- `n_mh_steps::Int`: Number of Metropolis Hastings steps to attempt during the mutation step.
+- `λ::S`: The 'bending coefficient' λ in Φ(n) = (n/N(Φ))^λ
+- `n_Φ::Int`: Number of stages in the tempering schedule.
+- `resampling_method::Symbol`: Which resampling method to use.
+    - `:systematic`: Will use sytematic resampling.
+    - `:multinomial`: Will use multinomial resampling.
+    - `:polyalgo`: Samples using a polyalgorithm.
+- `threshold_ratio::S`: Threshold s.t. particles will be resampled when the population
+    drops below threshold * N
+- `c::S`: Scaling factor for covariance of the particles. Controls size of steps in mutation step.
+- `α::S`: The mixture proportion for the mutation step's proposal distribution.
+- `target::S`: The initial target acceptance rate for new particles during mutation.
+
+- `use_chand_recursion::Bool`: Flag for using Chandrasekhar Recursions in Kalman filter.
+- `use_fixed_schedule::Bool`: Flag for whether or not to use a fixed tempering (ϕ) schedule.
+- `tempering_target::S`: Coefficient of the sample size metric to be targeted when solving
+    for an endogenous ϕ.
+
+- `old_data::Matrix{S}`:
+- `old_cloud::ParticleCloud`:
+- `old_vintage::String`: String for vintage date of old data
+- `smc_iteration::Int`: The iteration index for the number of times SMC has been run on the
+     same data vintage. Primarily for numerical accuracy/testing purposes.
+
+- `recompute_transition_equation::Bool`:
+- `run_test::Bool`: Flag for when testing accuracy of program
+- `filestring_addl::Vector{String}`: Additional file string extension for loading old cloud.
+- `continue_intermediate::Bool`: Flag to indicate whether one is continuing SMC from an
+    intermediate stage/
+- `intermediate_stage_start::Int`: Intermediate stage at which one wishes to begin the estimation.
+- `save_intermediate::Bool`: Flag for whether one wants to save intermediate Cloud objects
+- `intermediate_stage_increment::Int`: Save Clouds at every increment
+    (1 = each stage, 10 = every 10th stage, etc.)
+
 ### Outputs
 
-- `cloud`: The ParticleCloud object containing all of the information about the
+- `cloud`: The Cloud object containing all of the information about the
     parameter values from the sample, their respective log-likelihoods, the ESS
     schedule, tempering schedule etc., which is saved in the saveroot.
 
@@ -37,7 +74,7 @@ Sequential Monte Carlo can be used in lieu of Random Walk Metropolis Hastings to
     sequentially constructed proposal densities to be used in iterative importance
     sampling.
 
-The implementation here is based on Edward Herbst and Frank Schorfheide's 2014 paper
+This implementation is based on Edward Herbst and Frank Schorfheide's 2014 paper
     'Sequential Monte Carlo Sampling for DSGE Models' and the code accompanying their
     book 'Bayesian Estimation of DSGE Models'.
 
@@ -51,37 +88,42 @@ SMC is broken up into three main steps:
 - `Mutation`: Propagate particles {θ(i), W(n)} via N(MH) steps of a Metropolis
     Hastings algorithm.
 """
-function smc(m::AbstractModel, data::Matrix{Float64};
+function smc(m::AbstractModel, data::Matrix{S};
              verbose::Symbol = :low,
 
-             # Pulled from model
-             parallel::Bool = false, n_parts::Int = 5_000, n_blocks::Int = 1,
-             n_steps::Int = 1, use_chand_recursion::Bool = true,
+             parallel::Bool  = false,
+             n_parts::Int    = 5_000,
+             n_blocks::Int   = 1,
+             n_mh_steps::Int = 1,
 
-             # CHECK AGAINST abstractdsgemodel
-             # Ensure this doesn't break all of our scripts.
-             # Like, maybe have a wrapper that grabs these following settings (the Δ)
-             λ::Float64 = 2.0,
-             n_Φ::Int64 = 200,
+             λ::S = 2.1,
+             n_Φ::Int64 = 300,
 
              # Correction Settings
              resampling_method::Symbol = :systematic,
-             threshold_ratio:: = ,
+             threshold_ratio::S = 0.5,
 
              # Mutation Settings
-             c::, # step size
-             α::, # mixture_proportion
-             accept::, # target_accept
-             target::, # target_accept -> these equal???
+             c::S = 0.5, # step size
+             α::S = 1.0, # mixture_proportion
+             target::S = 0.25, # target_accept
 
-             old_data::Matrix{Float64} = Matrix{Float64}(undef, size(data, 1), 0),
-             old_cloud::ParticleCloud  = ParticleCloud(m, 0),
-             adaptive_tempering_target::Float64 = 0.95,
+             use_chand_recursion::Bool = true,
+             use_fixed_schedule::Bool  = true,
+             tempering_target::S = 0.97,
 
-             recompute_transition_equation::Bool = true, run_test::Bool = false,
+             old_data::Matrix{S} = Matrix{S}(undef, size(data, 1), 0),
+             old_cloud::ParticleCloud = ParticleCloud(m, 0),
+             old_vintage::String = "",
+             smc_iteration::Int = 1,
+
+             recompute_transition_equation::Bool = true,
+             run_test::Bool = false,
              filestring_addl::Vector{String} = Vector{String}(),
-             continue_intermediate::Bool = false, intermediate_stage_start::Int = 0,
-             save_intermediate::Bool = false, intermediate_stage_increment::Int = 10)
+             continue_intermediate::Bool = false,
+             intermediate_stage_start::Int = 0,
+             save_intermediate::Bool = false,
+             intermediate_stage_increment::Int = 10) where {S<:AbstractFloat}
 
     ########################################################################################
     ### Setting Parameters
@@ -96,7 +138,7 @@ function smc(m::AbstractModel, data::Matrix{Float64};
                               ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0,
                               old_data::T = Matrix{S}(undef, size(data, 1), 0),
                               use_chand_recursion::Bool = false,
-                              verbose::Symbol = :low) where {S<:Float64, T<:AbstractMatrix}
+                              verbose::Symbol = :low) where {S<:AbstractFloat, T<:AbstractMatrix}
         return mutation(m, data, p, d_μ, d_Σ, blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
                         old_data = old_data, use_chand_recursion = use_chand_recursion,
                         verbose = verbose)
@@ -130,7 +172,7 @@ function smc(m::AbstractModel, data::Matrix{Float64};
 
     # Check that if there's a tempered update, old and current vintages are different
     if tempered_update
-        old_vintage = get_setting(m, :previous_data_vintage)
+        #old_vintage = get_setting(m, :previous_data_vintage)
         @assert old_vintage != data_vintage(m)
     end
 
@@ -142,7 +184,7 @@ function smc(m::AbstractModel, data::Matrix{Float64};
     resampled_last_period = false # Ensures proper resetting of ESS_bar after resample
     #λ      = get_setting(m, :λ)
     #n_Φ    = get_setting(m, :n_Φ)
-    tempering_target   = adaptive_tempering_target#get_setting(m, :adaptive_tempering_target_smc)
+    #tempering_target   = get_setting(m, :adaptive_tempering_target_smc)
     use_fixed_schedule = tempering_target == 0.0
 
     # Step 2 (Correction) settings
@@ -178,7 +220,8 @@ function smc(m::AbstractModel, data::Matrix{Float64};
         else
             Cloud(old_cloud)
         end
-        initialize_cloud_settings!(m, cloud; tempered_update = tempered_update)
+        initialize_cloud_settings!(m, cloud; tempered_update = tempered_update,
+                                   n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
         initialize_likelihoods!(m, data, cloud, parallel = parallel, verbose = verbose)
 
     elseif continue_intermediate
@@ -271,7 +314,7 @@ function smc(m::AbstractModel, data::Matrix{Float64};
         push!(cloud.ESS, 1 / sum(normalized_weights .^ 2))
 
         # If this assertion does not hold then there are likely too few particles
-        @assert !isnan(cloud.ESS[i]) "no particles have non-zero weight"
+        @assert !isnan(cloud.ESS[i]) "No particles have non-zero weight."
 
         # Resample if degeneracy/ESS metric falls below the accepted threshold
         if (cloud.ESS[i] < threshold)
