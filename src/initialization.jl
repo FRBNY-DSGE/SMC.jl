@@ -15,16 +15,16 @@ function one_draw(m::AbstractModel, data::Matrix{Float64};
         try
             update!(m, draw)
             draw_loglh = likelihood(m, data, catch_errors = true,
-                                    use_chand_recursion=use_chand_recursion,
+                                    use_chand_recursion = use_chand_recursion,
                                     verbose = verbose)
             draw_logpost = prior(m)
             if (draw_loglh == -Inf) | (draw_loglh === NaN)
                 draw_loglh = draw_logpost = -Inf
             end
         catch err
-            if isa(err, ParamBoundsError)
-                draw_loglh = draw_logpost = -Inf
-            elseif isa(err, PosDefException) || isa(err, SingularException) || isa(err, LinearAlgebra.LAPACKException)
+            if isa(err, ParamBoundsError)  ||
+               isa(err, SingularException) ||
+               isa(err, LinearAlgebra.LAPACKException)
                 draw_loglh = draw_logpost = -Inf
             else
                 throw(err)
@@ -114,7 +114,8 @@ function initialize_likelihoods!(m::AbstractModel, data::Matrix{Float64},
                                  c::Union{Cloud, ParticleCloud};
                                  parallel::Bool = false, verbose::Symbol = :low)
     n_parts = length(c)
-    draws = (typeof(c) <: Cloud) ? get_vals(c; transpose = false) : Matrix{Float64}(get_vals(c)')
+    draws = (typeof(c) <: Cloud) ? get_vals(c; transpose = false) :
+                                   Matrix{Float64}(get_vals(c)')
 
     # Retire log-likelihood values from the old estimation to the field old_loglh
     update_old_loglh!(c, get_loglh(c))
@@ -152,17 +153,20 @@ Initializes stage index, number of Φ stages, c, resamples, acceptance, and samp
 """
 function initialize_cloud_settings!(m::AbstractModel,
                                     cloud::Union{ParticleCloud,Cloud};
-                                    tempered_update::Bool = false)
+                                    tempered_update::Bool = false,
+                                    n_parts::Int = 5_000,
+                                    n_Φ::Int = 300,
+                                    c::S = 0.5, accept::S = 0.25) where {S<:AbstractFloat}
     if tempered_update
         cloud.ESS = [cloud.ESS[end]]
     else
-        cloud.ESS[1] = get_setting(m, :n_particles)
+        cloud.ESS[1] = n_parts
     end
     cloud.stage_index = 1
-    cloud.n_Φ         = get_setting(m, :n_Φ)
+    cloud.n_Φ         = n_Φ
     cloud.resamples   = 0
-    cloud.c           = get_setting(m, :step_size_smc)
-    cloud.accept      = get_setting(m, :target_accept)
+    cloud.c           = c
+    cloud.accept      = accept
     cloud.total_sampling_time = 0.
     cloud.tempering_schedule  = zeros(1)
 end
