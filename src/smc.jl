@@ -99,13 +99,12 @@ function smc(m::AbstractModel, data::Matrix{S};
              λ::S = 2.1,
              n_Φ::Int64 = 300,
 
-             # Correction Settings
              resampling_method::Symbol = :systematic,
              threshold_ratio::S = 0.5,
 
              # Mutation Settings
-             c::S = 0.5, # step size
-             α::S = 1.0, # mixture_proportion
+             c::S = 0.5,       # step size
+             α::S = 1.0,       # mixture_proportion
              target::S = 0.25, # target_accept
 
              use_chand_recursion::Bool = true,
@@ -113,7 +112,7 @@ function smc(m::AbstractModel, data::Matrix{S};
              tempering_target::S = 0.97,
 
              old_data::Matrix{S} = Matrix{S}(undef, size(data, 1), 0),
-             old_cloud::ParticleCloud = ParticleCloud(m, 0),
+             old_cloud::Cloud = Cloud(m, 0),
              old_vintage::String = "",
              smc_iteration::Int = 1,
 
@@ -126,8 +125,9 @@ function smc(m::AbstractModel, data::Matrix{S};
              intermediate_stage_increment::Int = 10) where {S<:AbstractFloat}
 
     ########################################################################################
-    ### Setting Parameters
+    ### Settings
     ########################################################################################
+
     # Construct closure of mutation function so as to avoid issues with serialization
     # across workers with different Julia system images
     sendto(workers(), m = m)
@@ -156,58 +156,38 @@ function smc(m::AbstractModel, data::Matrix{S};
     end
 
     # General
-    #parallel = get_setting(m, :use_parallel_workers)
-    #n_parts  = get_setting(m, :n_particles)
-    #n_blocks = get_setting(m, :n_smc_blocks)
-    #n_steps  = get_setting(m, :n_mh_steps_smc)
     n_params = n_parameters(m)
-
-    #use_chand_recursion = get_setting(m, :use_chand_recursion)
     if any(isnan.(data)) & use_chand_recursion
         error("Cannot use Chandrasekhar recursions with missing data")
     end
 
-    # Time Tempering
+    # Time tempering
     tempered_update = !isempty(old_data)
 
     # Check that if there's a tempered update, old and current vintages are different
     if tempered_update
-        #old_vintage = get_setting(m, :previous_data_vintage)
         @assert old_vintage != data_vintage(m)
     end
 
-    # Step 1 (ϕ schedule) settings
     i = 1                         # Index tracking the stage of the algorithm
     j = 2                         # Index tracking the fixed_schedule entry ϕ_prop
-    ϕ_n    = 0.                   # Instantiate ϕ_n and ϕ_prop variables for
-    ϕ_prop = 0.                   # reference in respective while loop conditions
+    ϕ_n = ϕ_prop = 0.             # Instantiate ϕ_n and ϕ_prop variables
     resampled_last_period = false # Ensures proper resetting of ESS_bar after resample
-    #λ      = get_setting(m, :λ)
-    #n_Φ    = get_setting(m, :n_Φ)
-    #tempering_target   = get_setting(m, :adaptive_tempering_target_smc)
     use_fixed_schedule = tempering_target == 0.0
-
-    # Step 2 (Correction) settings
-    #resampling_method = get_setting(m, :resampler_smc)
-    #threshold_ratio   = get_setting(m, :resampling_threshold)
-    threshold         = threshold_ratio * n_parts
-
-    # Step 3 (Mutation) settings
-    #c      = get_setting(m, :step_size_smc)
-    #α      = get_setting(m, :mixture_proportion)
-    #target = accept = get_setting(m, :target_accept)
+    threshold = threshold_ratio * n_parts
 
     para_symbols    = [θ.key for θ in m.parameters]
     fixed_para_inds = findall([θ.fixed for θ in m.parameters])
     free_para_inds  = findall([!θ.fixed for θ in m.parameters])
     n_free_para     = length(free_para_inds)
 
-    # Step 4 (Initialization of Particle Array Cloud)
+    # Initialization of Particle Array Cloud
     cloud = Cloud(m, n_parts)
 
     #################################################################################
     ### Initialize Algorithm: Draws from prior
     #################################################################################
+
     if VERBOSITY[verbose] >= VERBOSITY[:low]
         println("\n\n SMC " * (m.testing ? "testing " : "") * "starts ....\n\n")
     end
@@ -216,9 +196,9 @@ function smc(m::AbstractModel, data::Matrix{S};
         cloud = if isempty(old_cloud)
             loadpath = rawpath(m, "estimate", "smc_cloud.jld2", filestring_addl)
             loadpath = replace(loadpath, r"vint=[0-9]{6}", "vint=" * old_vintage)
-            Cloud(load(loadpath, "cloud"))
+            load(loadpath, "cloud")
         else
-            Cloud(old_cloud)
+            old_cloud
         end
         initialize_cloud_settings!(m, cloud; tempered_update = tempered_update,
                                    n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
@@ -227,7 +207,7 @@ function smc(m::AbstractModel, data::Matrix{S};
     elseif continue_intermediate
         loadpath = rawpath(m, "estimate", "smc_cloud_stage=$(intermediate_stage_start).jld2",
                            filestring_addl)
-        cloud    = Cloud(load(loadpath, "cloud"))
+        cloud    = load(loadpath, "cloud")
     else
         # Instantiating Cloud object, update draws, loglh, & logpost
         initial_draw!(m, data, cloud, parallel = parallel,
@@ -260,13 +240,12 @@ function smc(m::AbstractModel, data::Matrix{S};
     if VERBOSITY[verbose] >= VERBOSITY[:low]
         init_stage_print(cloud, para_symbols; verbose = verbose,
                          use_fixed_schedule = use_fixed_schedule)
+        println("\n\n SMC recursion starts... \n\n")
     end
 
     #################################################################################
     ### Recursion
     #################################################################################
-    (VERBOSITY[verbose] >= VERBOSITY[:low]) && println("\n\n SMC recursion starts \n\n")
-
     while ϕ_n < 1.
 
         start_time = time_ns()
@@ -290,6 +269,7 @@ function smc(m::AbstractModel, data::Matrix{S};
         #############################################################################
         ### Step 1: Correction
         #############################################################################
+
         # Calculate incremental weights (if no old data, get_old_loglh(cloud) = 0)
         incremental_weights = exp.((ϕ_n1 - ϕ_n) * get_old_loglh(cloud) +
                                    (ϕ_n - ϕ_n1) * get_loglh(cloud))
@@ -354,14 +334,15 @@ function smc(m::AbstractModel, data::Matrix{S};
         new_particles = if parallel
             @distributed (hcat) for k in 1:n_parts
                 mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr, blocks_free,
-                                 blocks_all, ϕ_n, ϕ_n1; c = c, α = α, old_data = old_data,
+                                 blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
+                                 n_mh_steps = n_mh_steps, old_data = old_data,
                                  use_chand_recursion = use_chand_recursion,
                                  verbose = verbose)
             end
         else
             hcat([mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr,
                                    blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c,
-                                   α = α, old_data = old_data,
+                                   α = α, n_mh_steps = n_mh_steps, old_data = old_data,
                                    use_chand_recursion = use_chand_recursion,
                                    verbose = verbose) for k=1:n_parts]...)
         end
@@ -384,7 +365,7 @@ function smc(m::AbstractModel, data::Matrix{S};
         if mod(cloud.stage_index, intermediate_stage_increment) == 0 && save_intermediate
             jldopen(rawpath(m, "estimate", "smc_cloud_stage=$(cloud.stage_index).jld2"),
                     true, true, true, IOStream) do file
-                write(file, "cloud", ParticleCloud(cloud, para_symbols))
+                write(file, "cloud", cloud)
                 write(file, "w", w_matrix)
                 write(file, "W", W_matrix)
                 write(file, "z", z_matrix)
@@ -405,7 +386,7 @@ function smc(m::AbstractModel, data::Matrix{S};
 
         jldopen(rawpath(m, "estimate", "smc_cloud.jld2", filestring_addl),
                 true, true, true, IOStream) do file
-            write(file, "cloud", ParticleCloud(cloud, para_symbols))
+            write(file, "cloud", cloud)
             write(file, "w", w_matrix)
             write(file, "W", W_matrix)
             write(file, "z", z_matrix)
