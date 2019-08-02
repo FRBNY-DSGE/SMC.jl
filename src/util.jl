@@ -84,58 +84,26 @@ end
 
 """
 ```
-function generate_free_blocks(n_free_para, n_blocks)
+sendto(p::Int; args...)
 ```
-
-Return a Vector{Vector{Int64}} where each internal Vector{Int64} contains a subset of the range
-1:n_free_para of randomly permuted indices. This is used to index out random blocks of free
-parameters from the covariance matrix for the mutation step.
+Function to send data from master process to particular worker, p. Code from ChrisRackauckas, avavailable at: https://github.com/ChrisRackauckas/ParallelDataTransfer.jl/blob/master/src/ParallelDataTransfer.jl.
 """
-function generate_free_blocks(n_free_para::Int64, n_blocks::Int64)
-    rand_inds = shuffle(1:n_free_para)
-
-    subset_length     = cld(n_free_para, n_blocks) # ceiling division
-    last_block_length = n_free_para - subset_length*(n_blocks - 1)
-
-    blocks_free = Vector{Vector{Int64}}(undef, n_blocks)
-    for i in 1:n_blocks
-        if i < n_blocks
-            blocks_free[i] = rand_inds[((i-1)*subset_length + 1):(i*subset_length)]
-        else
-            # To account for the fact that the last block may be smaller than the others
-            blocks_free[i] = rand_inds[end-last_block_length+1:end]
-        end
+function sendto(p::Int; args...)
+    for (nm, val) in args
+        @spawnat(p, Core.eval(Main, Expr(:(=), nm, val)))
     end
-    return blocks_free
 end
 
 """
 ```
-function generate_all_blocks(blocks_free, free_para_inds)
+sendto(ps::AbstractVector{Int}; args...)
 ```
-
-Return a Vector{Vector{Int64}} where each internal Vector{Int64} contains indices
-corresponding to those in `blocks_free` but mapping to `1:n_para` (as opposed to
-`1:n_free_para`). These blocks are used to reconstruct the particle vector by
-inserting the mutated free parameters into the size `n_para,` particle vector,
-which also contains fixed parameters.
+Function to send data from master process to list of workers. Code from ChrisRackauckas, available at: https://github.com/ChrisRackauckas/ParallelDataTransfer.jl/blob/master/src/ParallelDataTransfer.jl.
 """
-function generate_all_blocks(blocks_free::Vector{Vector{Int64}}, free_para_inds::Vector{Int64})
-    n_free_para = length(free_para_inds)
-    ind_mappings = Dict{Int64, Int64}()
-
-    for (k, v) in zip(1:n_free_para, free_para_inds)
-        ind_mappings[k] = v
+function sendto(ps::AbstractVector{Int}; args...)
+    for p in ps
+        sendto(p; args...)
     end
-
-    blocks_all = similar(blocks_free)
-    for (i, block) in enumerate(blocks_free)
-        blocks_all[i] = similar(block)
-        for (j, b) in enumerate(block)
-            blocks_all[i][j] = ind_mappings[b]
-        end
-    end
-    return blocks_all
 end
 
 function get_cloud(m::AbstractModel; filepath::String = rawpath(m, "estimate", "smc_cloud.jld"))
@@ -170,15 +138,17 @@ function end_stage_print(cloud::Cloud, para_symbols::Vector{Symbol};
                          verbose::Symbol=:low, use_fixed_schedule::Bool = true)
     total_sampling_time_minutes = cloud.total_sampling_time/60
     if use_fixed_schedule
-        expected_time_remaining_sec = (cloud.total_sampling_time/cloud.stage_index)*(cloud.n_Φ - cloud.stage_index)
-        expected_time_remaining_minutes = expected_time_remaining_sec/60
+        expected_time_remaining_sec = (cloud.total_sampling_time/cloud.stage_index) *
+            (cloud.n_Φ - cloud.stage_index)
+        expected_time_remaining_minutes = expected_time_remaining_sec / 60
     end
 
     println("--------------------------")
     if use_fixed_schedule
         println("Iteration = $(cloud.stage_index) / $(cloud.n_Φ)")
         println("time elapsed: $(round(total_sampling_time_minutes, digits = 4)) minutes")
-        println("estimated time remaining: $(round(expected_time_remaining_minutes, digits = 4)) minutes")
+        println("estimated time remaining: " *
+                "$(round(expected_time_remaining_minutes, digits = 4)) minutes")
     else
         println("Iteration = $(cloud.stage_index)")
         println("time elapsed: $(round(total_sampling_time_minutes, digits = 4)) minutes")
@@ -197,4 +167,128 @@ function end_stage_print(cloud::Cloud, para_symbols::Vector{Symbol};
             println("$(para_symbols[n]) = $(round(μ[n], digits = 5)), $(round(σ[n], digits = 5))")
         end
     end
+end
+
+function test_matrix_eq2(expect::AbstractArray,
+                         actual::AbstractArray,
+                         expstr::String,
+                         actstr::String,
+                         ϵ_abs::Float64 = 1e-6,
+                         ϵ_rel::Float64 = 1e-2) where {T<:AbstractFloat}
+    if length(expect) ≠ length(actual)
+        error("lengths of ", expstr, " and ", actstr, " do not match: ",
+              "\n  ", expstr, " (length $(length(expect))) = ", expect,
+              "\n  ", actstr, " (length $(length(actual))) = ", actual)
+    end
+
+    # Absolute difference filter
+    abs_diff   = abs.(actual .- expect) .> ϵ_abs
+    n_abs_diff = sum(skipmissing(abs_diff))
+
+    # Relative difference filter
+    rel_diff   = 100*abs.((actual .- expect) ./ expect) .> ϵ_rel
+    n_rel_diff = sum(skipmissing(rel_diff))
+
+    # Element is only problematic if it fails *both* tests.
+    mixed_diff   = abs_diff .& rel_diff
+    n_mixed_diff = sum(skipmissing(mixed_diff))
+
+    if n_mixed_diff ≠ 0
+        sdiff = string("|a - b| <= ", ϵ_abs,
+                   " or |a - b|/|b| <= ", ϵ_rel, "%,",
+                   " ∀ a ∈ ", actstr, ",",
+                   " ∀ b ∈ ",expstr)
+        @warn "assertion failed:\n",
+             "    ", sdiff,
+             "\n$(n_abs_diff) entries fail absolute equality filter",
+             "\n$(n_rel_diff) entries fail relative equality filter",
+             "\n$(n_mixed_diff) entries fail both equality filters\n"
+        return false
+    end
+    return true
+end
+
+"""
+    @test_matrix_approx_eq(a, b)
+
+Test two matrices of floating point numbers `a` and `b` for approximate equality.
+"""
+macro test_matrix_approx_eq(a,b)
+    :(test_matrix_eq2($(esc(a)),$(esc(b)),$(string(a)),$(string(b))))
+end
+
+"""
+    @test_matrix_approx_eq_eps(a, b, ϵ_abs, ϵ_rel)
+
+Test two matrices of floating point numbers `a` and `b` for equality taking in account a
+margin of absolute tolerance given by `ϵ_abs` and a margin of relative tolerance given by
+`ϵ_rel` (in comparison to `b`).
+"""
+macro test_matrix_approx_eq_eps(a,b,c,d)
+    :(test_matrix_eq2($(esc(a)),$(esc(b)),$(string(a)),$(string(b)),$(esc(c)),$(esc(d))))
+end
+
+"""
+Sparse identity matrix - since deprecated in 0.7
+"""
+function speye(n::Integer)
+    return SparseMatrixCSC{Float64}(I, n, n)
+end
+
+"""
+Sparse identity matrix - since deprecated in 0.7
+"""
+function speye(T::Type, n::Integer)
+    return SparseMatrixCSC{T}(I, n, n)
+end
+
+"""
+    <(a::Complex, b::Complex)
+
+Compare real values of complex numbers.
+"""
+function <(a::Complex, b::Complex)
+    return a.re < b.re
+end
+
+"""
+    <(a::Real, b::Complex)
+
+Compare real values of complex numbers.
+"""
+function <(a::Real, b::Complex)
+    return a < b.re
+end
+
+"""
+    <(a::Complex, b::Real)
+
+Compare real values of complex numbers.
+"""
+function <(a::Complex, b::Real)
+    return a.re < b
+end
+
+function min(a::Complex, b::Real)
+    return min(a.re, b)
+end
+
+function min(a::Complex, b::Complex)
+    return min(a.re, b.re)
+end
+
+function min(a::Real, b::Complex)
+    return min(a, b.re)
+end
+
+function max(a::Complex, b::Real)
+    return max(a.re, b)
+end
+
+function max(a::Complex, b::Complex)
+    return max(a.re, b.re)
+end
+
+function max(a::Real, b::Complex)
+    return max(a, b.re)
 end
