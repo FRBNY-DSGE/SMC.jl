@@ -126,3 +126,59 @@ function compute_ESS(loglh::Vector{T}, current_weights::Vector{T}, ϕ_n::T, ϕ_n
     ESS          = 1 / sum(norm_weights .^ 2)
     return ESS
 end
+
+"""
+```
+function generate_free_blocks(n_free_para, n_blocks)
+```
+
+Return a Vector{Vector{Int64}} where each internal Vector{Int64} contains a subset of the range
+1:n_free_para of randomly permuted indices. This is used to index out random blocks of free
+parameters from the covariance matrix for the mutation step.
+"""
+function generate_free_blocks(n_free_para::Int64, n_blocks::Int64)
+    rand_inds = shuffle(1:n_free_para)
+
+    subset_length     = cld(n_free_para, n_blocks) # ceiling division
+    last_block_length = n_free_para - subset_length*(n_blocks - 1)
+
+    blocks_free = Vector{Vector{Int64}}(undef, n_blocks)
+    for i in 1:n_blocks
+        if i < n_blocks
+            blocks_free[i] = rand_inds[((i-1)*subset_length + 1):(i*subset_length)]
+        else
+            # To account for the fact that the last block may be smaller than the others
+            blocks_free[i] = rand_inds[end-last_block_length+1:end]
+        end
+    end
+    return blocks_free
+end
+
+"""
+```
+function generate_all_blocks(blocks_free, free_para_inds)
+```
+
+Return a Vector{Vector{Int64}} where each internal Vector{Int64} contains indices
+corresponding to those in `blocks_free` but mapping to `1:n_para` (as opposed to
+`1:n_free_para`). These blocks are used to reconstruct the particle vector by
+inserting the mutated free parameters into the size `n_para,` particle vector,
+which also contains fixed parameters.
+"""
+function generate_all_blocks(blocks_free::Vector{Vector{Int64}}, free_para_inds::Vector{Int64})
+    n_free_para = length(free_para_inds)
+    ind_mappings = Dict{Int64, Int64}()
+
+    for (k, v) in zip(1:n_free_para, free_para_inds)
+        ind_mappings[k] = v
+    end
+
+    blocks_all = similar(blocks_free)
+    for (i, block) in enumerate(blocks_free)
+        blocks_all[i] = similar(block)
+        for (j, b) in enumerate(block)
+            blocks_all[i][j] = ind_mappings[b]
+        end
+    end
+    return blocks_all
+end
