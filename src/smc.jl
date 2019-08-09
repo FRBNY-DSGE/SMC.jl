@@ -1,8 +1,8 @@
 """
 ```
-smc(m::AbstractModel, data::Matrix; verbose::Symbol, old_data::Matrix)
-smc(m::AbstractModel, data::DataFrame)
-smc(m::AbstractModel)
+smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix; verbose::Symbol, old_data::Matrix) where {U<:Number}
+smc(likelihood::Function, parameters::ParameterVector{U}, data::DataFrame) where {U<:Number}
+smc(likelihood::Function, parameters::ParameterVector{U}) where {U<:Number}
 ```
 
 ### Arguments:
@@ -88,7 +88,7 @@ SMC is broken up into three main steps:
 - `Mutation`: Propagate particles {θ(i), W(n)} via N(MH) steps of a Metropolis
     Hastings algorithm.
 """
-function smc(m::AbstractModel, data::Matrix{S};
+function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{S};
              verbose::Symbol = :low,
 
              parallel::Bool  = false,
@@ -122,7 +122,7 @@ function smc(m::AbstractModel, data::Matrix{S};
              continue_intermediate::Bool = false,
              intermediate_stage_start::Int = 0,
              save_intermediate::Bool = false,
-             intermediate_stage_increment::Int = 10) where {S<:AbstractFloat}
+             intermediate_stage_increment::Int = 10) where {S<:AbstractFloat, U<:Number}
 
     ########################################################################################
     ### Settings
@@ -132,6 +132,10 @@ function smc(m::AbstractModel, data::Matrix{S};
     # across workers with different Julia system images
     sendto(workers(), m = m)
     sendto(workers(), data = data)
+
+    likelihood(p::ParameterVector{U})::Float64 = likelihood(p, data)
+    @everywhere likelihood(p::ParameterVector{U})::Float64 = likelihood(p, data)
+
     function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                               blocks_free::Vector{Vector{Int64}},
                               blocks_all::Vector{Vector{Int64}},
@@ -154,6 +158,7 @@ function smc(m::AbstractModel, data::Matrix{S};
                         n_mh_steps = n_mh_steps, old_data = old_data,
                         use_chand_recursion = use_chand_recursion, verbose = verbose)
     end
+    function likelihood(
 
     # General
     n_params = n_parameters(m)
@@ -394,19 +399,22 @@ function smc(m::AbstractModel, data::Matrix{S};
     end
 end
 
-function smc(m::AbstractModel, data::DataFrame; verbose::Symbol = :low,
+function smc(likelihood::Function, parameters::ParameterVector{U}, data::DataFrame; verbose::Symbol = :low,
              save_intermediate::Bool = false, intermediate_stage_increment::Int = 10,
-             filestring_addl::Vector{String} = Vector{String}(undef, 0))
+             filestring_addl::Vector{String} = Vector{String}(undef, 0)) where {U<:Number}
+    # TODO: will break
     data_mat = df_to_matrix(m, data)
     return smc(m, data_mat, verbose = verbose, save_intermediate = save_intermediate,
                filestring_addl = filestring_addl)
 end
 
+# TODO: keep in DSGE.jl
 function smc(m::AbstractModel; verbose::Symbol = :low,
              save_intermediate::Bool = false, intermediate_stage_increment::Int = 10,
              filestring_addl::Vector{String} = Vector{String}(undef, 0))
     data = load_data(m)
     data_mat = df_to_matrix(m, data)
+    # This function should be modified.
     return smc(m, data_mat, verbose=verbose, save_intermediate = save_intermediate,
                filestring_addl = filestring_addl)
 end
