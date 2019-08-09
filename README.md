@@ -12,4 +12,4 @@ More information and the original MATLAB scripts that this code replicates can b
 Frank Schorfheide's [website](https://sites.sas.upenn.edu/schorf/pages/bayesian-estimation-dsge-models).
 
 Comments and suggestions are welcome, and best submitted as
-either an issue or a pull request to this branch. :speech_balloon:
+either an issue or a pull request to this branch. :point_up:
