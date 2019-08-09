@@ -1,12 +1,15 @@
 """
 ```
-mutation(m, data, p, d_μ, d_Σ, blocks_free, blocks_all, ϕ_n, ϕ_n1; c = 1., α = 1., old_data)
+mutation(likelihood::Function, parameters::ParameterVector{U}, data, p, d_μ, d_Σ,
+         blocks_free, blocks_all, ϕ_n, ϕ_n1; c = 1., α = 1., old_data)
 ```
 
 Execute one proposed move of the Metropolis-Hastings algorithm for a given parameter
 
 ### Arguments:
-- `m::AbstractModel`: Model of type AbstractModel being estimated.
+- `likelihood::Function`: Likelihood function of model being estimated.
+- `parameters::ParameterVector{U}`: Model parameter vector, which stores parameter
+    values, prior dists, and bounds
 - `data::Matrix{Float64}`: Matrix of data
 - `p::Vector{Float64}`: Initial particle value
 - `d::Distribution`: A distribution with μ = the weighted mean, and Σ = the weighted
@@ -32,15 +35,14 @@ Execute one proposed move of the Metropolis-Hastings algorithm for a given param
     log-likelihood, prior, and acceptance indicator.
 
 """
-function mutation(m::AbstractModel, data::Matrix{S}, p::Vector{S},
-                  d_μ::Vector{S}, d_Σ::Matrix{S},
+function mutation(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{S},
+                  p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                   blocks_free::Vector{Vector{Int}}, blocks_all::Vector{Vector{Int}},
                   ϕ_n::S, ϕ_n1::S; c::S = 1., α::S = 1., n_mh_steps::Int = 1,
                   old_data::T = T(undef, size(data, 1), 0),
-                  use_chand_recursion::Bool = false,
-                  verbose::Symbol = :low) where {S<:AbstractFloat, T<:AbstractMatrix}
+                  verbose::Symbol = :low) where {S<:AbstractFloat, T<:AbstractMatrix, U<:Number}
 
-    n_free_para = length([!θ.fixed for θ in m.parameters])
+    n_free_para = length([!θ.fixed for θ in parameters])
     step_prob   = rand() # Draw initial step probability
 
     N         = length(p)
@@ -89,17 +91,14 @@ function mutation(m::AbstractModel, data::Matrix{S}, p::Vector{S},
 
             try
                 update!(m, para_new)
-                para_new  = [θ.value for θ in m.parameters]
-                prior_new = prior(m)
-                like_new  = likelihood(m, data; sampler = true,
-                                       use_chand_recursion = use_chand_recursion,
-                                       verbose = verbose)
+                para_new  = [θ.value for θ in parameters]
+                prior_new = prior(parameters)
+                like_new  = likelihood(parameters, data)
                 if like_new == -Inf
                     prior_new = like_old_data = -Inf
                 end
-                like_old_data = isempty(old_data) ? 0. : likelihood(m, old_data; sampler = true,
-                                                      use_chand_recursion = use_chand_recursion,
-                                                      verbose = verbose)
+                like_old_data = isempty(old_data) ? 0. : likelihood(parameters, old_data)
+
             catch err
                 if isa(err, ParamBoundsError) || isa(err, LinearAlgebra.LAPACKException) ||
                    isa(err, PosDefException)  || isa(err, SingularException)
