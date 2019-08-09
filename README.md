@@ -1,5 +1,4 @@
 # Sequential Monte Carlo
-[![Build Status](https://travis-ci.org/FRBNY-DSGE/SMC.jl.svg)](https://travis-ci.org/FRBNY-DSGE/SMC.jl)
 
 This package implements the Sequential Monte Carlo (SMC) sampling algorithm,
 an alternative to Metropolis Hastings Markov Chain Monte Carlo sampling for approximating
@@ -13,4 +12,4 @@ More information and the original MATLAB scripts that this code replicates can b
 Frank Schorfheide's [website](https://sites.sas.upenn.edu/schorf/pages/bayesian-estimation-dsge-models).
 
 Comments and suggestions are welcome, and best submitted as
-either an issue or a pull request to this branch. :pray:
+either an issue or a pull request to this branch. :okay_hand:
