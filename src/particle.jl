@@ -33,13 +33,13 @@ end
 
 """
 ```
-function Cloud(m::AbstractModel, n_parts::Int)
+function Cloud(n_params::Int, n_parts::Int)
 ```
 Easier constructor for Cloud, which initializes the weights to be equal, and everything else in the particle object etc. to be empty.
 """
-function Cloud(m::AbstractModel, n_parts::Int)
-    return Cloud(Matrix{Float64}(undef, n_parts, n_parameters(m) + 5),
-                 zeros(1),zeros(1),1,0,0,0.,0.25, 0.)
+function Cloud(n_params::Int, n_parts::Int)
+    return Cloud(Matrix{Float64}(undef, n_parts, n_params + 5),
+                 zeros(1), zeros(1), 1, 0, 0, 0., 0.25, 0.)
 end
 
 """
