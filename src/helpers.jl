@@ -1,4 +1,15 @@
 """
+`prior(parameters::ParameterVector{T}) where {T<:Number}`
+
+Calculates log joint prior density of m.parameters.
+"""
+prior(parameters::ParameterVector{T}) where {T<:Number}
+    free_params = Base.filter(θ -> !θ.fixed, parameters)
+    logpdfs = map(logpdf, free_params)
+    return sum(logpdfs)
+end
+
+"""
 ```
 function solve_adaptive_ϕ(cloud::Cloud, proposed_fixed_schedule::Vector{Float64},
                           i::Int64, j::Int64, ϕ_prop::Float64, ϕ_n1::Float64,
