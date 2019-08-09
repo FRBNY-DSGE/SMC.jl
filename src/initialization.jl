@@ -1,27 +1,28 @@
 """
 ```
-one_draw(m::AbstractModel, data::Matrix{Float64};
-         use_chand_recursion::Bool = true, verbose::Symbol = :low)
+function one_draw(likelihood::Function, parameters::ParameterVector{U},
+                  data::Matrix{Float64}) where {U<:Number}
 ```
 Finds and returns one valid draw from parameter distribution, along with its
 log likelihood and log posterior.
 """
-function one_draw(m::AbstractModel, data::Matrix{Float64};
-                  use_chand_recursion::Bool = true, verbose::Symbol = :low)
+function one_draw(likelihood::Function, parameters::ParameterVector{U},
+                  data::Matrix{Float64}) where {U<:Number}
+
     success    = false
-    draw       = vec(rand(m.parameters, 1))
+    draw       = vec(rand(parameters, 1))
     draw_loglh = draw_logpost = 0.0
 
     while !success
         try
-            update!(m, draw)
-            draw_loglh = likelihood(m, data, catch_errors = true,
-                                    use_chand_recursion = use_chand_recursion,
-                                    verbose = verbose)
-            draw_logpost = prior(m)
-            if (draw_loglh == -Inf) | (draw_loglh === NaN)
+            update!(parameters, draw)
+            draw_loglh   = likelihood(parameters, data)
+            draw_logpost = prior(parameters)
+
+            if (draw_loglh == -Inf) || (draw_loglh === NaN)
                 draw_loglh = draw_logpost = -Inf
             end
+
         catch err
             if isa(err, ParamBoundsError) || isa(err, SingularException) ||
                isa(err, LinearAlgebra.LAPACKException)
@@ -30,40 +31,37 @@ function one_draw(m::AbstractModel, data::Matrix{Float64};
                 throw(err)
             end
         end
+
         if any(isinf.(draw_loglh))
-            draw = vec(rand(m.parameters, 1))
+            draw = vec(rand(parameters, 1))
         else
             success = true
         end
     end
+
     return vector_reshape(draw, draw_loglh, draw_logpost)
 end
 
 """
 ```
-initial_draw!(m::AbstractModel, data::Matrix{Float64}, c::Cloud)
+function initial_draw!(likelihood::Function, parameters::ParameterVector{U},
+                       data::Matrix{Float64}, c::Cloud; parallel::Bool = false)
 ```
-
 Draw from a general starting distribution (set by default to be from the prior) to
 initialize the SMC algorithm. Returns a tuple (logpost, loglh) and modifies the
 particle objects in the particle cloud in place.
 """
-function initial_draw!(m::AbstractModel, data::Matrix{Float64}, c::Cloud;
-                       parallel::Bool = false, use_chand_recursion::Bool = true,
-                       verbose::Symbol = :low)
+function initial_draw!(likelihood::Function, parameters::ParameterVector{U},
+                       data::Matrix{Float64}, c::Cloud; parallel::Bool = false)
     n_parts = length(c)
 
     # ================== Define closure on one_draw function ==================
-    sendto(workers(), m = m)
-    sendto(workers(), data = data)
-    sendto(workers(), verbose = verbose)
-    sendto(workers(), use_chand_recursion = use_chand_recursion)
+    sendto(workers(), likelihood = likelihood)
+    sendto(workers(), parameters = parameters)
+    sendto(workers(), data       = data)
 
-    one_draw_closure() = one_draw(m, data; use_chand_recursion = use_chand_recursion,
-                                  verbose = verbose)
-    @everywhere one_draw_closure() = one_draw(m, data;
-                                              use_chand_recursion = use_chand_recursion,
-                                              verbose = verbose)
+    one_draw_closure() = one_draw(likelihood, parameters, data)
+    @everywhere one_draw_closure() = one_draw(likelihood, parameters, data)
     # =========================================================================
 
     # For each particle, finds valid parameter draw and returns likelihood & posterior
@@ -87,48 +85,49 @@ end
 
 """
 ```
-function draw_likelihood(m, data, draw_vec; verbose::Symbol = :low)
+function draw_likelihood(likelihood::Function, parameters::ParameterVector,
+                         data, draw_vec; verbose::Symbol = :low)
 ```
 Computes likelihood of a particular parameter draw; returns loglh and logpost.
 """
-function draw_likelihood(m::AbstractModel, data::Matrix{Float64},
-                         draw_vec::Vector{Float64}; verbose::Symbol = :low)
-    update!(m, draw_vec)
-    loglh   = likelihood(m, data, verbose = verbose)
-    logpost = prior(m)
+function draw_likelihood(likelihood::Function, parameters::ParameterVector{U},
+                         data::Matrix{Float64}, p_draw::Vector{Float64}) where {U<:Number}
+    update!(parameters, p_draw)
+    loglh   = likelihood(parameters, data)
+    logpost = prior(parameters)
     return scalar_reshape(loglh, logpost)
 end
 
 """
 ```
-function initialize_likelihoods!(m::AbstractModel, data::Matrix{Float64},
-                                 c::Union{Cloud, ParticleCloud};
-                                 parallel::Bool = false, verbose::Symbol = :low)
+function initialize_likelihoods!(likelihood::Function, parameters::ParameterVector{U},
+                                 data::Matrix{Float64}, c::Cloud;
+                                 parallel::Bool = false) where {U<:Number}
 ```
 This function is made for transfering the log-likelihood values saved in the
 Cloud from a previous estimation to each particle's respective old_loglh
 field, and for evaluating/saving the likelihood and posterior at the new data, which
 here is just the argument, data.
 """
-function initialize_likelihoods!(m::AbstractModel, data::Matrix{Float64},
-                                 c::Union{Cloud, ParticleCloud};
-                                 parallel::Bool = false, verbose::Symbol = :low)
+function initialize_likelihoods!(likelihood::Function, parameters::ParameterVector{U},
+                                 data::Matrix{Float64}, c::Cloud;
+                                 parallel::Bool = false) where {U<:Number}
     n_parts = length(c)
-    draws = (typeof(c) <: Cloud) ? get_vals(c; transpose = false) :
-                                   Matrix{Float64}(get_vals(c)')
+    draws   = get_vals(c; transpose = false)
 
     # Retire log-likelihood values from the old estimation to the field old_loglh
     update_old_loglh!(c, get_loglh(c))
 
     # ============== Define closure on draw_likelihood function ===============
-    sendto(workers(), m = m)
+    sendto(workers(), parameters = parameters)
+    sendto(workers(), likelihood = likelihood) # TODO: Check if this is necessary
     sendto(workers(), data = data)
-    sendto(workers(), verbose = verbose)
 
-    draw_likelihood_closure(draw::Vector{Float64}) = draw_likelihood(m, data, draw;
-                                                                 verbose = verbose)
-    @everywhere draw_likelihood_closure(draw::Vector{Float64}) = draw_likelihood(m, data,
-                                                                 draw; verbose = verbose)
+    draw_likelihood_closure(draw::Vector{Float64}) = draw_likelihood(likelihood, parameters,
+                                                                     data, draw)
+    @everywhere draw_likelihood_closure(draw::Vector{Float64}) = draw_likelihood(likelihood,
+                                                                                 parameters,
+                                                                                 data, draw)
     # =========================================================================
 
     # TODO: handle when the likelihood with new data cannot be evaluated (returns -Inf),
@@ -146,15 +145,13 @@ end
 
 """
 ```
-function initialize_cloud_settings!(m::AbstractModel, cloud::Cloud;
-                                    tempered_update::Bool = false,
+function initialize_cloud_settings!(cloud::Cloud; tempered_update::Bool = false,
                                     n_parts::Int = 5_000, n_Φ::Int = 300, c::S = 0.5,
                                     accept::S = 0.25) where {S<:AbstractFloat}
 ```
 Initializes stage index, number of Φ stages, c, resamples, acceptance, and sampling time.
 """
-function initialize_cloud_settings!(m::AbstractModel, cloud::Cloud;
-                                    tempered_update::Bool = false,
+function initialize_cloud_settings!(cloud::Cloud; tempered_update::Bool = false,
                                     n_parts::Int = 5_000, n_Φ::Int = 300, c::S = 0.5,
                                     accept::S = 0.25) where {S<:AbstractFloat}
     if tempered_update
