@@ -14,7 +14,6 @@ module SMC
     import Base.isempty, Base.<, Base.min, Base.max
     import LinearAlgebra: rank
     import StateSpaceRoutines: KalmanFilter, augment_states_with_shocks
-    import DSGE: AbstractModel
     export
         #simulated_annealing, combined_optimizer, lbfgs,
         #filter, filter_shocks, likelihood, posterior, posterior!,
@@ -41,6 +40,8 @@ module SMC
 
     #include("estimate.jl")
     #include("nearest_spd.jl")
+    include("distribution_ext.jl")
+    include("parameters.jl")
     include("particle.jl")
     include("initialization.jl")
     include("helpers.jl")
