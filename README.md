@@ -1,5 +1,4 @@
 # Sequential Monte Carlo
-# Herbst-Schorfheide Sequential Monte Carlo Implementation and Replication
 [![Build Status](https://travis-ci.org/FRBNY-DSGE/SMC.jl.svg)](https://travis-ci.org/FRBNY-DSGE/SMC.jl)
 
 This package implements Sequential Monte Carlo (SMC) sampling algorithm,
@@ -17,8 +16,6 @@ Comments and suggestions are welcome, and best submitted as
 either an issue or a pull request to this branch.
 
 ## Background
-
-For further reading on the inn
 
 The *DSGE.jl* package implements the New York Fed DSGE model and provides
 general code to estimate many user-specified DSGE models. The package is
