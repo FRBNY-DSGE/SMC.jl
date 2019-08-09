@@ -1,14 +1,15 @@
 """
 ```
-smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix; verbose::Symbol, old_data::Matrix) where {U<:Number}
-smc(likelihood::Function, parameters::ParameterVector{U}, data::DataFrame) where {U<:Number}
-smc(likelihood::Function, parameters::ParameterVector{U}) where {U<:Number}
+smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix; verbose::Symbol, old_data::Matrix)
+smc(likelihood::Function, parameters::ParameterVector{U}, data::DataFrame)
+smc(likelihood::Function, parameters::ParameterVector{U})
 ```
 
 ### Arguments:
 
-- `m`: A model object, which stores parameter values, prior dists, bounds, and various
-    other settings that will be referenced
+- `likelihood::Function`: Likelihood function of model being estimated.
+- `parameters::ParameterVector{U}`: Model parameter vector, which stores parameter values,
+    prior dists, and bounds
 - `data`: A matrix or dataframe containing the time series of the observables used in
     the calculation of the posterior/likelihood
 - `old_data`: A matrix containing the time series of observables of previous data
@@ -205,7 +206,7 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
         else
             old_cloud
         end
-        initialize_cloud_settings!(m, cloud; tempered_update = tempered_update,
+        initialize_cloud_settings!(cloud; tempered_update = tempered_update,
                                    n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
         initialize_likelihoods!(m, data, cloud, parallel = parallel, verbose = verbose)
 
