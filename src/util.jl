@@ -106,7 +106,7 @@ function sendto(ps::AbstractVector{Int}; args...)
     end
 end
 
-function get_cloud(m::AbstractModel; filepath::String = rawpath(m, "estimate", "smc_cloud.jld"))
+function get_cloud(filepath::String)
     return load(filepath, "cloud")
 end
 
