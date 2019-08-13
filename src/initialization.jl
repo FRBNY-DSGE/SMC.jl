@@ -22,7 +22,6 @@ function one_draw(likelihood::Function, parameters::ParameterVector{U},
             if (draw_loglh == -Inf) || (draw_loglh === NaN)
                 draw_loglh = draw_logpost = -Inf
             end
-
         catch err
             if isa(err, ParamBoundsError) || isa(err, SingularException) ||
                isa(err, LinearAlgebra.LAPACKException)
@@ -85,14 +84,14 @@ end
 
 """
 ```
-function draw_likelihood(likelihood::Function, parameters::ParameterVector,
-                         data, draw_vec; verbose::Symbol = :low)
+function draw_likelihood(likelihood::Function, parameters::ParameterVector{U},
+                         data::Matrix{Float64}, draw::Vector{Float64}) where {U<:Number}
 ```
 Computes likelihood of a particular parameter draw; returns loglh and logpost.
 """
 function draw_likelihood(likelihood::Function, parameters::ParameterVector{U},
-                         data::Matrix{Float64}, p_draw::Vector{Float64}) where {U<:Number}
-    update!(parameters, p_draw)
+                         data::Matrix{Float64}, draw::Vector{Float64}) where {U<:Number}
+    update!(parameters, draw)
     loglh   = likelihood(parameters, data)
     logpost = prior(parameters)
     return scalar_reshape(loglh, logpost)

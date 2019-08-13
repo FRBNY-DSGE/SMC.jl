@@ -86,7 +86,9 @@ end
 ```
 sendto(p::Int; args...)
 ```
-Function to send data from master process to particular worker, p. Code from ChrisRackauckas, avavailable at: https://github.com/ChrisRackauckas/ParallelDataTransfer.jl/blob/master/src/ParallelDataTransfer.jl.
+Function to send data from master process to particular worker, p.
+Code from ChrisRackauckas, avavailable at:
+ https://github.com/ChrisRackauckas/ParallelDataTransfer.jl/blob/master/src/ParallelDataTransfer.jl.
 """
 function sendto(p::Int; args...)
     for (nm, val) in args
@@ -98,7 +100,9 @@ end
 ```
 sendto(ps::AbstractVector{Int}; args...)
 ```
-Function to send data from master process to list of workers. Code from ChrisRackauckas, available at: https://github.com/ChrisRackauckas/ParallelDataTransfer.jl/blob/master/src/ParallelDataTransfer.jl.
+Function to send data from master process to list of workers.
+Code from ChrisRackauckas, available at:
+https://github.com/ChrisRackauckas/ParallelDataTransfer.jl/blob/master/src/ParallelDataTransfer.jl.
 """
 function sendto(ps::AbstractVector{Int}; args...)
     for p in ps

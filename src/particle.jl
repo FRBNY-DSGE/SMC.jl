@@ -3,21 +3,26 @@
 Cloud
 ```
 
-The `Cloud` type contains all of the relevant information for a given cloud of particles
-in the SMC algorithm. Information for a single iteration is stored at any given time (and thus
-the final output will be the final cloud of particles, of which only the particle values will be saved).
+The `Cloud` type contains all of the relevant information for a given cloud of
+particles in the SMC algorithm. Information for a single iteration is stored at
+any given time (and thus the final output will be the final cloud of particles,
+ of which only the particle values will be saved).
 
 ### Fields
-- `particles::Matrix{Float64}`: The vector of particles (which contain weight, keys, and value information)
+- `particles::Matrix{Float64}`: The vector of particles (which contain weight,
+     keys, and value information)
 - `tempering_schedule::Vector{Float64}`: The vector of ϕ_ns (tempering factors)
-- `ESS::Vector{Float64}`: The vector of effective sample sizes (resample if ESS falls under the threshold)
+- `ESS::Vector{Float64}`: The vector of effective sample sizes (resample if ESS
+    falls under the threshold)
 - `stage_index::Int`: The current iteration index of the algorithm
 - `n_Φ::Int`: The total number of stages of in the fixed tempering schedule
-    (if the algorithm is run with an adaptive ϕ schedule then this is used to calibrate the ϕ_prop)
+    (if the algorithm is run with an adaptive ϕ schedule then this is used to
+    calibrate the ϕ_prop)
 - `resamples::Int`: The number of times the particle population was resampled
 - `c::Float64`: The mutation step size
 - `accept::Float64`: The average acceptance rate of mutation steps
-- `total_sampling_time::Float64`: The total amount of time that the smc algorith took to execute
+- `total_sampling_time::Float64`: Total amount of time that SMC algorithm took
+     to execute
 """
 mutable struct Cloud
     particles::Matrix{Float64}
@@ -35,7 +40,8 @@ end
 ```
 function Cloud(n_params::Int, n_parts::Int)
 ```
-Easier constructor for Cloud, which initializes the weights to be equal, and everything else in the particle object etc. to be empty.
+Easier constructor for Cloud, which initializes the weights to be
+equal, and everything else in the particle object etc. to be empty.
 """
 function Cloud(n_params::Int, n_parts::Int)
     return Cloud(Matrix{Float64}(undef, n_parts, n_params + 5),
@@ -108,7 +114,7 @@ function cloud_isempty(c::Matrix{Float64})
     return isempty(c)
 end
 function cloud_isempty(c::Cloud)
-    println("TODO: 'ISEMPTY' IS INCOMPATIBLE WITH INITIALIZATION")
+    # TODO: 'ISEMPTY' IS INCOMPATIBLE WITH INITIALIZATION
     return isempty(c.particles)
 end
 
@@ -330,12 +336,14 @@ end
 """
 ```
 function update_mutation!(p::Vector{Float64}, para::Vector{Float64},
-                          like::Float64, post::Float64, old_like::Float64, accept::Float64)
+                          like::Float64, post::Float64, old_like::Float64,
+                          accept::Float64)
 ```
-Update a particle's parameter vector, log-likelihood, log-posteriod, old log-likelihood, and acceptance rate at the end of mutation.
+Update a particle's parameter vector, log-likelihood, log-posteriod,
+old log-likelihood, and acceptance rate at the end of mutation.
 """
 function update_mutation!(p::Vector{Float64}, para::Vector{Float64}, like::Float64,
-                                  post::Float64, old_like::Float64, accept::Float64)
+                          post::Float64, old_like::Float64, accept::Float64)
     N = length(p)
     p[1:ind_para_end(N)] = para
     p[ind_loglh(N)]      = like
