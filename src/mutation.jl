@@ -35,8 +35,8 @@ Execute one proposed move of the Metropolis-Hastings algorithm for a given param
     log-likelihood, prior, and acceptance indicator.
 
 """
-function mutation(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{S},
-                  p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
+function mutation(likelihood::Function, parameters::ParameterVector{U},
+                  data::Matrix{S}, p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                   blocks_free::Vector{Vector{Int}}, blocks_all::Vector{Vector{Int}},
                   ϕ_n::S, ϕ_n1::S; c::S = 1., α::S = 1., n_mh_steps::Int = 1,
                   old_data::T = T(undef, size(data, 1), 0),
