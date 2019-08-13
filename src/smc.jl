@@ -91,6 +91,7 @@ SMC is broken up into three main steps:
 """
 function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{S};
              verbose::Symbol = :low,
+             testing::Bool   = false,
 
              parallel::Bool  = false,
              n_parts::Int    = 5_000,
@@ -108,7 +109,7 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
              α::S = 1.0,       # mixture_proportion
              target::S = 0.25, # target_accept
 
-             use_chand_recursion::Bool = true,
+             #use_chand_recursion::Bool = true,
              use_fixed_schedule::Bool  = true,
              tempering_target::S = 0.97,
 
@@ -120,6 +121,7 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
              recompute_transition_equation::Bool = true,
              run_test::Bool = false,
              filestring_addl::Vector{String} = Vector{String}(),
+             loadpath::String = "",
              continue_intermediate::Bool = false,
              intermediate_stage_start::Int = 0,
              save_intermediate::Bool = false,
@@ -131,94 +133,86 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
 
     # Construct closure of mutation function so as to avoid issues with serialization
     # across workers with different Julia system images
-    sendto(workers(), m = m)
+    sendto(workers(), parameters = parameters)
     sendto(workers(), data = data)
 
-    likelihood(p::ParameterVector{U})::Float64 = likelihood(p, data)
-    @everywhere likelihood(p::ParameterVector{U})::Float64 = likelihood(p, data)
-
+    #likelihood(p::ParameterVector{U})::Float64 = likelihood(p, data)
+    #@everywhere likelihood(p::ParameterVector{U})::Float64 = likelihood(p, data)
     function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                               blocks_free::Vector{Vector{Int64}},
                               blocks_all::Vector{Vector{Int64}},
                               ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
-                              old_data::T = Matrix{S}(undef, size(data, 1), 0),
-                              use_chand_recursion::Bool = false,
-                              verbose::Symbol = :low) where {S<:AbstractFloat, T<:AbstractMatrix}
-        return mutation(m, data, p, d_μ, d_Σ, blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
-                        n_mh_steps = n_mh_steps, old_data = old_data,
-                        use_chand_recursion = use_chand_recursion, verbose = verbose)
+                              old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:AbstractFloat, T<:AbstractMatrix}
+        return mutation(likelihood, parameters, data, p, d_μ, d_Σ, blocks_free, blocks_all, ϕ_n,
+                        ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data)
     end
     @everywhere function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                                           blocks_free::Vector{Vector{Int64}},
                                           blocks_all::Vector{Vector{Int64}}, ϕ_n::S,
                                           ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
-                                          old_data::T = Matrix{S}(undef, size(data, 1), 0),
-                                          use_chand_recursion::Bool = false,
-                                          verbose::Symbol = :low) where {S<:Float64, T<:Matrix}
-        return mutation(m, data, p, d_μ, d_Σ, blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
-                        n_mh_steps = n_mh_steps, old_data = old_data,
-                        use_chand_recursion = use_chand_recursion, verbose = verbose)
+                                          old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64, T<:Matrix}
+        return mutation(likelihood, parameters, data, p, d_μ, d_Σ, blocks_free, blocks_all, ϕ_n,
+                        ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data)
     end
-    function likelihood(
-
-    # General
-    n_params = n_parameters(m)
-    if any(isnan.(data)) & use_chand_recursion
-        error("Cannot use Chandrasekhar recursions with missing data")
-    end
-
-    # Time tempering
-    tempered_update = !isempty(old_data)
 
     # Check that if there's a tempered update, old and current vintages are different
-    if tempered_update
-        @assert old_vintage != data_vintage(m)
-    end
+    tempered_update = !isempty(old_data) # Time tempering
+    @assert !(tempered_update & (old_vintage == data_vintage(m))) "Old, current vintages not different!"
+    #@assert !(use_chand_recursion & any(isnan.(data))) "Cannot use Chandrasekhar recursions with missing data."
+    # if tempered_update
+    #    @assert old_vintage != data_vintage(m) "Old and current vintages ought be different"
+    #end
+    #if use_chand_recursion & any(isnan.(data))
+    #    error("Cannot use Chandrasekhar recursions with missing data")
+    #end
 
-    i = 1                         # Index tracking the stage of the algorithm
-    j = 2                         # Index tracking the fixed_schedule entry ϕ_prop
-    ϕ_n = ϕ_prop = 0.             # Instantiate ϕ_n and ϕ_prop variables
+    # General
+    i   = 1             # Index tracking the stage of the algorithm
+    j   = 2             # Index tracking the fixed_schedule entry ϕ_prop
+    ϕ_n = ϕ_prop = 0.   # Instantiate ϕ_n and ϕ_prop variables
+
     resampled_last_period = false # Ensures proper resetting of ESS_bar after resample
     use_fixed_schedule = tempering_target == 0.0
-    threshold = threshold_ratio * n_parts
+    threshold          = threshold_ratio * n_parts
 
-    para_symbols    = [θ.key for θ in m.parameters]
-    fixed_para_inds = findall([θ.fixed for θ in m.parameters])
-    free_para_inds  = findall([!θ.fixed for θ in m.parameters])
+    fixed_para_inds = findall([ θ.fixed for θ in parameters])
+    free_para_inds  = findall([!θ.fixed for θ in parameters])
+    para_symbols    = [θ.key for θ in parameters]
+
+    n_para          = length(parameters)
     n_free_para     = length(free_para_inds)
 
     # Initialization of Particle Array Cloud
-    cloud = Cloud(m, n_parts)
+    cloud = Cloud(n_para, n_parts)
 
     #################################################################################
     ### Initialize Algorithm: Draws from prior
     #################################################################################
 
     if VERBOSITY[verbose] >= VERBOSITY[:low]
-        println("\n\n SMC " * (m.testing ? "testing " : "") * "starts ....\n\n")
+        println("\n\n SMC " * (testing ? "testing " : "") * "starts ....\n\n")
     end
 
     if tempered_update
         cloud = if isempty(old_cloud)
-            loadpath = rawpath(m, "estimate", "smc_cloud.jld2", filestring_addl)
-            loadpath = replace(loadpath, r"vint=[0-9]{6}", "vint=" * old_vintage)
+            #loadpath = rawpath(m, "estimate", "smc_cloud.jld2", filestring_addl)
+            #loadpath = replace(loadpath, r"vint=[0-9]{6}", "vint=" * old_vintage)
             load(loadpath, "cloud")
         else
             old_cloud
         end
         initialize_cloud_settings!(cloud; tempered_update = tempered_update,
                                    n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
-        initialize_likelihoods!(m, data, cloud, parallel = parallel, verbose = verbose)
+        initialize_likelihoods!(likelihood, parameters, data, cloud; parallel = parallel)
 
     elseif continue_intermediate
-        loadpath = rawpath(m, "estimate", "smc_cloud_stage=$(intermediate_stage_start).jld2",
-                           filestring_addl)
+        #loadpath = rawpath(m, "estimate", "smc_cloud_stage=$(intermediate_stage_start).jld2",
+        #                   filestring_addl)
         cloud    = load(loadpath, "cloud")
     else
         # Instantiating Cloud object, update draws, loglh, & logpost
-        initial_draw!(m, data, cloud, parallel = parallel,
-                      use_chand_recursion = use_chand_recursion, verbose = verbose)
-        initialize_cloud_settings!(m, cloud; tempered_update = tempered_update)
+        initial_draw!(likelihood, parameters, data, cloud; parallel = parallel)
+        initialize_cloud_settings!(cloud; tempered_update = tempered_update)
     end
 
     # Fixed schedule for construction of ϕ_prop
@@ -240,7 +234,7 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
     else
         z_matrix = ones(1)
         w_matrix = zeros(n_parts, 1)
-        W_matrix = tempered_update ? get_weights(cloud) : fill(1/n_parts, (n_parts, 1))
+        W_matrix = tempered_update ? get_weights(cloud) : fill(1/n_parts,(n_parts, 1))
     end
 
     if VERBOSITY[verbose] >= VERBOSITY[:low]
@@ -306,7 +300,7 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
         if (cloud.ESS[i] < threshold)
             # Resample according to particle weights, uniformly reset weights to 1/n_parts
             new_inds = resample(normalized_weights; method = resampling_method)
-            cloud.particles = [deepcopy(cloud.particles[i,j]) for i in new_inds,
+            cloud.particles = [deepcopy(cloud.particles[k,j]) for k in new_inds,
                                j=1:size(cloud.particles, 2)]
             reset_weights!(cloud)
             cloud.resamples += 1
@@ -341,16 +335,13 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
             @distributed (hcat) for k in 1:n_parts
                 mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr, blocks_free,
                                  blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
-                                 n_mh_steps = n_mh_steps, old_data = old_data,
-                                 use_chand_recursion = use_chand_recursion,
-                                 verbose = verbose)
+                                 n_mh_steps = n_mh_steps, old_data = old_data)
             end
         else
             hcat([mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr,
                                    blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c,
-                                   α = α, n_mh_steps = n_mh_steps, old_data = old_data,
-                                   use_chand_recursion = use_chand_recursion,
-                                   verbose = verbose) for k=1:n_parts]...)
+                                   α = α, n_mh_steps = n_mh_steps,
+                                   old_data = old_data) for k=1:n_parts]...)
         end
         update_cloud!(cloud, new_particles)
         update_acceptance_rate!(cloud)
@@ -383,11 +374,11 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
     ##################################################################################
     ### Saving data
     ##################################################################################
-    if !m.testing
+    if !testing
         simfile = h5open(rawpath(m, "estimate", "smcsave.h5", filestring_addl), "w")
         particle_store = d_create(simfile, "smcparams", datatype(Float64),
-                                  dataspace(n_parts, n_params))
-        for i in 1:n_parts; particle_store[i,:] = cloud.particles[i, 1:n_params] end
+                                  dataspace(n_parts, n_para))
+        for k in 1:n_parts; particle_store[k,:] = cloud.particles[k, 1:n_para] end
         close(simfile)
 
         jldopen(rawpath(m, "estimate", "smc_cloud.jld2", filestring_addl),
@@ -400,16 +391,19 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
     end
 end
 
-function smc(likelihood::Function, parameters::ParameterVector{U}, data::DataFrame; verbose::Symbol = :low,
+function smc(likelihood::Function, parameters::ParameterVector{U}, data::DataFrame;
+             verbose::Symbol = :low,
              save_intermediate::Bool = false, intermediate_stage_increment::Int = 10,
              filestring_addl::Vector{String} = Vector{String}(undef, 0)) where {U<:Number}
     # TODO: will break
     data_mat = df_to_matrix(m, data)
-    return smc(m, data_mat, verbose = verbose, save_intermediate = save_intermediate,
+    return smc(likelihood, parameters, data_mat, verbose = verbose,
+               save_intermediate = save_intermediate,
                filestring_addl = filestring_addl)
 end
 
 # TODO: keep in DSGE.jl
+#=
 function smc(m::AbstractModel; verbose::Symbol = :low,
              save_intermediate::Bool = false, intermediate_stage_increment::Int = 10,
              filestring_addl::Vector{String} = Vector{String}(undef, 0))
@@ -419,3 +413,4 @@ function smc(m::AbstractModel; verbose::Symbol = :low,
     return smc(m, data_mat, verbose=verbose, save_intermediate = save_intermediate,
                filestring_addl = filestring_addl)
 end
+=#
