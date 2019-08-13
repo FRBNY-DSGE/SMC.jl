@@ -51,7 +51,7 @@ initialize the SMC algorithm. Returns a tuple (logpost, loglh) and modifies the
 particle objects in the particle cloud in place.
 """
 function initial_draw!(likelihood::Function, parameters::ParameterVector{U},
-                       data::Matrix{Float64}, c::Cloud; parallel::Bool = false)
+                       data::Matrix{Float64}, c::Cloud; parallel::Bool = false) where {U<:Number}
     n_parts = length(c)
 
     # ================== Define closure on one_draw function ==================
