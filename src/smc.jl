@@ -139,18 +139,16 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
     #likelihood(p::ParameterVector{U})::Float64 = likelihood(p, data)
     #@everywhere likelihood(p::ParameterVector{U})::Float64 = likelihood(p, data)
     function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
-                              blocks_free::Vector{Vector{Int64}},
-                              blocks_all::Vector{Vector{Int64}},
-                              ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
-                              old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:AbstractFloat, T<:AbstractMatrix}
+                 blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
+                 ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
+                 old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64, T<:Matrix}
         return mutation(likelihood, parameters, data, p, d_μ, d_Σ, blocks_free, blocks_all, ϕ_n,
                         ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data)
     end
     @everywhere function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
-                                          blocks_free::Vector{Vector{Int64}},
-                                          blocks_all::Vector{Vector{Int64}}, ϕ_n::S,
-                                          ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
-                                          old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64, T<:Matrix}
+                 blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
+                 ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
+                 old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64, T<:Matrix}
         return mutation(likelihood, parameters, data, p, d_μ, d_Σ, blocks_free, blocks_all, ϕ_n,
                         ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data)
     end
@@ -252,7 +250,7 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
         cloud.stage_index = i += 1
 
         #############################################################################
-        ### Step 0: Setting ϕ_n (either adaptively or by the fixed schedule)
+        ### Setting ϕ_n (either adaptively or by the fixed schedule)
         #############################################################################
         ϕ_n1 = cloud.tempering_schedule[i-1]
 
@@ -375,14 +373,15 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
     ### Saving data
     ##################################################################################
     if !testing
-        simfile = h5open(rawpath(m, "estimate", "smcsave.h5", filestring_addl), "w")
+        #simfile = h5open(rawpath(m, "estimate", "smcsave.h5", filestring_addl), "w")
+        simfile = h5open(particle_store_path, "w")
         particle_store = d_create(simfile, "smcparams", datatype(Float64),
                                   dataspace(n_parts, n_para))
         for k in 1:n_parts; particle_store[k,:] = cloud.particles[k, 1:n_para] end
         close(simfile)
 
-        jldopen(rawpath(m, "estimate", "smc_cloud.jld2", filestring_addl),
-                true, true, true, IOStream) do file
+        #jldopen(rawpath(m, "estimate", "smc_cloud.jld2", filestring_addl),
+        jldopen(save_path * "smc_cloud.jld2", true, true, true, IOStream) do file
             write(file, "cloud", cloud)
             write(file, "w", w_matrix)
             write(file, "W", W_matrix)
@@ -391,6 +390,7 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
     end
 end
 
+#=
 function smc(likelihood::Function, parameters::ParameterVector{U}, data::DataFrame;
              verbose::Symbol = :low,
              save_intermediate::Bool = false, intermediate_stage_increment::Int = 10,
@@ -401,6 +401,7 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::DataFra
                save_intermediate = save_intermediate,
                filestring_addl = filestring_addl)
 end
+=#
 
 # TODO: keep in DSGE.jl
 #=
