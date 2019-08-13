@@ -7,7 +7,8 @@ smc(likelihood::Function, parameters::ParameterVector{U})
 
 ### Arguments:
 
-- `likelihood::Function`: Likelihood function of model being estimated.
+- `likelihood::Function`: Likelihood function of model being estimated. Takes `parameters`
+    and `data` as arguments.
 - `parameters::ParameterVector{U}`: Model parameter vector, which stores parameter values,
     prior dists, and bounds
 - `data`: A matrix or dataframe containing the time series of the observables used in
