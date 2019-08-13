@@ -11,9 +11,9 @@ module SMC
     using Roots: fzero, ConvergenceFailed
     using StatsBase: sample, Weights
     import Calculus
+    import ModelConstructors
     import Base.isempty, Base.<, Base.min, Base.max
     import LinearAlgebra: rank
-    import StateSpaceRoutines: KalmanFilter, augment_states_with_shocks
     export
         compute_parameter_covariance, prior, get_estimation_output_files,
         compute_moments, find_density_bands, mutation, resample, smc,
