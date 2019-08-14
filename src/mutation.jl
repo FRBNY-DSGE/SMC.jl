@@ -54,7 +54,7 @@ function mutation(likelihood::Function, parameters::ParameterVector{U},
 
     d = MvNormal(d_μ, d_Σ)
 
-    for step in 1:n_steps
+    for step in 1:n_mh_steps
         for (block_f, block_a) in zip(blocks_free, blocks_all)
             # Index out parameters corresponding to given random block, create distribution
             # centered at weighted mean, with Σ corresponding to the same random block
@@ -90,7 +90,7 @@ function mutation(likelihood::Function, parameters::ParameterVector{U},
             prior_new = like_new = like_old_data = -Inf
 
             try
-                update!(m, para_new)
+                update!(parameters, para_new)
                 para_new  = [θ.value for θ in parameters]
                 prior_new = prior(parameters)
                 like_new  = likelihood(parameters, data)
