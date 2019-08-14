@@ -10,6 +10,7 @@ module SMC
     using Roots: fzero, ConvergenceFailed
     using StatsBase: sample, Weights
 
+    import Base: <, isempty, min, max
     import Calculus
     import ModelConstructors
     import ModelConstructors: update!

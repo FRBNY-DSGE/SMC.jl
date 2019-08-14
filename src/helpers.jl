@@ -56,6 +56,8 @@ function solve_adaptive_ϕ(cloud::Cloud, proposed_fixed_schedule::Vector{Float64
     # Thus the adaptive ϕ_schedule is strictly bounded above by the fixed schedule
     # i.e. the adaptive ϕ schedule should not outpace the fixed schedule at the end
     # (when the fixed schedule tends to drop by less than 5% per iteration)
+    @show ϕ_n1, ϕ_prop, optimal_ϕ_function(ϕ_n1), optimal_ϕ_function(ϕ_prop)
+
     if ϕ_prop != 1. || optimal_ϕ_function(ϕ_prop) < 0
         ϕ_n = fzero(optimal_ϕ_function, [ϕ_n1, ϕ_prop], xtol = 0.)
         push!(cloud.tempering_schedule, ϕ_n)
