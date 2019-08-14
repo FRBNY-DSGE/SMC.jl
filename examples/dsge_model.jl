@@ -12,4 +12,4 @@ function my_likelihood(parameters::ParameterVector, data::Matrix{Float64})
     likelihood(m, data; sampler = false, catch_errors = true)
 end
 
-smc(my_likelihood, m.parameters, data)
+smc(my_likelihood, m.parameters, data; data_vintage = data_vintage(m))

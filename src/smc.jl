@@ -93,6 +93,7 @@ SMC is broken up into three main steps:
 function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{S};
              verbose::Symbol = :low,
              testing::Bool   = false,
+             data_vintage::String = "", # TODO: REPLACE THIS with a "today" grabber
 
              parallel::Bool  = false,
              n_parts::Int    = 5_000,
@@ -115,7 +116,7 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
              tempering_target::S = 0.97,
 
              old_data::Matrix{S} = Matrix{S}(undef, size(data, 1), 0),
-             old_cloud::Cloud = Cloud(m, 0),
+             old_cloud::Cloud = Cloud(0, 0),
              old_vintage::String = "",
              smc_iteration::Int = 1,
 
@@ -139,6 +140,7 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
 
     #likelihood(p::ParameterVector{U})::Float64 = likelihood(p, data)
     #@everywhere likelihood(p::ParameterVector{U})::Float64 = likelihood(p, data)
+
     function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                  blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
                  ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
@@ -156,14 +158,8 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
 
     # Check that if there's a tempered update, old and current vintages are different
     tempered_update = !isempty(old_data) # Time tempering
-    @assert !(tempered_update & (old_vintage == data_vintage(m))) "Old, current vintages not different!"
-    #@assert !(use_chand_recursion & any(isnan.(data))) "Cannot use Chandrasekhar recursions with missing data."
-    # if tempered_update
-    #    @assert old_vintage != data_vintage(m) "Old and current vintages ought be different"
-    #end
-    #if use_chand_recursion & any(isnan.(data))
-    #    error("Cannot use Chandrasekhar recursions with missing data")
-    #end
+
+    @assert !(tempered_update & (old_vintage==data_vintage)) "Old, current vintages not different!"
 
     # General
     i   = 1             # Index tracking the stage of the algorithm
