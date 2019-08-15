@@ -1,11 +1,12 @@
 isdefined(Base, :__precompile__) && __precompile__()
 
 module SMC
-    using CSV, DataFrames, DataStructures, OrderedCollections
-    using Distributed, Distributions, Dates, Test, BenchmarkTools
-    using FileIO, FredData, HDF5, JLD2, LinearAlgebra, Missings
-    using Nullables, Printf, Random, RecipesBase, SparseArrays
-    using SpecialFunctions, ModelConstructors
+    using DataFrames
+    using Distributed
+    using Distributions, Test, BenchmarkTools
+    using FileIO, HDF5, JLD2, LinearAlgebra
+    using Random
+    using ModelConstructors
 
     using Roots: fzero, ConvergenceFailed
     using StatsBase: sample, Weights
