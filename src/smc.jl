@@ -112,7 +112,7 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
              target::S = 0.25, # target_accept
 
              use_fixed_schedule::Bool = true,
-             tempering_target::S = 9.7,
+             tempering_target::S = 0.97,
 
              old_data::Matrix{S} = Matrix{S}(undef, size(data, 1), 0),
              old_cloud::Cloud = Cloud(0, 0),
