@@ -139,16 +139,6 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
     sendto(workers(), parameters = parameters)
     sendto(workers(), data = data)
 
-    #likelihood(p::ParameterVector{U})::Float64 = likelihood(p, data)
-    #@everywhere likelihood(p::ParameterVector{U})::Float64 = likelihood(p, data)
-
-    function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
-                 blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
-                 ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
-                 old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64, T<:Matrix}
-        return mutation(likelihood, parameters, data, p, d_μ, d_Σ, blocks_free, blocks_all, ϕ_n,
-                        ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data)
-    end
     @everywhere function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                  blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
                  ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
@@ -190,8 +180,6 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
 
     if tempered_update
         cloud = if isempty(old_cloud)
-            #loadpath = rawpath(m, "estimate", "smc_cloud.jld2", filestring_addl)
-            #loadpath = replace(loadpath, r"vint=[0-9]{6}", "vint=" * old_vintage)
             load(loadpath, "cloud")
         else
             old_cloud
@@ -201,8 +189,6 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
         initialize_likelihoods!(likelihood, parameters, data, cloud; parallel = parallel)
 
     elseif continue_intermediate
-        #loadpath = rawpath(m, "estimate", "smc_cloud_stage=$(intermediate_stage_start).jld2",
-        #                   filestring_addl)
         cloud = load(loadpath, "cloud")
     else
         # Instantiating Cloud object, update draws, loglh, & logpost
@@ -358,7 +344,6 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
         if mod(cloud.stage_index, intermediate_stage_increment) == 0 && save_intermediate
             jldopen(savepath * "smc_cloud_stage=$(cloud.stage_index).jld2",
                     true, true, true, IOStream) do file
-                #rawpath(m, "estimate", "smc_cloud_stage=$(cloud.stage_index).jld2"),
                 write(file, "cloud", cloud)
                 write(file, "w", w_matrix)
                 write(file, "W", W_matrix)
@@ -372,14 +357,11 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
     ### Saving data
     ##################################################################################
     if !testing
-        #simfile = h5open(rawpath(m, "estimate", "smcsave.h5", filestring_addl), "w")
         simfile = h5open(particle_store_path, "w")
         particle_store = d_create(simfile, "smcparams", datatype(Float64),
                                   dataspace(n_parts, n_para))
         for k in 1:n_parts; particle_store[k,:] = cloud.particles[k, 1:n_para] end
         close(simfile)
-
-        #jldopen(rawpath(m, "estimate", "smc_cloud.jld2", filestring_addl),
         jldopen(savepath * "smc_cloud.jld2", true, true, true, IOStream) do file
             write(file, "cloud", cloud)
             write(file, "w", w_matrix)
