@@ -1,5 +1,6 @@
 ## Add number of workers of one's choosing:
-#addprocs_frbny(20)
+using DSGE, DSGEModels, ModelConstructors, SMC
+#addprocs_frbny(40)
 @everywhere using DSGE, DSGEModels, ModelConstructors, SMC, HDF5
 @everywhere import ModelConstructors: ParameterVector
 @everywhere import SMC: smc
