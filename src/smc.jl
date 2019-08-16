@@ -200,7 +200,8 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
     else
         # Instantiating Cloud object, update draws, loglh, & logpost
         initial_draw!(likelihood, parameters, data, cloud; parallel = parallel)
-        initialize_cloud_settings!(cloud; tempered_update = tempered_update)
+        initialize_cloud_settings!(cloud; tempered_update = tempered_update,
+                                   n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
     end
 
     # Fixed schedule for construction of ϕ_prop
