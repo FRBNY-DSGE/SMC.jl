@@ -139,6 +139,13 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
     sendto(workers(), parameters = parameters)
     sendto(workers(), data = data)
 
+    function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
+                 blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
+                 ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
+                 old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64, T<:Matrix}
+        return mutation(likelihood, parameters, data, p, d_μ, d_Σ, blocks_free, blocks_all, ϕ_n,
+                        ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data)
+    end
     @everywhere function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                  blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
                  ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
