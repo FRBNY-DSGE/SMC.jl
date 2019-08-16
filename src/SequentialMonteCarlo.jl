@@ -1,6 +1,6 @@
 isdefined(Base, :__precompile__) && __precompile__()
 
-module SMC
+module SequentialMonteCarlo
     using DataFrames
     using Distributed
     using Distributions, Test, BenchmarkTools
