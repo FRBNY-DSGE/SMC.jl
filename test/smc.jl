@@ -26,8 +26,8 @@ m <= Setting(:smc_iteration, 0)
 m <= Setting(:use_chand_recursion, true)
 
 @everywhere Random.seed!(42)
-DSGE.smc2(m, data, verbose = :none) # us.txt gives equiv to periods 95:174 in our current dataset
-
+#DSGE.smc2(m, data, verbose = :none) # us.txt gives equiv to periods 95:174 in our current dataset
+println("Estimation done!")
 test_file = load(rawpath(m, "estimate", "smc_cloud.jld2"))
 test_cloud  = test_file["cloud"]
 test_w      = test_file["w"]
@@ -44,7 +44,9 @@ if writing_output
 end
 
 saved_file = load("reference/smc_cloud_fix=true.jld2")
-saved_cloud  = saved_file["cloud"]
+
+# TODO: convert one cloud (DSGE) to (SMC) cloud
+saved_cloud  = DSGE.Cloud(saved_file["cloud"])
 saved_w      = saved_file["w"]
 saved_W      = saved_file["W"]
 
@@ -52,8 +54,8 @@ saved_W      = saved_file["W"]
 ####################################################################
 cloud_fields = fieldnames(typeof(test_cloud))
 @testset "ParticleCloud Fields: AnSchorf" begin
-    @test @test_matrix_approx_eq DSGE.get_vals(test_cloud) DSGE.get_vals(saved_cloud)
-    @test @test_matrix_approx_eq DSGE.get_loglh(test_cloud) DSGE.get_loglh(saved_cloud)
+    @test @test_matrix_approx_eq SMC.get_vals(test_cloud) SMC.get_vals(saved_cloud)
+    @test @test_matrix_approx_eq SMC.get_loglh(test_cloud) SMC.get_loglh(saved_cloud)
     @test length(test_cloud.particles) == length(saved_cloud.particles)
     @test test_cloud.tempering_schedule == saved_cloud.tempering_schedule
     @test test_cloud.ESS ≈ saved_cloud.ESS # NOTE: used to be ==
