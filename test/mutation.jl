@@ -12,7 +12,7 @@ m = AnSchorfheide()
 save = normpath(joinpath(dirname(@__FILE__),"save"))
 m <= Setting(:saveroot, saveroot)
 
-data = h5read("../../reference/smc.h5", "data")
+data = h5read("reference/smc.h5", "data")
 
 m <= Setting(:n_particles, 400)
 m <= Setting(:n_Φ, 100)
@@ -31,7 +31,7 @@ m <= Setting(:use_fixed_schedule, true)
 
 n_parts = get_setting(m, :n_particles)
 
-file = JLD2.jldopen("../../reference/mutation_inputs.jld2", "r")
+file = JLD2.jldopen("reference/mutation_inputs.jld2", "r")
 old_particles = read(file, "particles")
 d = read(file, "d")
 blocks_free = read(file, "blocks_free")
@@ -53,12 +53,12 @@ if write_test_output
     #=JLD.jldopen("reference/mutation_outputs.jld", "w") do file
     write(file, "particles", new_particles)
     end =#
-    JLD2.jldopen("../../reference/mutation_outputs.jld2", "w") do file
+    JLD2.jldopen("reference/mutation_outputs.jld2", "w") do file
         write(file, "particles", new_particles)
     end
 end
 
-saved_particles = load("../../reference/mutation_outputs.jld2", "particles")
+saved_particles = load("reference/mutation_outputs.jld2", "particles")
 
 @testset "Test mutation outputs, particle by particle" begin
     for i = 1:length(saved_particles)

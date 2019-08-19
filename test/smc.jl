@@ -1,11 +1,10 @@
 using HDF5, DSGEModels, FileIO, JLD2, Test, Random, DSGE, DelimitedFiles
 path = dirname(@__FILE__)
-
 writing_output = false
 
 m = AnSchorfheide()
 
-save = normpath(joinpath(dirname(@__FILE__), "save"))
+save = normpath(joinpath(dirname(@__FILE__),"save"))
 m <= Setting(:saveroot, save)
 
 data = h5read("reference/smc.h5", "data")
@@ -27,7 +26,7 @@ m <= Setting(:smc_iteration, 0)
 m <= Setting(:use_chand_recursion, true)
 
 @everywhere Random.seed!(42)
-smc(m, data, verbose = :none) # us.txt gives equiv to periods 95:174 in our current dataset
+DSGE.smc2(m, data, verbose = :none) # us.txt gives equiv to periods 95:174 in our current dataset
 
 test_file = load(rawpath(m, "estimate", "smc_cloud.jld2"))
 test_cloud  = test_file["cloud"]
@@ -57,7 +56,7 @@ cloud_fields = fieldnames(typeof(test_cloud))
     @test @test_matrix_approx_eq DSGE.get_loglh(test_cloud) DSGE.get_loglh(saved_cloud)
     @test length(test_cloud.particles) == length(saved_cloud.particles)
     @test test_cloud.tempering_schedule == saved_cloud.tempering_schedule
-    @test test_cloud.ESS == saved_cloud.ESS
+    @test test_cloud.ESS ≈ saved_cloud.ESS # NOTE: used to be ==
     @test test_cloud.stage_index == saved_cloud.stage_index
     @test test_cloud.n_Φ == saved_cloud.n_Φ
     @test test_cloud.resamples == saved_cloud.resamples
@@ -69,11 +68,11 @@ test_particle = test_cloud.particles[1]
 saved_particle = saved_cloud.particles[1]
 particle_fields = fieldnames(typeof(test_particle))
 @testset "Individual Particle Fields Post-SMC: AnSchorf" begin
-    @test test_particle.weight == saved_particle.weight
+    @test test_particle.weight ≈ saved_particle.weight
     @test test_particle.keys == saved_particle.keys
-    @test test_particle.value == saved_particle.value
-    @test test_particle.loglh == saved_particle.loglh
-    @test test_particle.logpost == saved_particle.logpost
+    @test test_particle.value ≈ saved_particle.value
+    @test test_particle.loglh ≈ saved_particle.loglh
+    @test test_particle.logpost ≈ saved_particle.logpost
     @test test_particle.old_loglh == saved_particle.old_loglh
     @test test_particle.accept == saved_particle.accept
 end
