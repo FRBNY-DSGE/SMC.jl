@@ -25,8 +25,9 @@ julia = "0.7, 1.0"
 [extras]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 DSGE = "6cf23378-2c47-544c-b0c3-6efefe57ca11"
+DSGEModels = "261d681e-0238-556e-9dd9-3e17029db7da"
 InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["CSV", "DSGE", "Test", "InteractiveUtils"]
+test = ["CSV", "DSGE", "DSGEModels", "Test", "InteractiveUtils"]
