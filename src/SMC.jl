@@ -25,7 +25,8 @@ module SMC
         # util
         @test_matrix_approx_eq, @test_matrix_approx_eq_eps
 
-    const VERBOSITY = Dict(:none => 0, :low => 1, :high => 2)
+    const VERBOSITY   = Dict(:none => 0, :low => 1, :high => 2)
+    const DATE_FORMAT = "yymmdd"
 
     include("particle.jl")
     include("initialization.jl")
