@@ -1,5 +1,5 @@
-using Test, Distributed, Dates, DataFrames, OrderedCollections, FileIO, DataStructures, LinearAlgebra, StatsBase, Random
-@everywhere using DSGE, JLD2, Printf, LinearAlgebra
+using ModelConstructors, SMC, DSGE, Test, Distributed, Dates, DataFrames, OrderedCollections, FileIO, DataStructures, LinearAlgebra, StatsBase, Random
+@everywhere using SMC, DSGE, ModelConstructors, JLD2, Printf, LinearAlgebra
 
 my_tests = [
             "smc",
