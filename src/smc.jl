@@ -178,10 +178,7 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
     #################################################################################
     ### Initialize Algorithm: Draws from prior
     #################################################################################
-
-    if VERBOSITY[verbose] >= VERBOSITY[:low]
-        println("\n\n SMC " * (testing ? "testing " : "") * "starts ....\n\n")
-    end
+    println(verbose, :low, "\n\n SMC " * (testing ? "testing " : "") * "starts ....\n\n")
 
     if tempered_update
         cloud = if isempty(old_cloud)
@@ -224,11 +221,10 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
         W_matrix = tempered_update ? get_weights(cloud) : fill(1/n_parts,(n_parts, 1))
     end
 
-    if VERBOSITY[verbose] >= VERBOSITY[:low]
-        init_stage_print(cloud, para_symbols; verbose = verbose,
-                         use_fixed_schedule = use_fixed_schedule)
-        println("\n\n SMC recursion starts... \n\n")
-    end
+    # Printing
+    init_stage_print(cloud, para_symbols; verbose = verbose,
+                     use_fixed_schedule = use_fixed_schedule)
+    println(verbose, :low, "\n\n SMC recursion starts... \n\n")
 
     #################################################################################
     ### Recursion
@@ -338,10 +334,8 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
         ##############################################################################
         cloud.total_sampling_time += Float64((time_ns() - start_time) * 1e-9)
 
-        if VERBOSITY[verbose] >= VERBOSITY[:low]
-            end_stage_print(cloud, para_symbols; verbose = verbose,
-                            use_fixed_schedule = use_fixed_schedule)
-        end
+        end_stage_print(cloud, para_symbols; verbose = verbose,
+                        use_fixed_schedule = use_fixed_schedule)
 
         if run_test && (i == 3)
             break
@@ -386,19 +380,6 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::DataFra
     data_mat = df_to_matrix(m, data)
     return smc(likelihood, parameters, data_mat, verbose = verbose,
                save_intermediate = save_intermediate,
-               filestring_addl = filestring_addl)
-end
-=#
-
-# TODO: keep in DSGE.jl
-#=
-function smc(m::AbstractModel; verbose::Symbol = :low,
-             save_intermediate::Bool = false, intermediate_stage_increment::Int = 10,
-             filestring_addl::Vector{String} = Vector{String}(undef, 0))
-    data = load_data(m)
-    data_mat = df_to_matrix(m, data)
-    # This function should be modified.
-    return smc(m, data_mat, verbose=verbose, save_intermediate = save_intermediate,
                filestring_addl = filestring_addl)
 end
 =#
