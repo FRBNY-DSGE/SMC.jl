@@ -339,7 +339,7 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
         end
 
         if mod(cloud.stage_index, intermediate_stage_increment) == 0 && save_intermediate
-            jldopen(savepath * "smc_cloud_stage=$(cloud.stage_index).jld2",
+            jldopen(replace(savepath, r".jld2", "_stage=$(cloud.stage_index).jld2"),
                     true, true, true, IOStream) do file
                 write(file, "cloud", cloud)
                 write(file, "w", w_matrix)
@@ -359,7 +359,7 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
                                   dataspace(n_parts, n_para))
         for k in 1:n_parts; particle_store[k,:] = cloud.particles[k, 1:n_para] end
         close(simfile)
-        jldopen(savepath * "smc_cloud.jld2", true, true, true, IOStream) do file
+        jldopen(savepath, true, true, true, IOStream) do file
             write(file, "cloud", cloud)
             write(file, "w", w_matrix)
             write(file, "W", W_matrix)
