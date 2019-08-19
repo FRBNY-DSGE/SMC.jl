@@ -53,7 +53,6 @@ smc(likelihood::Function, parameters::ParameterVector{U})
 - `smc_iteration::Int`: The iteration index for the number of times SMC has been run on the
      same data vintage. Primarily for numerical accuracy/testing purposes.
 
-- `recompute_transition_equation::Bool`:
 - `run_test::Bool`: Flag for when testing accuracy of program
 - `filestring_addl::Vector{String}`: Additional file string extension for loading old cloud.
 - `continue_intermediate::Bool`: Flag to indicate whether one is continuing SMC from an
@@ -93,7 +92,7 @@ SMC is broken up into three main steps:
 function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{S};
              verbose::Symbol = :low,
              testing::Bool   = false,
-             data_vintage::String = "", # TODO: REPLACE THIS with a "today" grabber
+             data_vintage::String = Date(string(today()), DATEFORMAT),
 
              parallel::Bool  = false,
              n_parts::Int    = 5_000,
@@ -119,7 +118,6 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
              old_vintage::String = "",
              smc_iteration::Int = 1,
 
-             recompute_transition_equation::Bool = true,
              run_test::Bool = false,
              filestring_addl::Vector{String} = Vector{String}(),
              loadpath::String = "",
