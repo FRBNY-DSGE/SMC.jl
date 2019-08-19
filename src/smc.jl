@@ -181,11 +181,8 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
     println(verbose, :low, "\n\n SMC " * (testing ? "testing " : "") * "starts ....\n\n")
 
     if tempered_update
-        cloud = if isempty(old_cloud)
-            load(loadpath, "cloud")
-        else
-            old_cloud
-        end
+        cloud = isempty(old_cloud) ? load(loadpath, "cloud") : old_cloud
+
         initialize_cloud_settings!(cloud; tempered_update = tempered_update,
                                    n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
         initialize_likelihoods!(likelihood, parameters, data, cloud; parallel = parallel)
@@ -370,16 +367,3 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
         end
     end
 end
-
-#=
-function smc(likelihood::Function, parameters::ParameterVector{U}, data::DataFrame;
-             verbose::Symbol = :low,
-             save_intermediate::Bool = false, intermediate_stage_increment::Int = 10,
-             filestring_addl::Vector{String} = Vector{String}(undef, 0)) where {U<:Number}
-    # TODO: will break
-    data_mat = df_to_matrix(m, data)
-    return smc(likelihood, parameters, data_mat, verbose = verbose,
-               save_intermediate = save_intermediate,
-               filestring_addl = filestring_addl)
-end
-=#
