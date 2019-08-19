@@ -5,10 +5,10 @@ writing_output = false
 
 m = AnSchorfheide()
 
-save = normpath(joinpath(dirname(@__FILE__),"save"))
+save = normpath(joinpath(dirname(@__FILE__), "save"))
 m <= Setting(:saveroot, save)
 
-data = h5read("../../reference/smc.h5", "data")
+data = h5read("reference/smc.h5", "data")
 
 m <= Setting(:n_particles, 400)
 m <= Setting(:n_Φ, 100)
@@ -36,7 +36,7 @@ test_W      = test_file["W"]
 test_z = test_file["z"]
 
 if writing_output
-    jldopen("../../reference/smc_cloud_fix=true.jld2", true, true, true, IOStream) do file
+    jldopen("reference/smc_cloud_fix=true.jld2", true, true, true, IOStream) do file
         write(file, "cloud", test_cloud)
         write(file, "w", test_w)
         write(file, "W", test_W)
@@ -44,7 +44,7 @@ if writing_output
     end
 end
 
-saved_file = load("../../reference/smc_cloud_fix=true.jld2")
+saved_file = load("reference/smc_cloud_fix=true.jld2")
 saved_cloud  = saved_file["cloud"]
 saved_w      = saved_file["w"]
 saved_W      = saved_file["W"]
