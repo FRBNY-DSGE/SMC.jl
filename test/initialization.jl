@@ -1,13 +1,16 @@
 
 # To be removed after running this test individually in the REPL successfully
 @everywhere using DSGE, DSGEModels
-@everywhere using HDF5, JLD, JLD2, Random, DelimitedFiles
+@everywhere using HDF5, JLD2, Random, DelimitedFiles
 @everywhere import Test: @test, @testset
 
 write_test_output = false
 
 path = dirname(@__FILE__)
 
+###################################################################
+# An Schorfheide
+###################################################################
 m = AnSchorfheide()
 
 save = normpath(joinpath(dirname(@__FILE__),"save"))
@@ -81,14 +84,11 @@ m <= Setting(:use_chand_recursion, true)
 
 ####################################################################
 test_init_cloud = ParticleCloud(m, get_setting(m, :n_particles))
+
 @everywhere Random.seed!(42)
 DSGE.initial_draw!(m, data, test_init_cloud)
 
-
 if write_test_output
-    #=JLD.jldopen("reference/initial_draw.jld", "w") do file
-    write(file, "cloud", test_init_cloud)
-    end=#
     JLD2.jldopen("reference/initial_draw_sw.jld2", true, true, true, IOStream) do file
         write(file, "cloud", test_init_cloud)
     end
