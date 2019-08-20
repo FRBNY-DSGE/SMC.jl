@@ -2,7 +2,7 @@ using ModelConstructors, SMC, DSGE, Test, Distributed, Dates, DataFrames, Ordere
 @everywhere using SMC, DSGE, ModelConstructors, JLD2, Printf, LinearAlgebra
 
 my_tests = [
-            "smc",
+            #"smc",
             "helpers",
             "initialization",
             "resample",

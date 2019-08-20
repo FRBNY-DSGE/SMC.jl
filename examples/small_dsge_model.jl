@@ -1,5 +1,6 @@
 ## Add number of workers of one's choosing:
-addprocs_frbny(20)
+#addprocs_frbny(20)
+using DSGE, DSGEModels, ModelConstructors, SMC
 @everywhere using DSGE, DSGEModels, ModelConstructors, SMC
 @everywhere import ModelConstructors: ParameterVector
 @everywhere import SMC: smc
@@ -25,7 +26,7 @@ filestring_addl     = Vector{String}()
 
 ## Specify output paths
 loadpath            = rawpath(m, "estimate", "smc_cloud.jld2", filestring_addl)
-savepath            = rawpath(m, "estimate", "",               filestring_addl)
+savepath            = rawpath(m, "estimate", "")
 particle_store_path = rawpath(m, "estimate", "smcsave.h5",     filestring_addl)
 
 DSGE.sendto(workers(), m = m)
@@ -36,6 +37,7 @@ DSGE.sendto(workers(), m = m)
 end
 
 # Old SMC: ~9.6 s (12.70 M alloc: 827 MiB)
+@time DSGE.smc2(m, data)
 @time DSGE.smc(m, data)
 
 # New SMC: ~8.1 s (10.85 M alloc: 673 MiB)
