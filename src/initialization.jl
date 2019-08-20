@@ -1,12 +1,12 @@
 """
 ```
-function one_draw(likelihood::Function, parameters::ParameterVector{U},
+function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
                   data::Matrix{Float64}) where {U<:Number}
 ```
 Finds and returns one valid draw from parameter distribution, along with its
 log likelihood and log posterior.
 """
-function one_draw(likelihood::Function, parameters::ParameterVector{U},
+function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
                   data::Matrix{Float64}) where {U<:Number}
 
     success    = false
@@ -16,7 +16,7 @@ function one_draw(likelihood::Function, parameters::ParameterVector{U},
     while !success
         try
             update!(parameters, draw)
-            draw_loglh   = likelihood(parameters, data)
+            draw_loglh   = loglikelihood(parameters, data)
             draw_logpost = prior(parameters)
 
             if (draw_loglh == -Inf) || (draw_loglh === NaN)
@@ -43,27 +43,27 @@ end
 
 """
 ```
-function initial_draw!(likelihood::Function, parameters::ParameterVector{U},
+function initial_draw!(loglikelihood::Function, parameters::ParameterVector{U},
                        data::Matrix{Float64}, c::Cloud; parallel::Bool = false)
 ```
 Draw from a general starting distribution (set by default to be from the prior) to
 initialize the SMC algorithm. Returns a tuple (logpost, loglh) and modifies the
 particle objects in the particle cloud in place.
 """
-function initial_draw!(likelihood::Function, parameters::ParameterVector{U},
+function initial_draw!(loglikelihood::Function, parameters::ParameterVector{U},
                        data::Matrix{Float64}, c::Cloud; parallel::Bool = false) where {U<:Number}
     n_parts = length(c)
 
     # ================== Define closure on one_draw function ==================
-    sendto(workers(), likelihood = likelihood)
+    sendto(workers(), loglikelihood = loglikelihood)
     sendto(workers(), parameters = parameters)
     sendto(workers(), data       = data)
 
-    one_draw_closure() = one_draw(likelihood, parameters, data)
-    @everywhere one_draw_closure() = one_draw(likelihood, parameters, data)
+    one_draw_closure() = one_draw(loglikelihood, parameters, data)
+    @everywhere one_draw_closure() = one_draw(loglikelihood, parameters, data)
     # =========================================================================
 
-    # For each particle, finds valid parameter draw and returns likelihood & posterior
+    # For each particle, finds valid parameter draw and returns loglikelihood & posterior
     draws, loglh, logpost = if parallel
         @sync @distributed (vector_reduce) for i in 1:n_parts
             one_draw_closure()
@@ -84,22 +84,22 @@ end
 
 """
 ```
-function draw_likelihood(likelihood::Function, parameters::ParameterVector{U},
+function draw_likelihood(loglikelihood::Function, parameters::ParameterVector{U},
                          data::Matrix{Float64}, draw::Vector{Float64}) where {U<:Number}
 ```
 Computes likelihood of a particular parameter draw; returns loglh and logpost.
 """
-function draw_likelihood(likelihood::Function, parameters::ParameterVector{U},
+function draw_likelihood(loglikelihood::Function, parameters::ParameterVector{U},
                          data::Matrix{Float64}, draw::Vector{Float64}) where {U<:Number}
     update!(parameters, draw)
-    loglh   = likelihood(parameters, data)
+    loglh   = loglikelihood(parameters, data)
     logpost = prior(parameters)
     return scalar_reshape(loglh, logpost)
 end
 
 """
 ```
-function initialize_likelihoods!(likelihood::Function, parameters::ParameterVector{U},
+function initialize_likelihoods!(loglikelihood::Function, parameters::ParameterVector{U},
                                  data::Matrix{Float64}, c::Cloud;
                                  parallel::Bool = false) where {U<:Number}
 ```
@@ -108,7 +108,7 @@ Cloud from a previous estimation to each particle's respective old_loglh
 field, and for evaluating/saving the likelihood and posterior at the new data, which
 here is just the argument, data.
 """
-function initialize_likelihoods!(likelihood::Function, parameters::ParameterVector{U},
+function initialize_likelihoods!(loglikelihood::Function, parameters::ParameterVector{U},
                                  data::Matrix{Float64}, c::Cloud;
                                  parallel::Bool = false) where {U<:Number}
     n_parts = length(c)
@@ -119,12 +119,12 @@ function initialize_likelihoods!(likelihood::Function, parameters::ParameterVect
 
     # ============== Define closure on draw_likelihood function ===============
     sendto(workers(), parameters = parameters)
-    sendto(workers(), likelihood = likelihood) # TODO: Check if this is necessary
+    sendto(workers(), loglikelihood = loglikelihood) # TODO: Check if this is necessary
     sendto(workers(), data = data)
 
-    draw_likelihood_closure(draw::Vector{Float64}) = draw_likelihood(likelihood, parameters,
+    draw_likelihood_closure(draw::Vector{Float64}) = draw_likelihood(loglikelihood, parameters,
                                                                      data, draw)
-    @everywhere draw_likelihood_closure(draw::Vector{Float64}) = draw_likelihood(likelihood,
+    @everywhere draw_likelihood_closure(draw::Vector{Float64}) = draw_likelihood(loglikelihood,
                                                                                  parameters,
                                                                                  data, draw)
     # =========================================================================
