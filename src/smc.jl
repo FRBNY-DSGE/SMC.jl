@@ -92,7 +92,7 @@ SMC is broken up into three main steps:
 function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{S};
              verbose::Symbol = :low,
              testing::Bool   = false,
-             data_vintage::String = Date(string(today()), DATEFORMAT),
+             data_vintage::String = Dates.format(today(), "yymmdd"),
 
              parallel::Bool  = false,
              n_parts::Int    = 5_000,
