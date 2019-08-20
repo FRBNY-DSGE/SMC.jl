@@ -1,7 +1,7 @@
 isdefined(Base, :__precompile__) && __precompile__(false)
 
 module SMC
-    using BenchmarkTools, DataFrames, Distributed, Distributions
+    using BenchmarkTools, DataFrames, Dates, Distributed, Distributions
     using FileIO, HDF5, JLD2, LinearAlgebra, Random, Test
     using ModelConstructors
 
