@@ -1,18 +1,17 @@
 """
 ```
-smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix; verbose::Symbol, old_data::Matrix)
-smc(likelihood::Function, parameters::ParameterVector{U}, data::DataFrame)
-smc(likelihood::Function, parameters::ParameterVector{U})
+function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matrix{S};
+             kwargs...) where {S<:AbstractFloat, U<:Number}
 ```
 
 ### Arguments:
 
-- `likelihood::Function`: Likelihood function of model being estimated. Takes `parameters`
+- `loglikelihood::Function`: Log-likelihood function of model being estimated. Takes `parameters`
     and `data` as arguments.
 - `parameters::ParameterVector{U}`: Model parameter vector, which stores parameter values,
     prior dists, and bounds
 - `data`: A matrix or dataframe containing the time series of the observables used in
-    the calculation of the posterior/likelihood
+    the calculation of the posterior/loglikelihood
 - `old_data`: A matrix containing the time series of observables of previous data
     (with `data` being the new data) for the purposes of a time tempered estimation
     (that is, using the posterior draws from a previous estimation as the initial set
@@ -82,14 +81,14 @@ This implementation is based on Edward Herbst and Frank Schorfheide's 2014 paper
 SMC is broken up into three main steps:
 
 - `Correction`: Reweight the particles from stage n-1 by defining incremental weights,
-    which gradually "temper in" the likelihood function p(Y|θ)^(ϕ_n - ϕ_n-1) into the
+    which gradually "temper in" the loglikelihood function p(Y|θ)^(ϕ_n - ϕ_n-1) into the
     normalized particle weights.
 - `Selection`: Resample the particles if the distribution of particles begins to
     degenerate, according to a tolerance level for the ESS.
 - `Mutation`: Propagate particles {θ(i), W(n)} via N(MH) steps of a Metropolis
     Hastings algorithm.
 """
-function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{S};
+function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matrix{S};
              verbose::Symbol = :low,
              testing::Bool   = false,
              data_vintage::String = Dates.format(today(), "yymmdd"),
@@ -141,20 +140,20 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
                  blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
                  ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
                  old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64, T<:Matrix}
-        return mutation(likelihood, parameters, data, p, d_μ, d_Σ, blocks_free, blocks_all, ϕ_n,
-                        ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data)
+        return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, blocks_free, blocks_all,
+                        ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data)
     end
     @everywhere function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                  blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
                  ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
                  old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64, T<:Matrix}
-        return mutation(likelihood, parameters, data, p, d_μ, d_Σ, blocks_free, blocks_all, ϕ_n,
-                        ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data)
+        return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, blocks_free, blocks_all,
+                        ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data)
     end
 
     # Check that if there's a tempered update, old and current vintages are different
     tempered_update = !isempty(old_data) # Time tempering
-    @assert !(tempered_update & (old_vintage==data_vintage)) "Old, current vintages not different!"
+    @assert !(tempered_update&(old_vintage==data_vintage)) "Old, current vintages not different!"
 
     # General
     i   = 1             # Index tracking the stage of the algorithm
@@ -181,17 +180,18 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
     println(verbose, :low, "\n\n SMC " * (testing ? "testing " : "") * "starts ....\n\n")
 
     if tempered_update
+        # If user does not input Cloud object themselves, looks for cloud in loadpath.
         cloud = isempty(old_cloud) ? load(loadpath, "cloud") : old_cloud
 
         initialize_cloud_settings!(cloud; tempered_update = tempered_update,
                                    n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
-        initialize_likelihoods!(likelihood, parameters, data, cloud; parallel = parallel)
+        initialize_likelihoods!(loglikelihood, parameters, data, cloud; parallel = parallel)
 
     elseif continue_intermediate
         cloud = load(loadpath, "cloud")
     else
         # Instantiating Cloud object, update draws, loglh, & logpost
-        initial_draw!(likelihood, parameters, data, cloud; parallel = parallel)
+        initial_draw!(loglikelihood, parameters, data, cloud; parallel = parallel)
         initialize_cloud_settings!(cloud; tempered_update = tempered_update,
                                    n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
     end
@@ -278,6 +278,7 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
 
         # Resample if degeneracy/ESS metric falls below the accepted threshold
         if (cloud.ESS[i] < threshold)
+
             # Resample according to particle weights, uniformly reset weights to 1/n_parts
             new_inds = resample(normalized_weights; method = resampling_method)
             cloud.particles = [deepcopy(cloud.particles[k,j]) for k in new_inds,
