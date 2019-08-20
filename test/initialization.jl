@@ -1,6 +1,6 @@
 
 # To be removed after running this test individually in the REPL successfully
-@everywhere using DSGE, DSGEModels
+@everywhere using DSGE
 @everywhere using HDF5, JLD2, Random, DelimitedFiles
 @everywhere import Test: @test, @testset
 
@@ -57,8 +57,7 @@ end
 ###################################################################
 # Smets Wouters
 ###################################################################
-using DSGEModels
-m = SmetsWoutersOrig()
+#=m = SmetsWoutersOrig()
 
 save = normpath(joinpath(dirname(@__FILE__),"save"))
 m <= Setting(:saveroot, save)
@@ -100,3 +99,4 @@ saved_init_cloud = load("reference/initial_draw_sw.jld2", "cloud")
     @test @test_matrix_approx_eq DSGE.get_vals(test_init_cloud) DSGE.get_vals(saved_init_cloud)
     @test @test_matrix_approx_eq DSGE.get_loglh(test_init_cloud) DSGE.get_loglh(saved_init_cloud)
 end
+=#
