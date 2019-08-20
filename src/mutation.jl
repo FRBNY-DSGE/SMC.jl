@@ -1,13 +1,13 @@
 """
 ```
-mutation(likelihood::Function, parameters::ParameterVector{U}, data, p, d_μ, d_Σ,
+mutation(loglikelihood::Function, parameters::ParameterVector{U}, data, p, d_μ, d_Σ,
          blocks_free, blocks_all, ϕ_n, ϕ_n1; c = 1., α = 1., old_data)
 ```
 
 Execute one proposed move of the Metropolis-Hastings algorithm for a given parameter
 
 ### Arguments:
-- `likelihood::Function`: Likelihood function of model being estimated.
+- `loglikelihood::Function`: Likelihood function of model being estimated.
 - `parameters::ParameterVector{U}`: Model parameter vector, which stores parameter
     values, prior dists, and bounds
 - `data::Matrix{Float64}`: Matrix of data
@@ -35,7 +35,7 @@ Execute one proposed move of the Metropolis-Hastings algorithm for a given param
     log-likelihood, prior, and acceptance indicator.
 
 """
-function mutation(likelihood::Function, parameters::ParameterVector{U},
+function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                   data::Matrix{S}, p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                   blocks_free::Vector{Vector{Int}}, blocks_all::Vector{Vector{Int}},
                   ϕ_n::S, ϕ_n1::S; c::S = 1., α::S = 1., n_mh_steps::Int = 1,
@@ -93,11 +93,11 @@ function mutation(likelihood::Function, parameters::ParameterVector{U},
                 update!(parameters, para_new)
                 para_new  = [θ.value for θ in parameters]
                 prior_new = prior(parameters)
-                like_new  = likelihood(parameters, data)
+                like_new  = loglikelihood(parameters, data)
                 if like_new == -Inf
                     prior_new = like_old_data = -Inf
                 end
-                like_old_data = isempty(old_data) ? 0. : likelihood(parameters, old_data)
+                like_old_data = isempty(old_data) ? 0. : loglikelihood(parameters, old_data)
 
             catch err
                 if isa(err, ParamBoundsError) || isa(err, LinearAlgebra.LAPACKException) ||
