@@ -5,6 +5,9 @@ Calculates log joint prior density of m.parameters.
 """
 function prior(parameters::ParameterVector{T}) where {T<:Number}
     free_params = Base.filter(θ -> !θ.fixed, parameters)
+    if isempty(free_params)
+        @error "All of your parameters are fixed!"
+    end
     logpdfs = map(logpdf, free_params)
     return sum(logpdfs)
 end
