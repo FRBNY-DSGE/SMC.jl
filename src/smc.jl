@@ -354,7 +354,7 @@ function smc(likelihood::Function, parameters::ParameterVector{U}, data::Matrix{
     ### Saving data
     ##################################################################################
     if !testing
-        simfile = h5open(particle_store_path, "w")
+        simfile = h5open(particle_store_path * "smcsave.h5", "w")
         particle_store = d_create(simfile, "smcparams", datatype(Float64),
                                   dataspace(n_parts, n_para))
         for k in 1:n_parts; particle_store[k,:] = cloud.particles[k, 1:n_para] end
