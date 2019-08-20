@@ -44,15 +44,19 @@ old_data = read(file, "old_data")
 close(file)
 
 old_part_cloud = DSGE.vector_particles_to_cloud(m, old_particles)
+function my_likelihood(parameters::ParameterVector, data::Matrix{Float64})::Float64
+    DSGE.update!(m, parameters)
+    DSGE.likelihood(m, data; sampler = false, catch_errors = true,
+                    use_chand_recursion = true, verbose = :low)
+end
+
 Random.seed!(42)
-new_particles = [mutation(m, data, old_part_cloud.particles[j, :], d.μ, Matrix(d.Σ),
-                          blocks_free, blocks_all, ϕ_n, ϕ_n1;
-                          c = c, α = α, old_data = old_data) for j = 1:n_parts]
+new_particles = [SMC.mutation(my_likelihood, m.parameters, data,
+                              old_part_cloud.particles[j, :], d.μ, Matrix(d.Σ),
+                              blocks_free, blocks_all, ϕ_n, ϕ_n1;
+                              c = c, α = α, old_data = old_data) for j = 1:n_parts]
 
 if write_test_output
-    #=JLD.jldopen("reference/mutation_outputs.jld", "w") do file
-    write(file, "particles", new_particles)
-    end =#
     JLD2.jldopen("reference/mutation_outputs.jld2", "w") do file
         write(file, "particles", new_particles)
     end
