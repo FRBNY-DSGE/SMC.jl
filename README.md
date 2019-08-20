@@ -1,5 +1,7 @@
 # Sequential Monte Carlo
 
+[![Build Status](https://travis-ci.com/FRBNY-DSGE/SMC.jl.svg?branch=master)](https://travis-ci.com/FRBNY-DSGE/SMC.jl)
+
 This package implements the Sequential Monte Carlo (SMC) sampling algorithm,
 an alternative to Metropolis Hastings Markov Chain Monte Carlo sampling for approximating
 posterior distributions. The SMC algorithm implemented here is based upon Edward Herbst and Frank
