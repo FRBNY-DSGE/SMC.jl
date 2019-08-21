@@ -1,8 +1,8 @@
 ## Add number of workers of one's choosing:
 #addprocs(20)
 
-using DSGE, DSGEModels, ModelConstructors, SMC
-@everywhere using DSGE, DSGEModels, ModelConstructors, SMC
+using ModelConstructors, DSGE, SMC
+@everywhere using ModelConstructors, DSGE, SMC
 @everywhere import ModelConstructors: ParameterVector
 @everywhere import SMC: smc
 
