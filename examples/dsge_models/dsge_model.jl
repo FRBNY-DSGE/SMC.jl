@@ -1,6 +1,7 @@
 ## Add number of workers of one's choosing:
-using DSGE, DSGEModels, ModelConstructors, SMC
-#addprocs_frbny(40)
+# addprocs(40)
+using ClusterManagers, DSGE, DSGEModels, ModelConstructors, SMC
+
 @everywhere using DSGE, DSGEModels, ModelConstructors, SMC, HDF5
 @everywhere import ModelConstructors: ParameterVector
 @everywhere import SMC: smc
@@ -48,7 +49,7 @@ filestring_addl     = Vector{String}()
 
 ## Specify output paths
 loadpath            = rawpath(m, "estimate", "smc_cloud.jld2", filestring_addl)
-savepath            = rawpath(m, "estimate", "",               filestring_addl)
+savepath            = rawpath(m, "estimate", "smc_cloud.jld2", filestring_addl)
 particle_store_path = rawpath(m, "estimate", "smcsave.h5",     filestring_addl)
 
 DSGE.sendto(workers(), m = m)
@@ -58,11 +59,7 @@ DSGE.sendto(workers(), m = m)
                     use_chand_recursion = true, verbose = :low)
 end
 
-# Old SMC: ~9.6 s (12.70 M alloc: 827 MiB)
-#@time DSGE.smc(m, data)
-
-# New SMC: ~8.1 s (10.85 M alloc: 673 MiB)
-@time smc(my_likelihood, m.parameters, data; data_vintage = data_vintage(m),
-          n_parts = 1_000, n_Φ = 100, λ = 2.0, parallel = true, save_intermediate = false,
-          particle_store_path = particle_store_path, loadpath = loadpath,
-          savepath = savepath)
+smc(my_likelihood, m.parameters, data; data_vintage = data_vintage(m),
+    n_parts = 1_000, n_Φ = 100, λ = 2.0, parallel = true, save_intermediate = false,
+    particle_store_path = particle_store_path, loadpath = loadpath,
+    savepath = savepath)
