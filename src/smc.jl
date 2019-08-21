@@ -9,7 +9,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 - `loglikelihood::Function`: Log-likelihood function of model being estimated. Takes `parameters`
     and `data` as arguments.
 - `parameters::ParameterVector{U}`: Model parameter vector, which stores parameter values,
-    prior dists, and bounds
+    prior dists, and bounds.
 - `data`: A matrix or dataframe containing the time series of the observables used in
     the calculation of the posterior/loglikelihood
 - `old_data`: A matrix containing the time series of observables of previous data
@@ -36,7 +36,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     - `:multinomial`: Will use multinomial resampling.
     - `:polyalgo`: Samples using a polyalgorithm.
 - `threshold_ratio::S`: Threshold s.t. particles will be resampled when the population
-    drops below threshold * N
+    drops below threshold * N.
 - `c::S`: Scaling factor for covariance of the particles. Controls size of steps in mutation step.
 - `α::S`: The mixture proportion for the mutation step's proposal distribution.
 - `target::S`: The initial target acceptance rate for new particles during mutation.
@@ -46,8 +46,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 - `tempering_target::S`: Coefficient of the sample size metric to be targeted when solving
     for an endogenous ϕ.
 
-- `old_data::Matrix{S}`:
-- `old_cloud::ParticleCloud`:
+- `old_data::Matrix{S}`: data from vintage of last SMC estimation.
+- `old_cloud::Cloud`: associated cloud borne of old data in previous SMC estimation.
 - `old_vintage::String`: String for vintage date of old data
 - `smc_iteration::Int`: The iteration index for the number of times SMC has been run on the
      same data vintage. Primarily for numerical accuracy/testing purposes.
@@ -55,7 +55,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 - `run_test::Bool`: Flag for when testing accuracy of program
 - `filestring_addl::Vector{String}`: Additional file string extension for loading old cloud.
 - `continue_intermediate::Bool`: Flag to indicate whether one is continuing SMC from an
-    intermediate stage/
+    intermediate stage.
 - `intermediate_stage_start::Int`: Intermediate stage at which one wishes to begin the estimation.
 - `save_intermediate::Bool`: Flag for whether one wants to save intermediate Cloud objects
 - `intermediate_stage_increment::Int`: Save Clouds at every increment
@@ -106,8 +106,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 
              # Mutation Settings
              c::S = 0.5,       # step size
-             α::S = 1.0,       # mixture_proportion
-             target::S = 0.25, # target_accept
+             α::S = 1.0,       # mixture proportion
+             target::S = 0.25, # target accept rate
 
              use_fixed_schedule::Bool = true,
              tempering_target::S = 0.97,
