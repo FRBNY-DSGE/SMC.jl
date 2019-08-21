@@ -1,8 +1,9 @@
-## Add number of workers of one's choosing:
-# addprocs(40)
-using ClusterManagers, DSGE, DSGEModels, ModelConstructors, SMC
+# This script won't work until we've released the new version of DSGE.jl (within next week).
 
-@everywhere using DSGE, DSGEModels, ModelConstructors, SMC, HDF5
+## Add number of workers of one's choosing:
+using DSGE, ModelConstructors, SMC
+#addprocs_frbny(40)
+@everywhere using DSGE, ModelConstructors, SMC, HDF5
 @everywhere import ModelConstructors: ParameterVector
 @everywhere import SMC: smc
 
