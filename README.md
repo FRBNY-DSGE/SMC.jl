@@ -1,5 +1,7 @@
 # Sequential Monte Carlo
 
+[![](https://img.shields.io/badge/docs-latest-blue.svg)](https://frbny-dsge.github.io/SMC.jl/latest)
+
 This package implements the Sequential Monte Carlo (SMC) sampling algorithm,
 an alternative to Metropolis Hastings Markov Chain Monte Carlo sampling for approximating
 posterior distributions. The SMC algorithm implemented here is based upon Edward Herbst and Frank
