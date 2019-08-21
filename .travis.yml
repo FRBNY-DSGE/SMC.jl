@@ -5,7 +5,7 @@ os:
     # by downloading all of xcode which Travis CI then kills because it takes too long.
     # Refer to Matt Bauman's comment on JuliaIO/HDF5.jl issue 483, and
     # Andreas Noack's issue 27751 on Homebrew/homebrew-core.
-    #- osx
+    - osx
     - linux
 julia:
     - 0.7.0
@@ -16,14 +16,25 @@ addons:
     packages:
     - hdf5-tools
     - libnlopt0
-#script:
-#    - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
-#    - julia --color=yes -e 'using Pkg; Pkg.add(pwd()); Pkg.build("SMC"); Pkg.test("SMC"; coverage=true)'
+script:
+    - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
+    - julia --color=yes -e 'using Pkg; Pkg.build(); Pkg.test(coverage=true)'
 branches:
   only:
     - master
     - gh-pages
 after_success:
-#- julia -e 'cd(Pkg.dir("DSGE")); Pkg.add("Coverage"); using Coverage; Coveralls.submit(process_folder())'
-# - julia -e 'Pkg.add("Documenter")'
-- julia -e 'cd(Pkg.dir("DSGE")); include(joinpath("docs", "make.jl"))'
+- julia -e 'Pkg.add("Documenter")'
+- julia -e 'cd(Pkg.dir("SMC")); Pkg.add("Coverage"); using Coverage; Coveralls.submit(process_folder())'
+- julia -e 'cd(Pkg.dir("SMC")); include(joinpath("docs", "make.jl"))'
+
+jobs:
+  include:
+    - stage: "Documentation"
+      julia: 0.7
+      os: linux
+      script:
+        - julia --project=docs/ -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd()));
+                                               Pkg.instantiate()'
+        - julia --project=docs/ docs/make.jl
+      after_success: skip
