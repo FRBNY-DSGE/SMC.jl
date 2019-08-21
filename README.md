@@ -13,12 +13,11 @@ Frank Schorfheide's [website](https://sites.sas.upenn.edu/schorf/pages/bayesian-
 
 Comments and suggestions are welcome, and best submitted as either an issue or a pull request to this branch. :point_up:
 
-To install, 
-]add https://github.com/FRBNY-DSGE/ModelConstructors.jl.git
-]add https://github.com/FRBNY-DSGE/SMC.jl.git 
-in Julia 0.7 (support for Julia 1.0 and 1.1 soon!)
+To install, run the following commands in Julia 0.7 (support for Julia 1.0 and 1.1 soon!)
+- ]add https://github.com/FRBNY-DSGE/ModelConstructors.jl.git
+- ]add https://github.com/FRBNY-DSGE/SMC.jl.git 
 
-The package requires our auxiliary package ModelConstructors which contains useful data structures for creating custom models (parameter, state, observable, setting, etc. types)
+The package requires our auxiliary package ModelConstructors which contains useful data structures for creating custom models (parameter, state, observable, setting, etc. types).
 
 Disclaimer
 ------
