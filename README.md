@@ -13,6 +13,13 @@ Frank Schorfheide's [website](https://sites.sas.upenn.edu/schorf/pages/bayesian-
 
 Comments and suggestions are welcome, and best submitted as either an issue or a pull request to this branch. :point_up:
 
+To install, 
+]add https://github.com/FRBNY-DSGE/ModelConstructors.jl.git
+]add https://github.com/FRBNY-DSGE/SMC.jl.git 
+in Julia 0.7 (support for Julia 1.0 and 1.1 soon!)
+
+The package requires our auxiliary package ModelConstructors which contains useful data structures for creating custom models (parameter, state, observable, setting, etc. types)
+
 Disclaimer
 ------
 Copyright Federal Reserve Bank of New York. You may reproduce, use, modify, make derivative works of, and distribute and this code in whole or in part so long as you keep this notice in the documentation associated with any distributed works. Neither the name of the Federal Reserve Bank of New York (FRBNY) nor the names of any of the authors may be used to endorse or promote works derived from this code without prior written permission. Portions of the code attributed to third parties are subject to applicable third party licenses and rights. By your use of this code you accept this license and any applicable third party license.
