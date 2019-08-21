@@ -170,6 +170,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 
     n_para          = length(parameters)
     n_free_para     = length(free_para_inds)
+    @assert n_free_para > 0 "All model parameters are fixed!"
 
     # Initialization of Particle Array Cloud
     cloud = Cloud(n_para, n_parts)
