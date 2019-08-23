@@ -1,6 +1,7 @@
 <p align="center">
-<img width="400px" src="https://github.com/FRBNY-DSGE/SMC.jl/blob/master/docs/smc_logo.png" alt="SMC.jl"/>
+<img width="400px" src="https://github.com/FRBNY-DSGE/SMC.jl/blob/master/docs/smc_logo_thin_crop.png" alt="SMC.jl"/>
 </p>
+
 [![](https://img.shields.io/badge/docs-latest-blue.svg)](https://frbny-dsge.github.io/SMC.jl)
 
 # Sequential Monte Carlo
