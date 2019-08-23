@@ -1,8 +1,8 @@
 """
 ```
-function solve_adaptive_ϕ(cloud::Cloud, proposed_fixed_schedule::Vector{Float64},
+`function solve_adaptive_ϕ(cloud::Cloud, proposed_fixed_schedule::Vector{Float64},
                           i::Int64, j::Int64, ϕ_prop::Float64, ϕ_n1::Float64,
-                          tempering_target::Float64, resampled_last_period::Bool)
+                          tempering_target::Float64, resampled_last_period::Bool)`
 ```
 Solves for next Φ. Returns ϕ_n, resampled_last_period, j, ϕ_prop.
 """
@@ -57,7 +57,8 @@ end
 
 """
 ```
-mvnormal_mixture_draw(θ_old, σ; cc, α, θ_prop) where {T<:AbstractFloat}
+`mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
+                                    c::T = 1.0, α::T = 1.0) where T<:AbstractFloat`
 ```
 
 Create a `DegenerateMvNormal` distribution object, `d`, from a parameter vector, `p`, and a
@@ -157,8 +158,8 @@ end
 
 """
 ```
-function compute_ESS(loglh::Vector{T}, current_weights::Vector{T}, ϕ_n::T, ϕ_n1::T;
-                     old_loglh::Vector{T} = zeros(length(loglh))) where {T<:AbstractFloat}
+function `compute_ESS(loglh::Vector{T}, current_weights::Vector{T}, ϕ_n::T, ϕ_n1::T;
+                     old_loglh::Vector{T} = zeros(length(loglh))) where {T<:AbstractFloat}`
 ```
 Compute ESS given log likelihood, current weights, ϕ_n, ϕ_{n-1}, and old log likelihood.
 """
@@ -192,7 +193,7 @@ end
 
 """
 ```
-function generate_free_blocks(n_free_para, n_blocks)
+`function generate_free_blocks(n_free_para::Int64, n_blocks::Int64)`
 ```
 
 Return a Vector{Vector{Int64}} where each internal Vector{Int64} contains a subset of the range
@@ -219,7 +220,8 @@ end
 
 """
 ```
-function generate_all_blocks(blocks_free, free_para_inds)
+`function generate_all_blocks(blocks_free::Vector{Vector{Int64}}, free_para_inds::Vector{Int64})
+        n_free_para = length(free_para_inds)
 ```
 
 Return a Vector{Vector{Int64}} where each internal Vector{Int64} contains indices

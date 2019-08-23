@@ -61,7 +61,7 @@ ind_weight(N::Int)    = N
 
 """
 ```
-function get_weights(c::Cloud)
+`function get_weights(c::Cloud)`
 function get_weights(c::Matrix{Float64})
 ```
 Returns Vector{Float64}(n_parts) of weights of particles in cloud.
@@ -75,8 +75,8 @@ end
 
 """
 ```
+`function get_vals(c::Cloud; transposed::Bool = true)`
 function get_vals(c::Matrix{Float64})
-function get_vals(c::Cloud)
 ```
 Returns Matrix{Float64}(n_params, n_parts) of parameter values in particle cloud.
 """
