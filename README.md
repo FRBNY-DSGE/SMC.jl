@@ -1,21 +1,14 @@
 <p align="center">
-<img width="400px" src="https://github.com/FRBNY-DSGE/SMC.jl/blob/master/docs/smc_logo_thin_crop.png" alt="SMC.jl"/>
+<img width="450px" src="https://github.com/FRBNY-DSGE/SMC.jl/blob/master/docs/smc_logo_thin_crop.png" alt="SMC.jl"/>
 </p>
 
 [![](https://img.shields.io/badge/docs-latest-blue.svg)](https://frbny-dsge.github.io/SMC.jl)
 
 # Sequential Monte Carlo
 
-This package implements the Sequential Monte Carlo (SMC) sampling algorithm,
-an alternative to Metropolis Hastings Markov Chain Monte Carlo sampling for approximating
-posterior distributions. The SMC algorithm implemented here is based upon Edward Herbst and Frank
-Schorfheide's paper "[Sequential Monte Carlo Sampling for DSGE
-Models](http://dx.doi.org/10.1002/jae.2397)" and the code accompanying
-their book *Bayesian Estimation of DSGE Models*. Our implementation features
-what we term *generalized tempering* for "online" estimation, as outlined in our recent paper, "[Online Estimation of DSGE Models](https://www.newyorkfed.org/medialibrary/media/research/staff_reports/sr893.pdf)."
+This package implements the Sequential Monte Carlo (SMC) sampling algorithm, an alternative to Metropolis Hastings Markov Chain Monte Carlo sampling for approximating posterior distributions. The SMC algorithm implemented here is based upon Edward Herbst and Frank Schorfheide's paper "[Sequential Monte Carlo Sampling for DSGE Models](http://dx.doi.org/10.1002/jae.2397)" and the code accompanying their book, *Bayesian Estimation of DSGE Models*. More information and the original MATLAB scriptsthat this code replicates can be found at Frank Schorfheide's [website](https://sites.sas.upenn.edu/schorf/pages/bayesian-estimation-dsge-models).
 
-More information and the original MATLAB scripts that this code replicates can be found at
-Frank Schorfheide's [website](https://sites.sas.upenn.edu/schorf/pages/bayesian-estimation-dsge-models).
+Our implementation features what we term *generalized tempering* for "online" estimation, as outlined in our recent paper, "[Online Estimation of DSGE Models](https://www.newyorkfed.org/medialibrary/media/research/staff_reports/sr893.pdf)." For a broad overview of our paper, one may refer to the following *Liberty Street Economics* [article](https://libertystreeteconomics.newyorkfed.org/2019/08/online-estimation-of-dsge-models.html).
 
 Comments and suggestions are welcome, and best submitted as either an issue or a pull request to this branch. :point_up:
 
