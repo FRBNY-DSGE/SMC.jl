@@ -10,7 +10,7 @@ This package implements the Sequential Monte Carlo (SMC) sampling algorithm, an 
 
 Our implementation features what we term *generalized tempering* for "online" estimation, as outlined in our recent paper, "[Online Estimation of DSGE Models](https://www.newyorkfed.org/medialibrary/media/research/staff_reports/sr893.pdf)." For a broad overview of the algorithm, one may refer to the following *Liberty Street Economics* [article](https://libertystreeteconomics.newyorkfed.org/2019/08/online-estimation-of-dsge-models.html).
 
-Comments and suggestions are welcome, and best submitted as either an issue or a pull request. <%= octicon "git-pull-request" %> :point_up:
+Comments and suggestions are welcome, and best submitted as either an issue or a pull request. :point_up:
 
 Installation
 ------
