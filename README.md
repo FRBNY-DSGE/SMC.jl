@@ -20,7 +20,7 @@ julia>]add ModelConstructors
 julia>]add https://github.com/FRBNY-DSGE/SMC.jl.git
 ```
 
-The package requires our auxiliary package, [ModelConstructors.jl](https://github.com/FRBNY-DSGE/ModelConstructors.jl), which contains useful data structures for creating custom models (`Parameter`, `State`, `Observable`, `Setting`, etc. types).
+The package requires our auxiliary package, [ModelConstructors.jl](https://github.com/FRBNY-DSGE/ModelConstructors.jl), which contains useful data structures for creating custom models (e.g. `Parameter`, `State`, `Observable`, `Setting` types).
 
 For examples of how to set up a model in the form SMC can estimate, see scripts in the [`examples/`](https://github.com/FRBNY-DSGE/SMC.jl/tree/master/examples) folder.
 
