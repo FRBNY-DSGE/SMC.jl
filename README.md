@@ -2,7 +2,7 @@
 
 [![](https://img.shields.io/badge/docs-latest-blue.svg)](https://frbny-dsge.github.io/SMC.jl)
 
-<img src="https://github.com/FRBNY-DSGE/SMC.jl/blob/master/docs/smc_logo.png" alt="SMC.jl" width="500"/>
+<img src="https://github.com/FRBNY-DSGE/SMC.jl/blob/master/docs/smc_logo.png" alt="SMC.jl" class="center" width="500"/>
 
 This package implements the Sequential Monte Carlo (SMC) sampling algorithm,
 an alternative to Metropolis Hastings Markov Chain Monte Carlo sampling for approximating
