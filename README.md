@@ -19,7 +19,7 @@ Installation
 To install, run the following commands in Julia 0.7 (support for Julia 1.0 and 1.1 soon!)
 ```julia
 julia>]add ModelConstructors
-julia>]add https://github.com/FRBNY-DSGE/SMC.jl.git
+julia>]add SMC
 ```
 
 The package requires our auxiliary package, [ModelConstructors.jl](https://github.com/FRBNY-DSGE/ModelConstructors.jl), which contains useful data structures for creating custom models (e.g. `Parameter`, `State`, `Observable`, `Setting` types).
