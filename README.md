@@ -2,6 +2,8 @@
 
 [![](https://img.shields.io/badge/docs-latest-blue.svg)](https://frbny-dsge.github.io/SMC.jl)
 
+![SMC.jl](https://github.com/FRBNY-DSGE/SMC.jl/blob/master/docs/smc_logo.png)<!-- .element height="50%" width="50%" -->
+
 This package implements the Sequential Monte Carlo (SMC) sampling algorithm,
 an alternative to Metropolis Hastings Markov Chain Monte Carlo sampling for approximating
 posterior distributions. The SMC algorithm implemented here is based upon Edward Herbst and Frank
@@ -16,8 +18,10 @@ Frank Schorfheide's [website](https://sites.sas.upenn.edu/schorf/pages/bayesian-
 Comments and suggestions are welcome, and best submitted as either an issue or a pull request to this branch. :point_up:
 
 To install, run the following commands in Julia 0.7 (support for Julia 1.0 and 1.1 soon!)
-- ]add https://github.com/FRBNY-DSGE/ModelConstructors.jl.git
-- ]add https://github.com/FRBNY-DSGE/SMC.jl.git 
+```julia
+julia>]add https://github.com/FRBNY-DSGE/ModelConstructors.jl.git
+julia>]add https://github.com/FRBNY-DSGE/SMC.jl.git
+```
 
 The package requires our auxiliary package ModelConstructors which contains useful data structures for creating custom models (parameter, state, observable, setting, etc. types).
 
