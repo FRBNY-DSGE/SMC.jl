@@ -3,6 +3,8 @@
 </p>
 
 [![](https://img.shields.io/badge/docs-latest-blue.svg)](https://frbny-dsge.github.io/SMC.jl)
+[![Build Status](https://travis-ci.com/FRBNY-DSGE/SMC.jl.svg?branch=master)](https://travis-ci.com/FRBNY-DSGE/SMC.jl)
+
 
 # Sequential Monte Carlo
 
