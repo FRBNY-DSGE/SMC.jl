@@ -1,4 +1,4 @@
-using Documenter, SMC
+using Documenter, ModelConstructors, SMC, Distributions
 
 makedocs(modules = [SMC],
          clean = false,
@@ -9,6 +9,8 @@ makedocs(modules = [SMC],
          strict = false,
          pages = Any[
                      "Home"                                   => "index.md",
+                     "Using SMC"                              => "smc.md",
+                     "Helper Functions"                       => "helpers.md",
                      "License"                                => "license.md"
          ],
          doctest = false # for now

@@ -44,7 +44,7 @@ end
 """
 ```
 function initial_draw!(loglikelihood::Function, parameters::ParameterVector{U},
-                       data::Matrix{Float64}, c::Cloud; parallel::Bool = false)
+                       data::Matrix{Float64}, c::Cloud; parallel::Bool = false) where {U<:Number}
 ```
 Draw from a general starting distribution (set by default to be from the prior) to
 initialize the SMC algorithm. Returns a tuple (logpost, loglh) and modifies the
