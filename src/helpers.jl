@@ -83,9 +83,6 @@ the standard distribution and `(1 - α)` of the diagonalized distribution.
 
 ### Outputs
 - `θ_new::Vector{T}`: The draw from the mixture distribution to be used as the MH proposed step
-- `new mixture_density::T`: The mixture density conditional on θ_old evaluated at `θ_new` to be used in calculating the MH move probability
-- `old mixture_density::T`: The mixture density conditional on θ_new evaluated at `θ_old` to be used in calculating the MH move probability
-
 """
 function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
                                c::T = 1.0, α::T = 1.0) where T<:AbstractFloat
@@ -98,16 +95,6 @@ function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
     d_mix_old  = MixtureModel(MvNormal[d_old, d_diag_old, d_bar], [α, (1 - α)/2, (1 - α)/2])
 
     θ_new = rand(d_mix_old)
-
-    # Create mixture distribution conditional on the new parameter value, θ_new
-    #d_new      = MvNormal(θ_new, c^2 * d_prop.Σ)
-    #d_diag_new = MvNormal(θ_new, diagm(0 => diag(c^2 * d_prop.Σ)))
-    #d_mix_new  = MixtureModel(MvNormal[d_new, d_diag_new, d_bar], [α, (1 - α)/2, (1 - α)/2])
-
-    # The density of θ_new | θ_old and the density of θ_old | θ_new
-    # taken with respect to their respective mixture densities
-    #new_mix_density = logpdf(d_mix_old, θ_new)
-    #old_mix_density = logpdf(d_mix_new, θ_old)
 
     return θ_new
 end
