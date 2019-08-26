@@ -1,5 +1,4 @@
-using ModelConstructors, SMC, DSGE, Test, Distributed, Dates, DataFrames, FileIO, LinearAlgebra, StatsBase, Random
-@everywhere using SMC, DSGE, ModelConstructors, JLD2, Printf, LinearAlgebra
+using ModelConstructors, SMC, DSGE, Test, Printf, Distributed
 
 my_tests = [
             "smc",
