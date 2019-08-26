@@ -60,6 +60,7 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
 
     for step in 1:n_mh_steps
         for (block_f, block_a) in zip(blocks_free, blocks_all)
+
             # Index out parameters corresponding to given random block, create distribution
             # centered at weighted mean, with Σ corresponding to the same random block
             para_subset = para[block_a]
@@ -73,23 +74,8 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
             like_init  = like
             prior_init = logprior
 
-            q0 = α * exp(logpdf(MvNormal(para_draw,   c^2 * d_subset.Σ.mat), para_subset))
-            q1 = α * exp(logpdf(MvNormal(para_subset, c^2 * d_subset.Σ.mat), para_draw))
-
-            ind_pdf = 1.0
-
-            for i = 1:length(block_a)
-                Σ_ii    = sqrt(d_subset.Σ.mat[i,i])
-                zstat   = (para_subset[i] - para_draw[i]) / Σ_ii
-                ind_pdf = ind_pdf / (Σ_ii * sqrt(2.0 * π)) * exp(-0.5 * zstat^2)
-            end
-
-            q0 += (1.0-α)/2.0 * ind_pdf
-            q1 += (1.0-α)/2.0 * ind_pdf
-            q0 += (1.0-α)/2.0 * exp(logpdf(MvNormal(d_subset.μ, c^2*d_subset.Σ.mat), para_subset))
-            q1 += (1.0-α)/2.0 * exp(logpdf(MvNormal(d_subset.μ, c^2*d_subset.Σ.mat), para_draw))
-            q0 = log(q0)
-            q1 = log(q1)
+            q0, q1 = compute_proposal_densities(para_draw, para_subset,
+                                                d_subset, c = c, α = α)
 
             prior_new = like_new = like_old_data = -Inf
 
@@ -97,10 +83,13 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                 update!(parameters, para_new)
                 para_new  = [θ.value for θ in parameters]
                 prior_new = prior(parameters)
+
                 like_new  = loglikelihood(parameters, data)
+
                 if like_new == -Inf
                     prior_new = like_old_data = -Inf
                 end
+
                 like_old_data = isempty(old_data) ? 0. : loglikelihood(parameters, old_data)
 
             catch err
@@ -110,10 +99,6 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                 else
                     throw(err)
                 end
-            end
-
-            if (q0 == Inf && q1 == Inf)
-                q0 = 0.0
             end
 
             η = exp(ϕ_n * (like_new - like_init) + (1 - ϕ_n) * (like_old_data - like_prev) +
