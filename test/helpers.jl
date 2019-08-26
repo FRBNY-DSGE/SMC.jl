@@ -1,4 +1,3 @@
-using PDMats, Distributions
 writing_output = false
 
 ####################################################################
@@ -6,7 +5,7 @@ writing_output = false
 ####################################################################
 
 file   = JLD2.jldopen("reference/helpers_input.jld2", "r")
-cloud  = old_to_new_cloud(DSGE.Cloud(read(file, "cloud")))
+cloud  = DSGE.old_to_new_cloud(DSGE.Cloud(read(file, "cloud")))
 i_smc  = read(file, "i")
 j_smc  = read(file, "j")
 ϕ_prop = read(file, "phi_prop")

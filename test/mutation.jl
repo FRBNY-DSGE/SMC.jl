@@ -1,8 +1,3 @@
-# To be removed after running this test individually in the REPL successfully
-using DSGE
-using HDF5, JLD2, Random, Distributions, PDMats
-import Test: @test, @testset
-
 write_test_output = false
 
 path = dirname(@__FILE__)
