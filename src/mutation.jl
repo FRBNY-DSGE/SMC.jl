@@ -62,16 +62,16 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
             para_subset = para[block_a]
             d_subset    = MvNormal(d.μ[block_f], d.Σ.mat[block_f, block_f])
 
-            para_draw, para_new_density, para_old_density = mvnormal_mixture_draw(para_subset,
-                                                                       d_subset; c = c, α = α)
+            para_draw = mvnormal_mixture_draw(para_subset, d_subset; c = c, α = α)
+
+            q0, q1 = compute_proposal_densities(para_draw, para_subset,
+                                                d_subset, c = c, α = α)
+
             para_new          = deepcopy(para)
             para_new[block_a] = para_draw
 
             like_init  = like
             prior_init = logprior
-
-            q0, q1 = compute_proposal_densities(para_draw, para_subset,
-                                                d_subset, c = c, α = α)
 
             prior_new = like_new = like_old_data = -Inf
 

@@ -99,16 +99,16 @@ function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
     θ_new = rand(d_mix_old)
 
     # Create mixture distribution conditional on the new parameter value, θ_new
-    d_new      = MvNormal(θ_new, c^2 * d_prop.Σ)
-    d_diag_new = MvNormal(θ_new, diagm(0 => diag(c^2 * d_prop.Σ)))
-    d_mix_new  = MixtureModel(MvNormal[d_new, d_diag_new, d_bar], [α, (1 - α)/2, (1 - α)/2])
+    #d_new      = MvNormal(θ_new, c^2 * d_prop.Σ)
+    #d_diag_new = MvNormal(θ_new, diagm(0 => diag(c^2 * d_prop.Σ)))
+    #d_mix_new  = MixtureModel(MvNormal[d_new, d_diag_new, d_bar], [α, (1 - α)/2, (1 - α)/2])
 
     # The density of θ_new | θ_old and the density of θ_old | θ_new
     # taken with respect to their respective mixture densities
-    new_mix_density = logpdf(d_mix_old, θ_new)
-    old_mix_density = logpdf(d_mix_new, θ_old)
+    #new_mix_density = logpdf(d_mix_old, θ_new)
+    #old_mix_density = logpdf(d_mix_new, θ_old)
 
-    return θ_new, new_mix_density, old_mix_density
+    return θ_new
 end
 
 get_cov(d::MvNormal)::Matrix = d.Σ.mat
@@ -136,7 +136,6 @@ for computation of acceptance probability.
 ### Outputs
 - `q0::T`: q(ϑ_b | θ^i_{n,b,m-1}, θ^i_{n,-b,m}, θ*_b, Σ*_b)
 - `q1::T`: q(θ^i_{n,b,m-1} | ϑ_b, θ^i_{n,b,m-1}, θ^i_{n,-b,m}, θ*_b, Σ*_b)
-
 """
 function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T},
                                     d_subset::Distribution;
