@@ -186,6 +186,7 @@ function generate_param_blocks(n_params::Int64, n_blocks::Int64)
             blocks_free[i] = rand_inds[end-last_block_length+1:end]
         end
     end
+    blocks_free = [sort(p_block) for p_block in blocks_free]
     return blocks_free
 end
 
