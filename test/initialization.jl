@@ -1,9 +1,3 @@
-
-# To be removed after running this test individually in the REPL successfully
-@everywhere using DSGE
-@everywhere using HDF5, JLD2, Random, DelimitedFiles
-@everywhere import Test: @test, @testset
-
 write_test_output = false
 
 path = dirname(@__FILE__)
