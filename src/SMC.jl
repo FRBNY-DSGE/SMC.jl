@@ -10,9 +10,6 @@ module SMC
 
     import Base: <, isempty, min, max
     import Calculus, ModelConstructors
-    import ModelConstructors: update!, prior,
-                              @test_matrix_approx_eq,
-                              @test_matrix_approx_eq_eps
 
     export
         compute_parameter_covariance, get_estimation_output_files,
