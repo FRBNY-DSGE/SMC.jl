@@ -74,7 +74,6 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
             prior_init = logprior
 
             prior_new = like_new = like_old_data = -Inf
-
             try
                 update!(parameters, para_new)
                 para_new  = [θ.value for θ in parameters]
