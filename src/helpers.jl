@@ -113,30 +113,61 @@ function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
 end
 
 get_cov(d::MvNormal)::Matrix = d.Σ.mat
-#get_cov(d::DegenerateMvNormal)::Matrix = d.Σ
+get_cov(d::DegenerateMvNormal)::Matrix = d.σ
 
-function compute_new_old_para_densities(para_draw::Vector{T}, para_subset::Vector{T},
-                                        d_subset::Distribution,
-                                        α::T=1.0, c::T=1.0)
+"""
+```
+compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T},
+                           d_subset::Distribution;
+                           α::T = 1.0, c::T = 1.0) where {T<:AbstractFloat}
+```
+Called in Metropolis-Hastings mutation step. After you have generated proposal draw
+ϑ_b from the mixture distrubtion, computes the density of the proposal distribution
+for computation of acceptance probability.
+
+### Inputs
+- `para_draw::Vector{T}`: ϑ_b
+- `para_subset::Vector{T}`: θ^i_{n,b,m-1}
+- `d_subset::Distribution`: MvNormal(θ*_b, Σ*_b)
+
+### Optional Inputs
+- `α::T`
+- `c::T`
+
+### Outputs
+- `q0::T`: q(ϑ_b | θ^i_{n,b,m-1}, θ^i_{n,-b,m}, θ*_b, Σ*_b)
+- `q1::T`: q(θ^i_{n,b,m-1} | ϑ_b, θ^i_{n,b,m-1}, θ^i_{n,-b,m}, θ*_b, Σ*_b)
+
+"""
+function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T},
+                                    d_subset::Distribution;
+                                    α::T = 1.0, c::T = 1.0) where {T<:AbstractFloat}
     d_Σ = get_cov(d_subset)
 
-    q0 = α * exp(logpdf(MvNormal(para_draw,   c^2 * d_subset.Σ.mat), para_subset))
-    q1 = α * exp(logpdf(MvNormal(para_subset, c^2 * d_subset.Σ.mat), para_draw))
+    q0 = α * exp(logpdf(MvNormal(para_draw,   c^2 * d_Σ), para_subset))
+    q1 = α * exp(logpdf(MvNormal(para_subset, c^2 * d_Σ), para_draw))
 
     ind_pdf = 1.0
 
-    for i = 1:length(block_a)
-        Σ_ii    = sqrt(d_subset.Σ.mat[i,i])
+    for i = 1:length(para_subset)
+        Σ_ii    = sqrt(d_Σ[i,i])
         zstat   = (para_subset[i] - para_draw[i]) / Σ_ii
         ind_pdf = ind_pdf / (Σ_ii * sqrt(2.0 * π)) * exp(-0.5 * zstat^2)
     end
 
     q0 += (1.0-α)/2.0 * ind_pdf
     q1 += (1.0-α)/2.0 * ind_pdf
-    q0 += (1.0-α)/2.0 * exp(logpdf(MvNormal(d_subset.μ, c^2*d_subset.Σ.mat), para_subset))
-    q1 += (1.0-α)/2.0 * exp(logpdf(MvNormal(d_subset.μ, c^2*d_subset.Σ.mat), para_draw))
+
+    q0 += (1.0-α)/2.0 * exp(logpdf(MvNormal(d_subset.μ, c^2 * d_Σ), para_subset))
+    q1 += (1.0-α)/2.0 * exp(logpdf(MvNormal(d_subset.μ, c^2 * d_Σ), para_draw))
+
     q0 = log(q0)
     q1 = log(q1)
+
+    if (q0 == Inf && q1 == Inf)
+        q0 = 0.0
+    end
+    return q0, q1
 end
 
 """
