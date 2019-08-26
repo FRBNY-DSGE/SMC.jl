@@ -171,6 +171,24 @@ function compute_ESS(loglh::Vector{T}, current_weights::Vector{T}, ϕ_n::T, ϕ_n
     return ESS
 end
 
+function generate_param_blocks(n_params::Int64, n_blocks::Int64)
+    rand_inds = shuffle(1:n_params)
+
+    subset_length     = cld(n_params, n_blocks) # ceiling division
+    last_block_length = n_params - subset_length*(n_blocks - 1)
+
+    blocks_free = Vector{Vector{Int64}}(undef, n_blocks)
+    for i in 1:n_blocks
+        if i < n_blocks
+            blocks_free[i] = rand_inds[((i-1)*subset_length + 1):(i*subset_length)]
+        else
+            # To account for the fact that the last block may be smaller than the others
+            blocks_free[i] = rand_inds[end-last_block_length+1:end]
+        end
+    end
+    return blocks_free
+end
+
 """
 ```
 function generate_free_blocks(n_free_para, n_blocks)
