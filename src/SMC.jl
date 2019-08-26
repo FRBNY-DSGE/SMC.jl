@@ -5,8 +5,8 @@ module SMC
     using FileIO, HDF5, JLD2, LinearAlgebra, Random, Test
     using ModelConstructors
 
-    using Roots.fzero, Roots.ConvergenceFailed
-    using StatsBase.sample, StatsBase.Weights
+    using Roots: fzero, ConvergenceFailed
+    using StatsBase: sample, Weights
 
     import Base.<, Base.isempty, Base.min, Base.max
     import Calculus, ModelConstructors
