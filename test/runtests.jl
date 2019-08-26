@@ -3,6 +3,8 @@ using ModelConstructors, SMC, DSGE
 using LinearAlgebra, PDMats, Distributions
 using Printf, Distributed, Random, HDF5, FileIO, JLD2
 
+import ModelConstructors.Setting
+
 my_tests = [
             "smc",
             "helpers",

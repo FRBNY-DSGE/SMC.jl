@@ -1,4 +1,4 @@
-isdefined(Base, :__precompile__) && __precompile__(false)
+isdefined(Base, :__precompile__) && __precompile__()
 
 module SMC
     using BenchmarkTools, DataFrames, Dates, Distributed, Distributions
