@@ -112,6 +112,33 @@ function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
     return θ_new, new_mix_density, old_mix_density
 end
 
+get_cov(d::MvNormal)::Matrix = d.Σ.mat
+#get_cov(d::DegenerateMvNormal)::Matrix = d.Σ
+
+function compute_new_old_para_densities(para_draw::Vector{T}, para_subset::Vector{T},
+                                        d_subset::Distribution,
+                                        α::T=1.0, c::T=1.0)
+    d_Σ = get_cov(d_subset)
+
+    q0 = α * exp(logpdf(MvNormal(para_draw,   c^2 * d_subset.Σ.mat), para_subset))
+    q1 = α * exp(logpdf(MvNormal(para_subset, c^2 * d_subset.Σ.mat), para_draw))
+
+    ind_pdf = 1.0
+
+    for i = 1:length(block_a)
+        Σ_ii    = sqrt(d_subset.Σ.mat[i,i])
+        zstat   = (para_subset[i] - para_draw[i]) / Σ_ii
+        ind_pdf = ind_pdf / (Σ_ii * sqrt(2.0 * π)) * exp(-0.5 * zstat^2)
+    end
+
+    q0 += (1.0-α)/2.0 * ind_pdf
+    q1 += (1.0-α)/2.0 * ind_pdf
+    q0 += (1.0-α)/2.0 * exp(logpdf(MvNormal(d_subset.μ, c^2*d_subset.Σ.mat), para_subset))
+    q1 += (1.0-α)/2.0 * exp(logpdf(MvNormal(d_subset.μ, c^2*d_subset.Σ.mat), para_draw))
+    q0 = log(q0)
+    q1 = log(q1)
+end
+
 """
 ```
 function `compute_ESS(loglh::Vector{T}, current_weights::Vector{T}, ϕ_n::T, ϕ_n1::T;
