@@ -91,7 +91,7 @@ d_subset    = read(file, "d_subset")
 c           = read(file, "c")
 close(file)
 
-test_θ_new, test_new_mix_density, test_old_mix_density = SMC.mvnormal_mixture_draw(para_subset,
+test_θ_new#=, test_new_mix_density, test_old_mix_density=# = SMC.mvnormal_mixture_draw(para_subset,
                                                                                    d_subset; c=c, α=α)
 
 #=JLD2.jldopen("reference/mvnormal_output.jld2", true, true, true, IOStream) do file
@@ -102,15 +102,15 @@ end=#
 
 file = JLD2.jldopen("reference/mvnormal_output.jld2")
     saved_θ_new = read(file, "θ_new")
-    saved_new_mix_density = read(file, "new_mix_density")
-    saved_old_mix_density = read(file, "old_mix_density")
+    #saved_new_mix_density = read(file, "new_mix_density")
+    #saved_old_mix_density = read(file, "old_mix_density")
 close(file)
 
 ####################################################################
 @testset "MvNormal Mixture Draw" begin
     @test test_θ_new == saved_θ_new
-    @test test_new_mix_density == saved_new_mix_density
-    @test test_old_mix_density == saved_old_mix_density
+    #@test test_new_mix_density == saved_new_mix_density
+    #@test test_old_mix_density == saved_old_mix_density
 end
 
 ####################################################################
