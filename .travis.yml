@@ -34,7 +34,7 @@ jobs:
       julia: 0.7
       os: linux
       script:
-        - julia --project=docs/ -e 'using Pkg; Pkg.add("ModelConstructors"); Pkg.develop(PackageSpec(path=pwd()));
+        - julia --project=docs/ -e 'using Pkg; Pkg.add("ModelConstructors"); Pkg.add("Distributions"); Pkg.develop(PackageSpec(path=pwd()));
                                                Pkg.instantiate()'
         - julia --project=docs/ docs/make.jl
       after_success: skip
