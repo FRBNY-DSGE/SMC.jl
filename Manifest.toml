@@ -170,7 +170,7 @@ uuid = "a63ad114-7e13-5084-954f-fe012c677804"
 deps = ["DataFrames", "Dates", "Distributed", "Distributions", "Nullables", "Printf", "Random", "SpecialFunctions"]
 git-tree-sha1 = "a570069f120c520bf61e3507b442faf8a452fd88"
 uuid = "e47e5152-bd14-11e9-1b46-c951f0a7041d"
-version = "0.1.0"
+version = "0.1"
 
 [[Nullables]]
 deps = ["Compat"]
