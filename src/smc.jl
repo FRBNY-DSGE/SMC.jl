@@ -206,7 +206,6 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 
     # Instantiate incremental and normalized weight matrices for logMDD calculation
     if continue_intermediate
-        z_matrix = load(loadpath, "z")
         w_matrix = load(loadpath, "w")
         W_matrix = load(loadpath, "W")
         j        = load(loadpath, "j")
@@ -214,7 +213,6 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         c        = cloud.c
         ϕ_prop   = proposed_fixed_schedule[j]
     else
-        z_matrix = ones(1)
         w_matrix = zeros(n_parts, 1)
         W_matrix = tempered_update ? get_weights(cloud) : fill(1/n_parts,(n_parts, 1))
     end
@@ -263,7 +261,6 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         normalize_weights!(cloud)
         normalized_weights = get_weights(cloud)
 
-        push!(z_matrix, sum(mult_weights))
         w_matrix = hcat(w_matrix, incremental_weights)
         W_matrix = hcat(W_matrix, normalized_weights)
 
@@ -346,7 +343,6 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
                 write(file, "cloud", cloud)
                 write(file, "w", w_matrix)
                 write(file, "W", W_matrix)
-                write(file, "z", z_matrix)
                 write(file, "j", j)
             end
         end
@@ -365,7 +361,6 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
             write(file, "cloud", cloud)
             write(file, "w", w_matrix)
             write(file, "W", W_matrix)
-            write(file, "z", z_matrix)
         end
     end
 end
