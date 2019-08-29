@@ -284,7 +284,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
             reset_weights!(cloud)
             cloud.resamples += 1
             resampled_last_period = true
-            W_matrix[:, i] = fill(1/n_parts, (n_parts, 1))
+            W_matrix[:, i] .= 1/n_parts
         end
 
         ##############################################################################
