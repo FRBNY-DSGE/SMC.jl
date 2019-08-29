@@ -34,14 +34,12 @@ test_file = load(rawpath(m, "estimate", "smc_cloud.jld2"))
 test_cloud  = test_file["cloud"]
 test_w      = test_file["w"]
 test_W      = test_file["W"]
-test_z = test_file["z"]
 
 if writing_output
     jldopen("reference/smc_cloud_fix=true.jld2", true, true, true, IOStream) do file
         write(file, "cloud", test_cloud)
         write(file, "w", test_w)
         write(file, "W", test_W)
-        write(file, "z", test_z)
     end
 end
 
