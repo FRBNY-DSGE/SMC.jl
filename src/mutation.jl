@@ -1,11 +1,11 @@
 """
 ```
 mutation(loglikelihood::Function, parameters::ParameterVector{U},
-                  data::Matrix{S}, p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
-                  blocks_free::Vector{Vector{Int}}, blocks_all::Vector{Vector{Int}},
-                  ϕ_n::S, ϕ_n1::S; c::S = 1., α::S = 1., n_mh_steps::Int = 1,
-                  old_data::T = T(undef, size(data, 1), 0)) where {S<:AbstractFloat,
-                                                                   T<:AbstractMatrix, U<:Number}
+         data::Matrix{S}, p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
+         blocks_free::Vector{Vector{Int}}, blocks_all::Vector{Vector{Int}},
+         ϕ_n::S, ϕ_n1::S; c::S = 1., α::S = 1., n_mh_steps::Int = 1,
+         old_data::T = T(undef, size(data, 1), 0)) where {S<:AbstractFloat,
+                                                          T<:AbstractMatrix, U<:Number}
 ```
 
 Execute one proposed move of the Metropolis-Hastings algorithm for a given parameter
@@ -39,12 +39,29 @@ Execute one proposed move of the Metropolis-Hastings algorithm for a given param
     log-likelihood, prior, and acceptance indicator.
 
 """
-function mutation(loglikelihood::Function, parameters::ParameterVector{U},
+function mutation(mutation_method::Symbol, loglikelihood::Function, parameters::ParameterVector{U},
                   data::Matrix{S}, p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                   blocks_free::Vector{Vector{Int}}, blocks_all::Vector{Vector{Int}},
                   ϕ_n::S, ϕ_n1::S; c::S = 1., α::S = 1., n_mh_steps::Int = 1,
                   old_data::T = T(undef, size(data, 1), 0)) where {S<:AbstractFloat,
                                                                    T<:AbstractMatrix, U<:Number}
+    if mutation_method == :MH
+        mutation_mh(loglikelihood, parameters, data, p, d_μ, d_Σ, blocks_free, blocks_all,
+                    ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data)
+    #else if mutation_method == :HMC
+    else
+        @throw error("Method for mutation not recognized. Options are " *
+                     "Metropolis-Hastings (:MH) and Hamiltonian Monte Carlo (:HMC).")
+    end
+
+end
+
+function mutation_mh(loglikelihood::Function, parameters::ParameterVector{U},
+                     data::Matrix{S}, p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
+                     blocks_free::Vector{Vector{Int}}, blocks_all::Vector{Vector{Int}},
+                     ϕ_n::S, ϕ_n1::S; c::S = 1., α::S = 1., n_mh_steps::Int = 1,
+                     old_data::T = T(undef, size(data, 1), 0)) where {S<:AbstractFloat,
+                                                                      T<:AbstractMatrix, U<:Number}
 
     n_free_para = length([!θ.fixed for θ in parameters])
     step_prob   = rand() # Draw initial step probability
