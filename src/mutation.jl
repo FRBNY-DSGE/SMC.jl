@@ -48,7 +48,7 @@ function mutation(mutation_method::Symbol, loglikelihood::Function, parameters::
     if mutation_method == :MH
         mutation_mh(loglikelihood, parameters, data, p, d_μ, d_Σ, blocks_free, blocks_all,
                     ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data)
-    #else if mutation_method == :HMC
+    #elseif mutation_method == :HMC
     else
         throw(error("Method for mutation not recognized. Options are " *
                     "Metropolis-Hastings (:MH) and Hamiltonian Monte Carlo (:HMC)."))

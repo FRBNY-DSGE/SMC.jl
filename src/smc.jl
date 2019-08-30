@@ -156,7 +156,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
                                blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
                                n_mh_steps = n_mh_steps, old_data = old_data)
         end
-    else if mutation_method == :HMC
+    elseif mutation_method == :HMC
         # to implement
     else
         throw(error("Method for mutation not recognized. Options are: " *

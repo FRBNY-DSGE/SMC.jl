@@ -99,8 +99,8 @@ function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
     return θ_new
 end
 
-get_cov(d::MvNormal)::Matrix = d.Σ.mat
-get_cov(d::DegenerateMvNormal)::Matrix = d.σ
+get_cov(d::MvNormal)::Matrix = isposdef(d.Σ.mat) ? d.Σ.mat : (d.Σ.mat + d.Σ.mat') / 2.0
+get_cov(d::DegenerateMvNormal)::Matrix = isposdef(d.σ) ? d.σ : (d.σ + d.σ') / 2.0
 
 """
 ```
