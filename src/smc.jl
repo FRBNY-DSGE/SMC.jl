@@ -159,8 +159,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     else if mutation_method == :HMC
         # to implement
     else
-        @throw error("Method for mutation not recognized. Options are: " *
-                     "Metropolis-Hastings (:MH) and Hamiltonian Monte Carlo (:HMC).")
+        throw(error("Method for mutation not recognized. Options are: " *
+                    "Metropolis-Hastings (:MH) and Hamiltonian Monte Carlo (:HMC)."))
     end
 
     # Check that if there's a tempered update, old and current vintages are different
