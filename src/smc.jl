@@ -124,7 +124,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
              filestring_addl::Vector{String} = Vector{String}(),
              loadpath::String = "",
              savepath::String = "smc_cloud.jld2",
-             particle_store_path::String = "",
+             particle_store_path::String = "smcsave.h5",
              continue_intermediate::Bool = false,
              intermediate_stage_start::Int = 0,
              save_intermediate::Bool = false,
@@ -364,7 +364,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     ### Saving data
     ##################################################################################
     if !testing
-        simfile = h5open(particle_store_path * "smcsave.h5", "w")
+        simfile = h5open(particle_store_path, "w")
         particle_store = d_create(simfile, "smcparams", datatype(Float64),
                                   dataspace(n_parts, n_para))
         for k in 1:n_parts; particle_store[k,:] = cloud.particles[k, 1:n_para] end
