@@ -193,7 +193,7 @@ end
 
 """
 ```
-`function generate_free_blocks(n_free_para::Int64, n_blocks::Int64)`
+`generate_free_blocks(n_free_para::Int64, n_blocks::Int64)`
 ```
 
 Return a Vector{Vector{Int64}} where each internal Vector{Int64} contains a subset of the range
