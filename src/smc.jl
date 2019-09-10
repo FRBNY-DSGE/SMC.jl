@@ -182,7 +182,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 
     if tempered_update
         # If user does not input Cloud object themselves, looks for cloud in loadpath.
-        cloud = isempty(old_cloud) ? load(loadpath, "cloud") : old_cloud
+        cloud = cloud_isempty(old_cloud) ? load(loadpath, "cloud") : old_cloud
 
         initialize_cloud_settings!(cloud; tempered_update = tempered_update,
                                    n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
