@@ -1,10 +1,5 @@
 using ModelConstructors, FileIO, Random, SMC, JLD2
 
-### Estimate a single factor CAPM model
-# R_{it} = α_i + β_i R_{Mt} + ϵ_{it}, i = 1,...,N; t = 1,...,T
-# where R_{Mt} is the excess return on a market index in time period t,
-# and ϵ_{it} is an i.i.d. normally distributed mean zero shock with variance σ_i^2
-
 ### Construct a generic model and populate it with parameters
 reg = GenericModel()
 fn = dirname(@__FILE__)
