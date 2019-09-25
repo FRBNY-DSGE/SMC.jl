@@ -4,6 +4,7 @@ module SMC
     using BenchmarkTools, DataFrames, Dates, Distributed, Distributions
     using FileIO, HDF5, JLD2, LinearAlgebra, Random, Test
     using ModelConstructors
+    using LogDensityProblems, TransformVariables, DynamicHMC
 
     using Roots: fzero, ConvergenceFailed
     using StatsBase: sample, Weights

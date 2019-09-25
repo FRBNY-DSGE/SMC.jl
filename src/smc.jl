@@ -27,6 +27,11 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 
 - `parallel::Bool`: Flag for running algorithm in parallel.
 - `n_parts::Int`: Number of particles.
+- `mutation_method::Symbol`: Method for mutation step (MH or HMC)
+- `gradient_method::Union{Symbol,Function}`: Method for computing the gradient of the
+    likelihood when using HMC. By default, it autodifferentiates the likelihood function.
+    A user defined gradient can also be provided; SMC assumes this gradient takes
+    only one input   is a function of `parameters`.
 - `n_blocks::Int`: Number of parameter blocks in mutation step.
 - `n_mh_steps::Int`: Number of Metropolis Hastings steps to attempt during the mutation step.
 - `λ::S`: The 'bending coefficient' λ in Φ(n) = (n/N(Φ))^λ
@@ -97,6 +102,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
              n_parts::Int    = 5_000,
 
              mutation_method::Symbol = :MH,
+             likelihood_gradient::Union{Symbol,Function} = :autodiff,
 
              n_blocks::Int   = 1,
              n_mh_steps::Int = 1,
@@ -157,10 +163,33 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
                                n_mh_steps = n_mh_steps, old_data = old_data)
         end
     elseif mutation_method == :HMC
-        # to implement
+        # We use the DynamicHMC package, so we are following their
+        # syntax to implement user-defined derivatives.
+        struct LikelihoodSMCProblem{T} where T<:Real
+            model::AbstractModel
+
+        end
+
+        LogDensityProblems.dimension(::LikelihoodSMCProblem) = length(parameters)
+
+        if likelihood_gradient == :autodiff
+
+        elseif typeof(likelihood_gradient) != :Symbol
+            function LogDensityProblems.capabilities(::LikelihoodSMCProblem)
+                LogDensityProblems.LogDensityOrder{1}() # can do a gradient
+            end
+        else
+            throw(error("Method for likelihood gradient not recognized. Options are: " *
+                        "automatic differentiation (:autodiff) or a user defined " *
+                        "gradient"))
+
+        end
+
+
+
     else
         throw(error("Method for mutation not recognized. Options are: " *
-                    "Metropolis-Hastings (:MH) and Hamiltonian Monte Carlo (:HMC)."))
+                    "Metropolis-Hastings (:MH) or Hamiltonian Monte Carlo (:HMC)."))
     end
 
     # Check that if there's a tempered update, old and current vintages are different
