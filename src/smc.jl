@@ -102,7 +102,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
              n_parts::Int    = 5_000,
 
              mutation_method::Symbol = :MH,
-             likelihood_gradient::Union{Symbol,Function} = :autodiff,
+             likelihood_gradient::Function = zero,
 
              n_blocks::Int   = 1,
              n_mh_steps::Int = 1,
