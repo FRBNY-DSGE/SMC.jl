@@ -102,7 +102,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
              n_parts::Int    = 5_000,
 
              mutation_method::Symbol = :MH,
-             likelihood_gradient::Function = zero,
+             likelihood_gradient::Function = zeros,
 
              n_blocks::Int   = 1,
              n_mh_steps::Int = 1,
@@ -145,6 +145,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     sendto(workers(), parameters = parameters)
     sendto(workers(), data = data)
 
+    # TODO: This if/else syntax will not work to define these various problems on multiple nodes
     if mutation_method == :MH
         function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                  blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
@@ -166,15 +167,21 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         # We use the DynamicHMC package, so we are following their
         # syntax to implement user-defined derivatives.
         struct LikelihoodSMCProblem{T} where T<:Real
-            model::AbstractModel
-
+            "Log-likelihood function of model."
+            loglik::Function
+            "Observations."
+            data::AbstractMatrix
         end
 
         LogDensityProblems.dimension(::LikelihoodSMCProblem) = length(parameters)
 
-        if likelihood_gradient == :autodiff
+        if likelihood_gradient == zeros #:autodiff
+            function (problem::LikelihoodSMCProblem)(θ)
+                @unpack loglik, data = problem
 
-        elseif typeof(likelihood_gradient) != :Symbol
+
+            end
+        elseif likelihood_gradient != zeros
             function LogDensityProblems.capabilities(::LikelihoodSMCProblem)
                 LogDensityProblems.LogDensityOrder{1}() # can do a gradient
             end
@@ -182,7 +189,6 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
             throw(error("Method for likelihood gradient not recognized. Options are: " *
                         "automatic differentiation (:autodiff) or a user defined " *
                         "gradient"))
-
         end
 
 
