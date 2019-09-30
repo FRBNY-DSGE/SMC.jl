@@ -3,7 +3,6 @@ writing_output = false
 ####################################################################
 # Testing Adaptive Φ Solution
 ####################################################################
-
 file   = JLD2.jldopen("reference/helpers_input.jld2", "r")
 cloud  = DSGE.old_to_new_cloud(DSGE.Cloud(read(file, "cloud")))
 i_smc  = read(file, "i")
@@ -90,8 +89,7 @@ d_subset    = read(file, "d_subset")
 c           = read(file, "c")
 close(file)
 
-test_θ_new#=, test_new_mix_density, test_old_mix_density=# = SMC.mvnormal_mixture_draw(para_subset,
-                                                                                   d_subset; c=c, α=α)
+test_θ_new = SMC.mvnormal_mixture_draw(para_subset, d_subset; c=c, α=α)
 
 #=JLD2.jldopen("reference/mvnormal_output.jld2", true, true, true, IOStream) do file
     write(file, "θ_new", test_θ_new)
@@ -101,15 +99,11 @@ end=#
 
 file = JLD2.jldopen("reference/mvnormal_output.jld2")
     saved_θ_new = read(file, "θ_new")
-    #saved_new_mix_density = read(file, "new_mix_density")
-    #saved_old_mix_density = read(file, "old_mix_density")
 close(file)
 
 ####################################################################
 @testset "MvNormal Mixture Draw" begin
     @test test_θ_new == saved_θ_new
-    #@test test_new_mix_density == saved_new_mix_density
-    #@test test_old_mix_density == saved_old_mix_density
 end
 
 ####################################################################
@@ -156,4 +150,26 @@ test_ESS = SMC.compute_ESS(loglh, current_weights, ϕ_n, ϕ_n1)
 ####################################################################
 @testset "Compute ESS" begin
     @test test_ESS ≈ saved_ESS
+end
+
+####################################################################
+# Testing Block Creation
+####################################################################
+m = AnSchorfheide()
+
+free_para_inds = findall(x -> !x.fixed, m.parameters)
+n_free_para    = length(free_para_inds)
+n_blocks       = 3
+
+@everywhere Random.seed!(42)
+test_blocks_free = SMC.generate_free_blocks(n_free_para, n_blocks)
+test_blocks_all  = SMC.generate_all_blocks(test_blocks_free, free_para_inds)
+
+saved_blocks_free = load("reference/util.jld2", "blocks_free")
+saved_blocks_all  = load("reference/util.jld2", "blocks_all")
+
+####################################################################
+@testset "Mutation block generation" begin
+    @test test_blocks_free == saved_blocks_free
+    @test test_blocks_all  == saved_blocks_all
 end
