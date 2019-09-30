@@ -1,8 +1,8 @@
 """
 ```
 `function solve_adaptive_ϕ(cloud::Cloud, proposed_fixed_schedule::Vector{Float64},
-                          i::Int64, j::Int64, ϕ_prop::Float64, ϕ_n1::Float64,
-                          tempering_target::Float64, resampled_last_period::Bool)`
+                           i::Int64, j::Int64, ϕ_prop::Float64, ϕ_n1::Float64,
+                           tempering_target::Float64, resampled_last_period::Bool)`
 ```
 Solves for next Φ. Returns ϕ_n, resampled_last_period, j, ϕ_prop.
 """
@@ -58,7 +58,7 @@ end
 """
 ```
 `mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
-                                    c::T = 1.0, α::T = 1.0) where T<:AbstractFloat`
+                       c::T = 1.0, α::T = 1.0) where T<:AbstractFloat`
 ```
 
 Create a `DegenerateMvNormal` distribution object, `d`, from a parameter vector, `p`, and a
@@ -220,8 +220,7 @@ end
 
 """
 ```
-`function generate_all_blocks(blocks_free::Vector{Vector{Int64}}, free_para_inds::Vector{Int64})
-        n_free_para = length(free_para_inds)
+`generate_all_blocks(blocks_free::Vector{Vector{Int64}}, free_para_inds::Vector{Int64})`
 ```
 
 Return a Vector{Vector{Int64}} where each internal Vector{Int64} contains indices
