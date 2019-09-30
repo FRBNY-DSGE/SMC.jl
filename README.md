@@ -16,7 +16,7 @@ Comments and suggestions are welcome, and best submitted as either an issue or a
 
 Installation
 ------
-To install, run the following commands in Julia 0.7 (support for Julia 1.0 and 1.1 soon!)
+To install, run the following commands:
 ```julia
 julia>]add ModelConstructors
 julia>]add SMC
