@@ -37,7 +37,6 @@ function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
             success = true
         end
     end
-
     return vector_reshape(draw, draw_loglh, draw_logpost)
 end
 
