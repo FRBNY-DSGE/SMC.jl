@@ -27,5 +27,5 @@ module SMC
     include("util.jl")
     include("mutation.jl")
     include("resample.jl")
-    include("smc.jl")
+    include("smc_main.jl")
 end
