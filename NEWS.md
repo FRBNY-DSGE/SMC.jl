@@ -1,4 +1,4 @@
-# SMC.jl 0.1.3 Release Notes
+# SMC.jl 0.1.4 Release Notes
 Bug fixes and cleanup, including:
 - Turn off precompilation (causes issues on some heterogeneous clusters)
 - Fix capitalization bug on Mac and Windows
