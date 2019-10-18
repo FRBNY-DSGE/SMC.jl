@@ -1,33 +1,29 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Using SMC · SMC.jl</title><link href="https://cdnjs.cloudflare.com/ajax/libs/normalize/4.2.0/normalize.min.css" rel="stylesheet" type="text/css"/><link href="https://fonts.googleapis.com/css?family=Lato|Roboto+Mono" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.3/css/font-awesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/default.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.2.0/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link href="../assets/documenter.css" rel="stylesheet" type="text/css"/></head><body><nav class="toc"><h1>SMC.jl</h1><select id="version-selector" onChange="window.location.href=this.value" style="visibility: hidden"></select><form class="search" id="search-form" action="../search/"><input id="search-query" name="q" type="text" placeholder="Search docs"/></form><ul><li><a class="toctext" href="../">Home</a></li><li class="current"><a class="toctext" href>Using SMC</a><ul class="internal"><li><a class="toctext" href="#SMC-Main-Function-1">SMC Main Function</a></li></ul></li><li><a class="toctext" href="../helpers/">Helper Functions</a></li><li><a class="toctext" href="../license/">License</a></li></ul></nav><article id="docs"><header><nav><ul><li><a href>Using SMC</a></li></ul><a class="edit-page" href="https://github.com/FRBNY-DSGE/SMC.jl/blob/master/docs/src/smc.md"><span class="fa"></span> Edit on GitHub</a></nav><hr/><div id="topbar"><span>Using SMC</span><a class="fa fa-bars" href="#"></a></div></header><h2><a class="nav-anchor" id="SMC-Main-Function-1" href="#SMC-Main-Function-1">SMC Main Function</a></h2><p>You can use SMC to estimate any Bayesian model. This requires (1) parameters and their associated prior distributions (2) data (3) a likliehood function. These three ingredients are the only inputs into the smc driver.</p><p><code>smc(loglikelihood::Function, parameters::ParameterVector, data::Matrix)</code> function.</p><p>Let&#39;s look at an example. First, we&#39;ll make a model. We need the <a href="https://frbny-dsge.github.io/ModelConstructors.jl">ModelConstructors</a> package to do that.</p><pre><code class="language-julia">using ModelConstructors
-ols_model = GenericModel()</code></pre><pre><code class="language-none">Model 
-no. parameters:             0
-description:
- A generic model: You can put parameters, states, shocks, observables, pseudo-observables, spec, subpsec, settings inside of me
-</code></pre><p>Next, assign our intercept and coefficient parameters to the model.</p><pre><code class="language-">reg &lt;= parameter(:α1, 0., (-1e5, 1e5), (-1e5, 1e5), Untransformed(), Normal(0, 10), fixed = false)
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Using SMC · SMC.jl</title><link href="https://cdnjs.cloudflare.com/ajax/libs/normalize/4.2.0/normalize.min.css" rel="stylesheet" type="text/css"/><link href="https://fonts.googleapis.com/css?family=Lato|Roboto+Mono" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.3/css/font-awesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/default.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.2.0/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link href="../assets/documenter.css" rel="stylesheet" type="text/css"/></head><body><nav class="toc"><h1>SMC.jl</h1><select id="version-selector" onChange="window.location.href=this.value" style="visibility: hidden"></select><form class="search" id="search-form" action="../search/"><input id="search-query" name="q" type="text" placeholder="Search docs"/></form><ul><li><a class="toctext" href="../">Home</a></li><li class="current"><a class="toctext" href>Using SMC</a><ul class="internal"><li><a class="toctext" href="#SMC-Main-Function-1">SMC Main Function</a></li></ul></li><li><a class="toctext" href="../helpers/">Helper Functions</a></li><li><a class="toctext" href="../license/">License</a></li></ul></nav><article id="docs"><header><nav><ul><li><a href>Using SMC</a></li></ul><a class="edit-page" href="https://github.com/FRBNY-DSGE/SMC.jl/blob/master/docs/src/smc.md"><span class="fa"></span> Edit on GitHub</a></nav><hr/><div id="topbar"><span>Using SMC</span><a class="fa fa-bars" href="#"></a></div></header><h2><a class="nav-anchor" id="SMC-Main-Function-1" href="#SMC-Main-Function-1">SMC Main Function</a></h2><p>You can use SMC to estimate any Bayesian model. This requires (1) parameters and their associated prior distributions (2) data (3) a likliehood function. These three ingredients are the only inputs into the smc driver.</p><p><code>smc(loglikelihood::Function, parameters::ParameterVector, data::Matrix)</code> function.</p><p>Let&#39;s look at an example. First, we&#39;ll make a model. We need the <a href="https://frbny-dsge.github.io/ModelConstructors.jl">ModelConstructors</a> package to do that.</p><pre><code class="language-">using ModelConstructors
+ols_model = GenericModel()</code></pre><p>Next, assign our intercept and coefficient parameters to the model.</p><pre><code class="language-">reg &lt;= parameter(:α1, 0., (-1e5, 1e5), (-1e5, 1e5), Untransformed(), Normal(0, 10), fixed = false)
 reg &lt;= parameter(:β1, 0., (-1e5, 1e5), (-1e5, 1e5), Untransformed(), Normal(0, 10), fixed = false)</code></pre><p>The first argument is the name of the parameter, the second is its initial value, the third and fourther are bounds on the parameter (they should always be the same). If the sampler draws a value outside of these bounds, it&#39;ll try again. The fifth argument is whether you would like to perform a transformation on the parameter when using it (ignore this for now–it&#39;s for more advanced users). The sixth argument is the prior, <span>$N(0, 10)$</span>, and last argument says the parameters aren&#39;t fixed parameters (i.e. we&#39;re trying to estimate them!)</p><p>We&#39;ll make some artifical data to test our model</p><pre><code class="language-julia">β = 1.
 α = 1.
 y = β*X + α</code></pre><pre><code class="language-none">100-element Array{Float64,1}:
- 1.9779069797824471
- 1.1341482306324635
- 1.2492994326120144
- 1.7174104845836238
- 1.6895382989311778
- 1.8344650625858037
- 1.4608112971147318
- 1.3790291073991603
- 1.386723194960307 
- 1.7664517675707059
+ 1.3925773536756336
+ 1.035204930743568 
+ 1.8722968318868496
+ 1.4808741094546194
+ 1.9058080438104548
+ 1.469632278929668 
+ 1.531699855445666 
+ 1.5375209064594293
+ 1.6767338370386717
+ 1.0163251333080097
  ⋮                 
- 1.6377972691957599
- 1.6582690559683748
- 1.6332982251392738
- 1.144044146084599 
- 1.449472377367274 
- 1.0694834054631803
- 1.294774329976495 
- 1.6616746988046838
- 1.0047136938509484</code></pre><p>We need a log-likelihood function! Note that it&#39;s important you define a log-likelihood function rather than a likelihood function.</p><pre><code class="language-julia">function likelihood_fnct(p, d)
+ 1.8575178697652277
+ 1.790732549631496 
+ 1.2534378651327427
+ 1.3666585349216942
+ 1.4685880646099088
+ 1.477905836881349 
+ 1.8621134904760173
+ 1.6280402895705322
+ 1.1806901118889352</code></pre><p>We need a log-likelihood function! Note that it&#39;s important you define a log-likelihood function rather than a likelihood function.</p><pre><code class="language-julia">function likelihood_fnct(p, d)
     α = p[1]
     β = p[2]
     Σ = 1
