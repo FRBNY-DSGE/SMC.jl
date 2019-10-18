@@ -43,7 +43,7 @@ market_data = load("../../../save/input_data/capm.jld2", "market_data")
 # data is a time series of individual factor returns
 # use S&P 500 data and a returns on a couple stocks. To get into returns,
 # just take the log of the prices and regress those on each other.
-function likelihood_fnct(p, d)
+function log_likelihood_fnct(p, d)
     # we assume the ordering of (α_i, β_i, σ_i)
     Σ = zeros(N,N)
     α = Vector{Float64}(undef,N)
@@ -61,10 +61,10 @@ function likelihood_fnct(p, d)
     for t in 1:size(d,2)
         logprob += term1 - 1/2 * dot(errors, inv_Σ * errors)
     end
-    return exp(logprob)
+    return logprob
 end
 
 Random.seed!(1793)
 println("Starting to estimate CAPM with SMC . . .")
 @everywhere using SMC, OrderedCollections
-smc(likelihood_fnct, capm.parameters, lik_data)
+smc(log_likelihood_fnct, capm.parameters, lik_data)
