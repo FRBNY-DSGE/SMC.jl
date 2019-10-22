@@ -8,8 +8,8 @@ using ModelConstructors, FileIO, Random, SMC
 ### Construct a generic model and populate it with parameters
 capm = GenericModel()
 fn = dirname(@__FILE__)
-capm <= Setting(:dataroot, "$(fn)/../save/input_data/")
-capm <= Setting(:saveroot, "$(fn)/../save/")
+capm <= Setting(:dataroot, "$(fn)")
+capm <= Setting(:saveroot, "$(fn)")
 
 capm <= parameter(:α1, 0., (-1e5, 1e5), (-1e5, 1e5), Untransformed(), Normal(0, 1e3),
                   fixed = false)
