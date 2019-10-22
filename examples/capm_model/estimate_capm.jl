@@ -2,7 +2,9 @@ using ModelConstructors, FileIO, Random, SMC
 
 ### Estimate a single factor CAPM model
 # R_{it} = α_i + β_i R_{Mt} + ϵ_{it}, i = 1,...,N; t = 1,...,T
-# where R_{Mt} is the excess return on a market index in time period t,
+# where
+# R_{Mt} is the excess return on a market index in time period t,
+# R_{it} are returns for stock i in period t
 # and ϵ_{it} is an i.i.d. normally distributed mean zero shock with variance σ_i^2
 
 ### Construct a generic model and populate it with parameters
@@ -34,7 +36,9 @@ capm <= parameter(:σ3, 1., (1e-5, 1e5), (1e-5, 1e5), SquareRoot(), Uniform(0, 1
 
 ## Get data
 N = 3 # number of asset returns
+# Data that enters the likelihood: the three stock prices
 lik_data = load("../data/capm.jld2", "lik_data")
+# Data that doesn't enter the likelihood: the S&P index regressor
 market_data = load("../data/capm.jld2", "market_data")
 
 ## Construct likelihood function:
