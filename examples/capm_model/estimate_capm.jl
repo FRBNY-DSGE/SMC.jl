@@ -8,8 +8,8 @@ using ModelConstructors, FileIO, Random, SMC
 ### Construct a generic model and populate it with parameters
 capm = GenericModel()
 fn = dirname(@__FILE__)
-capm <= Setting(:dataroot, "$(fn)")
-capm <= Setting(:saveroot, "$(fn)")
+capm <= Setting(:dataroot, "../data/$(fn)")
+capm <= Setting(:saveroot, "../data/$(fn)")
 
 capm <= parameter(:α1, 0., (-1e5, 1e5), (-1e5, 1e5), Untransformed(), Normal(0, 1e3),
                   fixed = false)
@@ -34,8 +34,8 @@ capm <= parameter(:σ3, 1., (1e-5, 1e5), (1e-5, 1e5), SquareRoot(), Uniform(0, 1
 
 ## Get data
 N = 3 # number of asset returns
-lik_data = load("../../../save/input_data/capm.jld2", "lik_data")
-market_data = load("../../../save/input_data/capm.jld2", "market_data")
+lik_data = load("../data/capm.jld2", "lik_data")
+market_data = load("../data/capm.jld2", "market_data")
 
 ## Construct likelihood function:
 # likelihood function is just R_{it} ∼ N(α_i + β_i R_{Mt}, σ_i)
