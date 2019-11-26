@@ -338,7 +338,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         end
 
         if mod(cloud.stage_index, intermediate_stage_increment) == 0 && save_intermediate
-            jldopen(replace(savepath, r".jld2", "_stage=$(cloud.stage_index).jld2"),
+            jldopen(replace(savepath, ".jld2" => "_stage=$(cloud.stage_index).jld2"),
                     true, true, true, IOStream) do file
                 write(file, "cloud", cloud)
                 write(file, "w", w_matrix)
