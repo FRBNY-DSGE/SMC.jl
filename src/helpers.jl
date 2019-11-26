@@ -173,6 +173,10 @@ function compute_ESS(loglh::Vector{T}, current_weights::Vector{T}, ϕ_n::T, ϕ_n
 end
 
 function generate_param_blocks(n_params::Int64, n_blocks::Int64)
+    if n_blocks == 1
+        return [collect(1:n_params)]
+    end
+
     rand_inds = shuffle(1:n_params)
 
     subset_length     = cld(n_params, n_blocks) # ceiling division
