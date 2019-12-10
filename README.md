@@ -14,17 +14,13 @@ Our implementation features what we term *generalized tempering* for "online" es
 
 Comments and suggestions are welcome, and best submitted as either an issue or a pull request. :point_up:
 
-## Installation
+## Installation and Versioning
 
-`SMC.jl` is a registered Julia package in the [`General`](https://github.com/JuliaRegistries/General) registry. To install it, open your Julia REPL, type `]` to enter the package manager, and run
+`SMC.jl` is a registered Julia package in the [`General`](https://github.com/JuliaRegistries/General) registry, compatible with Julia `v0.7`, `v1.0`, and `v1.1`. To install it, open your Julia REPL, type `]` to enter the package manager, and run
 
 ```julia
 pkg> add SMC
 ```
-
-## Versioning
-
-`SMC.jl` is currently compatible with Julia `v0.7`, `v1.0`, and `v1.1`.
 
 ## Usage
 
