@@ -241,3 +241,7 @@ end
 function max(a::Real, b::Complex)
     return max(a, b.re)
 end
+
+function isempty(c::Cloud)
+    isempty(c.particles)
+end
