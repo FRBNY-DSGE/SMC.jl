@@ -115,7 +115,7 @@ close(file)
 ####################################################################
 @testset "Proposal densities" begin
     @test q0 == saved_q0
-    @test q1 == saved_q1
+    @test q1 ≈ saved_q1
 end
 
 
