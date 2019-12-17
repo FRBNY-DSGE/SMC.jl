@@ -8,26 +8,26 @@ description:
 reg &lt;= parameter(:β1, 0., (-1e5, 1e5), (-1e5, 1e5), Untransformed(), Normal(0, 10), fixed = false)</code></pre><p>The first argument is the name of the parameter, the second is its initial value, the third and fourther are bounds on the parameter (they should always be the same). If the sampler draws a value outside of these bounds, it&#39;ll try again. The fifth argument is whether you would like to perform a transformation on the parameter when using it (ignore this for now–it&#39;s for more advanced users). The sixth argument is the prior, <span>$N(0, 10)$</span>, and last argument says the parameters aren&#39;t fixed parameters (i.e. we&#39;re trying to estimate them!)</p><p>We&#39;ll make some artifical data to test our model</p><pre><code class="language-julia">β = 1.
 α = 1.
 y = β*X + α</code></pre><pre><code class="language-none">100-element Array{Float64,1}:
- 1.9239995017330822
- 1.9798920361621053
- 1.5539774488086322
- 1.3773503658450466
- 1.0773036466264942
- 1.7305653476207403
- 1.996885675618396 
- 1.9527551657167153
- 1.4695269990636253
- 1.7886667173519375
+ 1.1833061615015117
+ 1.4931198628548072
+ 1.2687410777569081
+ 1.6076471941674375
+ 1.3372295763266164
+ 1.3993314043773604
+ 1.7450372118432587
+ 1.4161490262102931
+ 1.8724607246311356
+ 1.5575306890895544
  ⋮                 
- 1.964448700695148 
- 1.6759482887578863
- 1.057051125865945 
- 1.0794148708246984
- 1.5245298829959133
- 1.7455762324547894
- 1.1962724150646797
- 1.778847915674617 
- 1.9720461454620064</code></pre><p>We need a log-likelihood function! Note that it&#39;s important you define a log-likelihood function rather than a likelihood function.</p><pre><code class="language-julia">function likelihood_fnct(p, d)
+ 1.8270541068852388
+ 1.5683557051354757
+ 1.4438019624135778
+ 1.6333900693353023
+ 1.2339634530464805
+ 1.0100043917400265
+ 1.8047578593628946
+ 1.5685999718424335
+ 1.1770954630458779</code></pre><p>We need a log-likelihood function! Note that it&#39;s important you define a log-likelihood function rather than a likelihood function.</p><pre><code class="language-julia">function likelihood_fnct(p, d)
     α = p[1]
     β = p[2]
     Σ = 1
