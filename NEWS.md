@@ -1,3 +1,6 @@
+# SMC.jl 0.1.5 Release Notes
+Bug fixes and cleanup.
+
 # SMC.jl 0.1.4 Release Notes
 Bug fixes and cleanup, including:
 - Turn off precompilation (causes issues on some heterogeneous clusters)
