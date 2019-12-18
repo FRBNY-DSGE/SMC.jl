@@ -1,6 +1,6 @@
 name = "SMC"
 uuid = "c6043b28-c053-11e9-348c-19d3cb73bbb3"
-authors = ["Michael Cai <michael.cai@ny.frb.org>", "William Chen <william.chen@ny.frb.org>", "Ethan Matlin <ethan.matlin@ny.frb.org>", "Reca Sarfati <rebecca.sarfati@ny.frb.org>"]
+authors = ["Michael Cai <michael.cai@ny.frb.org>", "William Chen <william.chen@ny.frb.org>", "Ethan Matlin <ethan.matlin@ny.frb.org>", "Reca Sarfati <rebecca_sarfati@alumni.brown.edu>"]
 version = "v0.1.2"
 
 [deps]
@@ -10,10 +10,12 @@ DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+DynamicHMC = "bbc10e6e-7c05-544b-b16e-64fede858acb"
 FileIO = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
 HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+LogDensityProblems = "6fdf6af0-433a-55f7-b3ed-c6c6e0b8df7c"
 ModelConstructors = "e47e5152-bd14-11e9-1b46-c951f0a7041d"
 PDMats = "90014a1f-27ba-587c-ab20-58faa44d9150"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
@@ -21,6 +23,7 @@ Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Roots = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+TransformVariables = "84d833dd-6860-57f9-a1a7-6da5db126cff"
 
 [compat]
 julia = "0.7, 1.0"
