@@ -41,7 +41,7 @@ end
 function Cloud(n_params::Int, n_parts::Int)
 ```
 Easier constructor for Cloud, which initializes the weights to be
-equal, and everything else in the particle object etc. to be empty.
+equal, and everything else in the particle object to be empty.
 """
 function Cloud(n_params::Int, n_parts::Int)
     return Cloud(Matrix{Float64}(undef, n_parts, n_params + 5),
@@ -61,7 +61,6 @@ ind_weight(N::Int)    = N
 
 """
 ```
-`function get_weights(c::Cloud)`
 function get_weights(c::Matrix{Float64})
 ```
 Returns Vector{Float64}(n_parts) of weights of particles in cloud.
@@ -69,14 +68,20 @@ Returns Vector{Float64}(n_parts) of weights of particles in cloud.
 function get_weights(c::Matrix{Float64})
     return c[:, ind_weight(size(c,2))]
 end
+
+"""
+```
+function get_weights(c::Cloud)
+```
+Returns Vector{Float64}(n_parts) of weights of particles in cloud.
+"""
 function get_weights(c::Cloud)
     return c.particles[:, ind_weight(size(c.particles,2))]
 end
 
 """
 ```
-`function get_vals(c::Cloud; transposed::Bool = true)`
-function get_vals(c::Matrix{Float64})
+function get_vals(c::Cloud; transposed::Bool = true)
 ```
 Returns Matrix{Float64}(n_params, n_parts) of parameter values in particle cloud.
 """
@@ -84,6 +89,13 @@ function get_vals(c::Matrix{Float64}; transpose::Bool = true)
     return transpose ? Matrix{Float64}(c[:, 1:ind_para_end(size(c, 2))]') :
                                        c[:, 1:ind_para_end(size(c, 2))]
 end
+
+"""
+```
+function get_vals(c::Matrix{Float64})
+```
+Returns Matrix{Float64}(n_params, n_parts) of parameter values in particle cloud.
+"""
 function get_vals(c::Cloud; transpose::Bool = true)
     return transpose ? Matrix{Float64}(c.particles[:, 1:ind_para_end(size(c.particles,2))]') :
                                        c.particles[:, 1:ind_para_end(size(c.particles,2))]

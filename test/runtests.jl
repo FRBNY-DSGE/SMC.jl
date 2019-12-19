@@ -1,8 +1,8 @@
 using Test
 using ModelConstructors, SMC, DSGE
-using LinearAlgebra, PDMats, Distributions
+using LinearAlgebra, PDMats, Distributions, SparseArrays
 using Printf, Distributed, Random, HDF5, FileIO, JLD2
-
+import SparseArrays.SparseMatrixCSC
 import ModelConstructors.Setting
 
 my_tests = [
