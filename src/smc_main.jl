@@ -125,7 +125,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
              continue_intermediate::Bool = false,
              intermediate_stage_start::Int = 0,
              save_intermediate::Bool = false,
-             intermediate_stage_increment::Int = 10) where {S<:AbstractFloat, U<:Number}
+             intermediate_stage_increment::Int = 10,
+             tempered_update_prior_weight::Float64 = 0.0) where {S<:AbstractFloat, U<:Number}
 
     ########################################################################################
     ### Settings
@@ -183,11 +184,30 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     if tempered_update
         # If user does not input Cloud object themselves, looks for cloud in loadpath.
         cloud = cloud_isempty(old_cloud) ? load(loadpath, "cloud") : old_cloud
+        if tempered_update_prior_weight == 0.0
+            initialize_cloud_settings!(cloud; tempered_update = tempered_update,
+                                       n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
+            initialize_likelihoods!(loglikelihood, parameters, data, cloud; parallel = parallel)
+        elseif tempered_update_prior_weight > 0.0
+            # Resample to get uniform weights from bridge
+            resamp_inds = resample(get_weights(cloud))
+            # Only want half of the bridge particles
+            resamp_inds = rand(resamp_inds, Int((1-tempered_update_prior_weight)*n_parts))
+            bridge_cloud = Cloud(n_para, Int((1-tempered_update_prior_weight)*n_parts))
+            update_cloud!(bridge_cloud, cloud.particles[resamp_inds, :])
 
-        initialize_cloud_settings!(cloud; tempered_update = tempered_update,
-                                   n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
-        initialize_likelihoods!(loglikelihood, parameters, data, cloud; parallel = parallel)
+            # Make a cloud with drawing from the prior
+            prior_cloud = Cloud(n_para, Int(tempered_update_prior_weight*n_parts))
+            initial_draw!(loglikelihood, parameters, data, prior_cloud, parallel = parallel)
 
+            # Update with bridge/prior combination
+            update_cloud!(cloud, vcat(bridge_cloud.particles, prior_cloud.particles))
+            reset_weights!(cloud)
+            initialize_cloud_settings!(cloud; tempered_update = tempered_update,
+                             n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
+            initialize_likelihoods!(loglikelihood, parameters, data, cloud; parallel = parallel)
+            @show cloud.ESS
+        end
     elseif continue_intermediate
         cloud = load(loadpath, "cloud")
     else
@@ -328,7 +348,9 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         ##############################################################################
         ### Timekeeping and Output Generation
         ##############################################################################
-        cloud.total_sampling_time += Float64((time_ns() - start_time) * 1e-9)
+        stage_sampling_time = Float64((time_ns() - start_time) * 1e-9)
+        @show stage_sampling_time
+        cloud.total_sampling_time += stage_sampling_time
 
         end_stage_print(cloud, para_symbols; verbose = verbose,
                         use_fixed_schedule = use_fixed_schedule)
