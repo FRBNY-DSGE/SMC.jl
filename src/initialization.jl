@@ -24,7 +24,8 @@ function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
             end
         catch err
             if isa(err, ParamBoundsError) || isa(err, SingularException) ||
-               isa(err, LinearAlgebra.LAPACKException) || isa(err, PosDefException)
+               isa(err, LinearAlgebra.LAPACKException) || isa(err, PosDefException) ||
+               isa(err, DomainError)
                 draw_loglh = draw_logpost = -Inf
             else
                 throw(err)
