@@ -89,7 +89,7 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
 
             catch err
                 if isa(err, ParamBoundsError) || isa(err, LinearAlgebra.LAPACKException) ||
-                   isa(err, PosDefException)  || isa(err, SingularException)
+                   isa(err, PosDefException)  || isa(err, SingularException) || isa(err, DomainError)
                     prior_new = like_new = like_old_data = -Inf
                 else
                     throw(err)
