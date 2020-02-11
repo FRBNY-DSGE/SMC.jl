@@ -34,7 +34,7 @@ m <= Setting(:resampling_threshold, .5)
 m <= Setting(:use_fixed_schedule, true)
 
 ####################################################################
-init_cloud = Cloud(length(m.parameters), get_setting(m, :n_particles))
+init_cloud = SMC.Cloud(length(m.parameters), get_setting(m, :n_particles))
 
 @everywhere Random.seed!(42)
 SMC.initial_draw!(loglik_fn, m.parameters, data, init_cloud)
