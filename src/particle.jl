@@ -318,10 +318,11 @@ end
 function normalize_weights!(c::Matrix{Float64})
 function normalize_weights!(c::Cloud)
 ```
-Normalize weights in cloud to N, the number of particles.
+Normalize weights in cloud.
 """
 function normalize_weights!(c::Matrix{Float64})
-    sum_weights = sum(get_weights(c)) / Float64(size(c,1))
+    sum_weights = sum(get_weights(c))
+    c[:, ind_weight(size(c,2))] *= size(c,1)
     c[:, ind_weight(size(c,2))] /= sum_weights
 end
 function normalize_weights!(c::Cloud)
@@ -424,7 +425,7 @@ function weighted_mean(c::Matrix{Float64})
 Compute weighted mean of particle cloud.
 """
 function weighted_mean(c::Matrix{Float64})
-    return get_vals(c) * get_weights(c) / sum(get_weights(c))
+    return get_vals(c) * get_weights(c)
 end
 function weighted_mean(c::Cloud)
     return weighted_mean(c.particles)
@@ -469,8 +470,7 @@ function weighted_cov(c::Matrix{Float64})
 Compute weighted covariance of particle cloud.
 """
 function weighted_cov(c::Matrix{Float64})
-    return cov(get_vals(c; transpose = false),
-               Weights(get_weights(c) / sum(get_weights(c))), corrected = false)
+    return cov(get_vals(c; transpose = false), Weights(get_weights(c)), corrected = false)
 end
 function weighted_cov(c::Cloud)
     return weighted_cov(c.particles)
