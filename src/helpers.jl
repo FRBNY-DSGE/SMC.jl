@@ -165,11 +165,10 @@ Compute ESS given log likelihood, current weights, ϕ_n, ϕ_{n-1}, and old log l
 """
 function compute_ESS(loglh::Vector{T}, current_weights::Vector{T}, ϕ_n::T, ϕ_n1::T;
                      old_loglh::Vector{T} = zeros(length(loglh))) where T<:AbstractFloat
-    N            = length(loglh)
     inc_weights  = exp.((ϕ_n1 - ϕ_n) * old_loglh + (ϕ_n - ϕ_n1) * loglh)
     new_weights  = current_weights .* inc_weights
-    norm_weights = N * new_weights / sum(new_weights) # Normalize to N
-    ESS          = N^2 / sum(norm_weights .^ 2)       # Transform back for ESS
+    norm_weights = new_weights / sum(new_weights)
+    ESS          = 1 / sum(norm_weights .^ 2)
     return ESS
 end
 
