@@ -214,9 +214,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         ϕ_prop   = proposed_fixed_schedule[j]
     else
         w_matrix = zeros(n_parts, 1)
-        W_matrix = tempered_update ? (sum(get_weights(cloud)) <= 1.0 ?
-                                      get_weights(cloud)*n_parts : get_weights(cloud)) :
-                                      fill(1,(n_parts, 1))
+        W_matrix = tempered_update ? get_weights(cloud) : fill(1/n_parts,(n_parts, 1))
     end
 
     # Printing
@@ -260,7 +258,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         mult_weights = get_weights(cloud)
 
         # Normalize weights
-        normalized_weights = normalize_weights!(cloud) #get_weights(cloud)
+        normalize_weights!(cloud)
+        normalized_weights = get_weights(cloud)
 
         w_matrix = hcat(w_matrix, incremental_weights)
         W_matrix = hcat(W_matrix, normalized_weights)
@@ -270,7 +269,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         ##############################################################################
 
         # Calculate the degeneracy/effective sample size metric
-        push!(cloud.ESS, n_parts ^ 2 / sum(normalized_weights .^ 2))
+        push!(cloud.ESS, 1 / sum(normalized_weights .^ 2))
 
         # If this assertion does not hold then there are likely too few particles
         @assert !isnan(cloud.ESS[i]) "No particles have non-zero weight."
@@ -279,13 +278,13 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         if (cloud.ESS[i] < threshold)
 
             # Resample according to particle weights, uniformly reset weights to 1/n_parts
-            new_inds = resample(normalized_weights/n_parts; method = resampling_method)
+            new_inds = resample(normalized_weights; method = resampling_method)
             cloud.particles = [deepcopy(cloud.particles[k,j]) for k in new_inds,
                                j=1:size(cloud.particles, 2)]
             reset_weights!(cloud)
             cloud.resamples += 1
             resampled_last_period = true
-            W_matrix[:, i] .= 1
+            W_matrix[:, i] .= 1/n_parts
         end
 
         ##############################################################################

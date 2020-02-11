@@ -322,7 +322,6 @@ Normalize weights in cloud.
 """
 function normalize_weights!(c::Matrix{Float64})
     sum_weights = sum(get_weights(c))
-    c[:, ind_weight(size(c,2))] *= size(c,1)
     c[:, ind_weight(size(c,2))] /= sum_weights
 end
 function normalize_weights!(c::Cloud)
@@ -338,7 +337,7 @@ Uniformly reset weights of all particles to 1/n_parts.
 """
 function reset_weights!(c::Matrix{Float64})
     n_parts = size(c, 1)
-    c[:, ind_weight(size(c,2))] .= 1.0
+    c[:, ind_weight(size(c,2))] .= 1.0 / n_parts
 end
 function reset_weights!(c::Cloud)
     reset_weights!(c.particles)
