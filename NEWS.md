@@ -1,5 +1,5 @@
 # SMC.jl 0.1.5 Release Notes
-Bug fixes and cleanup.
+Bug fixes and cleanup; most notably, catching domain errors in mutation.
 
 # SMC.jl 0.1.4 Release Notes
 Bug fixes and cleanup, including:
