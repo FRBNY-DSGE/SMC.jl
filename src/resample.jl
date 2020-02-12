@@ -6,16 +6,19 @@ resample(weights::AbstractArray; method::Symbol = :systematic)
 Reindexing and reweighting samples from a degenerate distribution
 
 ### Arguments:
-- `weight`: wtsim[:,i]
+- `weights`: wtsim[:,i]
         the weights of a degenerate distribution.
+- `n_parts`: length(weights)
+        the desired length of output vector
 - `method`: :systematic, :multinomial, or :polyalgo
         the method for resampling
 
 ### Output:
 - `indx`: the newly assigned indices of parameter draws.
 """
-function resample(weights::Vector{Float64}; method::Symbol = :systematic)
-    n_parts = length(weights)
+function resample(weights::Vector{Float64}; n_parts::Int64 = length(weights),
+                  method::Symbol = :systematic)
+    #n_parts = length(weights)
 
     if method == :multinomial
         indx = Vector{Int64}(undef, n_parts)
