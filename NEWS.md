@@ -1,3 +1,7 @@
+# SMC.jl 0.1.6 Release Notes
+Bug fixes and cleanup:
+- Due to erroneous tagging situation, domain error catching included in this tag.
+
 # SMC.jl 0.1.5 Release Notes
 Bug fixes and cleanup; most notably, catching domain errors in mutation.
 
