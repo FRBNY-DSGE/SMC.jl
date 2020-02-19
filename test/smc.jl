@@ -25,7 +25,7 @@ m <= Setting(:smc_iteration, 0)
 m <= Setting(:use_chand_recursion, true)
 
 @everywhere Random.seed!(42)
-
+#=
 println("Estimating AnSchorfheide Model... (approx. 2 minutes)")
 DSGE.smc2(m, data, verbose = :none) # us.txt gives equiv to periods 95:174 in our current dataset
 println("Estimation done!")
@@ -80,3 +80,49 @@ end
     @test @test_matrix_approx_eq test_w saved_w
     @test @test_matrix_approx_eq test_W saved_W
 end
+=#
+####################################################################
+# Bridging Test
+####################################################################
+m = AnSchorfheide()
+
+save = normpath(joinpath(dirname(@__FILE__),"save"))
+m <= Setting(:saveroot, save)
+
+data = h5read("reference/smc.h5", "data")
+
+m <= Setting(:n_particles, 400)
+m <= Setting(:n_Φ, 100)
+m <= Setting(:λ, 2.0)
+m <= Setting(:n_smc_blocks, 1)
+m <= Setting(:use_parallel_workers, true)
+m <= Setting(:step_size_smc, 0.5)
+m <= Setting(:n_mh_steps_smc, 1)
+m <= Setting(:resampler_smc, :polyalgo)
+m <= Setting(:target_accept, 0.25)
+
+m <= Setting(:mixture_proportion, .9)
+m <= Setting(:adaptive_tempering_target_smc, false)
+m <= Setting(:resampling_threshold, .5)
+m <= Setting(:smc_iteration, 0)
+m <= Setting(:use_chand_recursion, true)
+
+@everywhere Random.seed!(42)
+#=
+# Estimate with 1st half of sample
+m_old = deepcopy(m)
+m_old <= Setting(:data_vintage, "00000")
+DSGE.smc2(m_old, data[:,1:Int(floor(end/2))], verbose = :none)
+=#
+m_new = deepcopy(m)
+
+# Estimate with 2nd half of sample
+m_new <= Setting(:data_vintage, "200218")
+m_new <= Setting(:tempered_update_prior_weight, 1.0)
+m_new <= Setting(:tempered_update, true)
+m_new <= Setting(:n_particles, 600)
+m_new <= Setting(:previous_data_vintage, "000000")
+
+DSGE.smc2(m_new, data, old_data = data[:,1:Int(floor(end/2))])
+
+error()
