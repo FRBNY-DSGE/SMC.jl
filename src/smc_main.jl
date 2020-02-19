@@ -193,7 +193,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 
         elseif tempered_update_prior_weight > 0.0
             # Resample from bridge distribution
-            n_to_resample = Int((1-tempered_update_prior_weight) * n_parts)
+            n_to_resample = Int(floor((1-tempered_update_prior_weight) * n_parts))
             n_from_prior  = n_parts - n_to_resample
             new_inds      = resample(get_weights(cloud); n_parts = n_to_resample,
                                      method = resampling_method)
