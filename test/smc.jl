@@ -1,3 +1,5 @@
+using DSGE, ModelConstructors, HDF5, Random
+
 path = dirname(@__FILE__)
 writing_output = false
 
@@ -118,11 +120,11 @@ m_new = deepcopy(m)
 
 # Estimate with 2nd half of sample
 m_new <= Setting(:data_vintage, "200218")
-m_new <= Setting(:tempered_update_prior_weight, 1.0)
+m_new <= Setting(:tempered_update_prior_weight, 0.0) #1.0)
 m_new <= Setting(:tempered_update, true)
-m_new <= Setting(:n_particles, 600)
+m_new <= Setting(:n_particles, 1000)
 m_new <= Setting(:previous_data_vintage, "000000")
 
 DSGE.smc2(m_new, data, old_data = data[:,1:Int(floor(end/2))])
 
-error()
+#error()
