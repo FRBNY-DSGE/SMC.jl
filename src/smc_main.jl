@@ -126,7 +126,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
              intermediate_stage_start::Int = 0,
              save_intermediate::Bool = false,
              intermediate_stage_increment::Int = 10,
-             tempered_update_prior_weight::Float64 = 0.0) where {S<:AbstractFloat, U<:Number}
+             tempered_update_prior_weight::S = 0.0) where {S<:AbstractFloat, U<:Number}
 
     ########################################################################################
     ### Settings
@@ -192,11 +192,9 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
             initialize_likelihoods!(loglikelihood, parameters, data, cloud; parallel = parallel)
 
         elseif tempered_update_prior_weight > 0.0
-
             # Resample from bridge distribution
             n_to_resample = Int((1-tempered_update_prior_weight) * n_parts)
             n_from_prior  = n_parts - n_to_resample
-
             new_inds      = resample(get_weights(cloud); n_parts = n_to_resample,
                                      method = resampling_method)
 
@@ -216,6 +214,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
             initialize_cloud_settings!(cloud; tempered_update = tempered_update,
                              n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
             initialize_likelihoods!(loglikelihood, parameters, data, cloud; parallel = parallel)
+
         end
     elseif continue_intermediate
         cloud = load(loadpath, "cloud")
@@ -359,7 +358,6 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         ### Timekeeping and Output Generation
         ##############################################################################
         stage_sampling_time = Float64((time_ns() - start_time) * 1e-9)
-        @show stage_sampling_time
         cloud.total_sampling_time += stage_sampling_time
 
         end_stage_print(cloud, para_symbols; verbose = verbose,

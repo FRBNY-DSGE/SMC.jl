@@ -63,7 +63,7 @@ function resample(weights::Vector{Float64}; n_parts::Int64 = length(weights),
 
     elseif method == :polyalgo
         weights = Weights(weights ./ sum(weights))
-        return sample(1:n_parts, weights, n_parts, replace = true)
+        return sample(1:length(weights), weights, n_parts, replace = true)
     else
         throw("Invalid resampler in SMC. Options are :systematic, :multinomial, or :polyalgo")
     end
