@@ -195,10 +195,10 @@ function get_likeliest_particle_value(c::Cloud)
 Return parameter vector of particle with highest log-likelihood.
 """
 function get_likeliest_particle_value(c::Matrix{Float64})
-    return c[indmax(get_loglh(c)), 1:ind_para_end(size(c,2))]
+    return c[argmax(get_loglh(c)), 1:ind_para_end(size(c,2))]
 end
 function get_likeliest_particle_value(c::Cloud)
-    return c.particles[indmax(get_loglh(c)), 1:ind_para_end(size(c.particles,2))]
+    return c.particles[argmax(get_loglh(c)), 1:ind_para_end(size(c.particles,2))]
 end
 
 """
