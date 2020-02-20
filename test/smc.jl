@@ -110,12 +110,13 @@ m <= Setting(:smc_iteration, 0)
 m <= Setting(:use_chand_recursion, true)
 
 @everywhere Random.seed!(42)
-#=
+
 # Estimate with 1st half of sample
 m_old = deepcopy(m)
-m_old <= Setting(:data_vintage, "00000")
+m_old <= Setting(:n_particles, 1000)
+m_old <= Setting(:data_vintage, "000000")
 DSGE.smc2(m_old, data[:,1:Int(floor(end/2))], verbose = :none)
-=#
+
 m_new = deepcopy(m)
 
 # Estimate with 2nd half of sample
