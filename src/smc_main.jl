@@ -183,6 +183,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 
     if tempered_update
         # If user does not input Cloud object themselves, looks for cloud in loadpath.
+        @show loadpath
         cloud = cloud_isempty(old_cloud) ? load(loadpath, "cloud") : old_cloud
 
         if tempered_update_prior_weight == 0.0
@@ -280,7 +281,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         # Calculate incremental weights (if no old data, get_old_loglh(cloud) = 0)
         incremental_weights = exp.((ϕ_n1 - ϕ_n) * get_old_loglh(cloud) +
                                    (ϕ_n - ϕ_n1) * get_loglh(cloud))
-
+      #  @show size(incremental_weights)
         # Update weights
         update_weights!(cloud, incremental_weights)
         mult_weights = get_weights(cloud)
