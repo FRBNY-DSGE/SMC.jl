@@ -62,7 +62,6 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
             # Index out parameters corresponding to given random block, create distribution
             # centered at weighted mean, with Σ corresponding to the same random block
             para_subset = para[block_a]
-            @show d_Σ[block_f, block_f]
             d_subset    = MvNormal(d_μ[block_f], d_Σ[block_f, block_f])
             para_draw   = mvnormal_mixture_draw(para_subset, d_subset; c = c, α = α)
 
