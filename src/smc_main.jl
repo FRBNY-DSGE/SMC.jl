@@ -184,14 +184,15 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     if tempered_update
         # If user does not input Cloud object themselves, looks for cloud in loadpath.
         cloud = cloud_isempty(old_cloud) ? load(loadpath, "cloud") : old_cloud
+        old_n_parts = length(cloud)
 
-        if tempered_update_prior_weight == 0.0
+        if (tempered_update_prior_weight == 0.0) && (old_n_parts == n_parts)
 
             initialize_cloud_settings!(cloud; tempered_update = tempered_update,
                                        n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
             initialize_likelihoods!(loglikelihood, parameters, data, cloud; parallel = parallel)
 
-        elseif tempered_update_prior_weight > 0.0
+        elseif (tempered_update_prior_weight > 0.0) || (old_n_parts != n_parts)
             # Resample from bridge distribution
             n_to_resample = Int(round((1-tempered_update_prior_weight) * n_parts))
             n_from_prior  = n_parts - n_to_resample
@@ -199,8 +200,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
                                      method = resampling_method)
 
             bridge_cloud = Cloud(n_para, n_to_resample)
-            update_cloud!(bridge_cloud, cloud.particles[new_inds, :]) #=bridge_cloud.particles = [deepcopy(cloud.particles[k,j]) for k in new_inds,
-                               j=1:size(cloud.particles, 2)]=#
+            update_cloud!(bridge_cloud, cloud.particles[new_inds, :])
             update_loglh!(bridge_cloud, get_loglh(cloud)[new_inds])
             update_logpost!(bridge_cloud, get_logpost(cloud)[new_inds])
             update_old_loglh!(bridge_cloud, get_old_loglh(cloud)[new_inds])
@@ -210,7 +210,6 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
             initial_draw!(loglikelihood, parameters, old_data, prior_cloud, parallel = parallel)
 
             cloud = Cloud(n_para, n_to_resample + n_from_prior)
-
             update_cloud!(cloud, vcat(bridge_cloud.particles, prior_cloud.particles))
             update_loglh!(cloud, vcat(get_loglh(bridge_cloud), get_loglh(prior_cloud)))
             update_logpost!(cloud, vcat(get_logpost(bridge_cloud), get_logpost(prior_cloud)))
