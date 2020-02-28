@@ -44,7 +44,7 @@ if writing_output
 end
 
 saved_file  = load("reference/smc_cloud_fix=true.jld2")
-saved_cloud = old_to_new_cloud(DSGE.Cloud(saved_file["cloud"]))
+saved_cloud = saved_file["cloud"]
 saved_w     = saved_file["w"]
 saved_W     = saved_file["W"]
 
