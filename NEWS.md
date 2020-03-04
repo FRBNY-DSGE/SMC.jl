@@ -1,3 +1,10 @@
+# SMC.jl 0.1.7 Release Notes
+New Features:
+- Permit bridging between clouds with differing numbers of particles
+
+Bug fixes and cleanup:
+- Catching domain errors
+
 # SMC.jl 0.1.6 Release Notes
 Bug fixes and cleanup:
 - Due to erroneous tagging situation, domain error catching included in this tag.
