@@ -86,6 +86,7 @@ end
 ####################################################################
 # Bridging Test
 ####################################################################
+#=
 m = AnSchorfheide()
 
 save = normpath(joinpath(dirname(@__FILE__),"save"))
@@ -143,5 +144,4 @@ for i in 1:64
     cloud = load(replace(loadpath, ".jld" => "_stage=$(i).jld"), "cloud")
     histogram(cloud.particles[:, 1])
 end=#
-
-#error()
+=#
