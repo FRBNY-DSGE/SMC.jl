@@ -124,13 +124,17 @@ m_new <= Setting(:data_vintage, "200218")
 m_new <= Setting(:tempered_update_prior_weight, .5)
 m_new <= Setting(:tempered_update, true)
 m_new <= Setting(:n_particles, 600, true, "npart", "")
+
 old_vint = "000000"
 m_new <= Setting(:previous_data_vintage, old_vint)
+
 loadpath = rawpath(m_old, "estimate", "smc_cloud.jld2")
 loadpath = replace(loadpath, "vint=[0-9]{6}" => "vint=" * old_vint)
+
 old_cloud = ParticleCloud(load(loadpath, "cloud"), map(x -> x.key, m.parameters))
 m_new <= Setting(:n_particles, 600, true, "npart", "")
-DSGE.smc2(m_new, data, old_data = data[:,1:Int(floor(end/2))], old_cloud = old_cloud, save_intermediate = true, intermediate_stage_increment = 1)
+DSGE.smc2(m_new, data, old_data = data[:,1:Int(floor(end/2))],
+          old_cloud = old_cloud, save_intermediate = true, intermediate_stage_increment = 1)
 
 #=loadpath = rawpath(m_new, "estimate", "smc_cloud.jld2")
 loadpath = replace(loadpath, "vint=[0-9]{6}" => "vint=200218")
