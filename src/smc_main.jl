@@ -125,7 +125,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
              continue_intermediate::Bool = false,
              intermediate_stage_start::Int = 0,
              save_intermediate::Bool = false,
-             intermediate_stage_increment::Int = 10) where {S<:AbstractFloat, U<:Number}
+             intermediate_stage_increment::Int = 10,
+             tempered_update_prior_weight::S = 0.0) where {S<:AbstractFloat, U<:Number}
 
     ########################################################################################
     ### Settings
@@ -153,7 +154,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 
     # Check that if there's a tempered update, old and current vintages are different
     tempered_update = !isempty(old_data) # Time tempering
-    @assert !(tempered_update&(old_vintage==data_vintage)) "Old & current vintages the same!"
+    @warn !(tempered_update & (old_vintage == data_vintage)) "Old & current vintages the same!"
 
     # General
     i   = 1             # Index tracking the stage of the algorithm
@@ -183,11 +184,46 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     if tempered_update
         # If user does not input Cloud object themselves, looks for cloud in loadpath.
         cloud = cloud_isempty(old_cloud) ? load(loadpath, "cloud") : old_cloud
+        old_n_parts = length(cloud)
 
-        initialize_cloud_settings!(cloud; tempered_update = tempered_update,
-                                   n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
-        initialize_likelihoods!(loglikelihood, parameters, data, cloud; parallel = parallel)
+        if (tempered_update_prior_weight == 0.0) && (old_n_parts == n_parts)
 
+            initialize_cloud_settings!(cloud; tempered_update = tempered_update,
+                                       n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
+            initialize_likelihoods!(loglikelihood, parameters, data, cloud; parallel = parallel)
+
+        elseif (tempered_update_prior_weight > 0.0) || (old_n_parts != n_parts)
+            # Resample from bridge distribution
+            n_to_resample = Int(round((1-tempered_update_prior_weight) * n_parts))
+            n_from_prior  = n_parts - n_to_resample
+            new_inds      = resample(get_weights(cloud); n_parts = n_to_resample,
+                                     method = resampling_method)
+
+            bridge_cloud = Cloud(n_para, n_to_resample)
+            update_cloud!(bridge_cloud, cloud.particles[new_inds, :])
+            update_loglh!(bridge_cloud, get_loglh(cloud)[new_inds])
+            update_logpost!(bridge_cloud, get_logpost(cloud)[new_inds])
+            update_old_loglh!(bridge_cloud, get_old_loglh(cloud)[new_inds])
+
+            # Make a cloud by drawing from the prior
+            prior_cloud = Cloud(n_para, n_from_prior)
+            initial_draw!(loglikelihood, parameters, old_data, prior_cloud, parallel = parallel)
+
+            cloud = Cloud(n_para, n_to_resample + n_from_prior)
+            update_cloud!(cloud, vcat(bridge_cloud.particles, prior_cloud.particles))
+            update_loglh!(cloud, vcat(get_loglh(bridge_cloud), get_loglh(prior_cloud)))
+            update_logpost!(cloud, vcat(get_logpost(bridge_cloud), get_logpost(prior_cloud)))
+            update_old_loglh!(cloud, vcat(get_old_loglh(bridge_cloud), get_old_loglh(prior_cloud)))
+
+            initialize_likelihoods!(loglikelihood, parameters, data, cloud; parallel = parallel)
+
+            reset_weights!(cloud)
+            cloud.resamples      += 1
+            resampled_last_period = true
+
+            initialize_cloud_settings!(cloud; tempered_update = tempered_update,
+                                       n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
+        end
     elseif continue_intermediate
         cloud = load(loadpath, "cloud")
     else
@@ -254,7 +290,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         # Calculate incremental weights (if no old data, get_old_loglh(cloud) = 0)
         incremental_weights = exp.((ϕ_n1 - ϕ_n) * get_old_loglh(cloud) +
                                    (ϕ_n - ϕ_n1) * get_loglh(cloud))
-
+      #  @show size(incremental_weights)
         # Update weights
         update_weights!(cloud, incremental_weights)
         mult_weights = get_weights(cloud)
@@ -303,7 +339,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         # Ensures marix is positive semi-definite symmetric
         # (not off due to numerical error) and values haven't changed
         R_fr = (R[free_para_inds, free_para_inds] + R[free_para_inds, free_para_inds]') / 2.
-
+     #   @show R_fr
         # MvNormal centered at ̄θ with var-cov ̄Σ, subsetting out the fixed parameters
         θ_bar_fr = θ_bar[free_para_inds]
 
@@ -329,7 +365,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         ##############################################################################
         ### Timekeeping and Output Generation
         ##############################################################################
-        cloud.total_sampling_time += Float64((time_ns() - start_time) * 1e-9)
+        stage_sampling_time = Float64((time_ns() - start_time) * 1e-9)
+        cloud.total_sampling_time += stage_sampling_time
 
         end_stage_print(cloud, para_symbols; verbose = verbose,
                         use_fixed_schedule = use_fixed_schedule)
