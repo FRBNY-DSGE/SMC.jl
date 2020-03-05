@@ -1,4 +1,4 @@
-using DSGE, ModelConstructors, HDF5, Random, JLD2, FileIO
+using DSGE, ModelConstructors, HDF5, Random, JLD2, FileIO, Plots
 
 path = dirname(@__FILE__)
 writing_output = false
@@ -27,9 +27,9 @@ m <= Setting(:smc_iteration, 0)
 m <= Setting(:use_chand_recursion, true)
 
 @everywhere Random.seed!(42)
-#=
+
 println("Estimating AnSchorfheide Model... (approx. 2 minutes)")
-DSGE.smc2(m, data, verbose = :none) # us.txt gives equiv to periods 95:174 in our current dataset
+DSGE.smc2(m, data, run_csminwel = false, verbose = :none) # us.txt gives equiv to periods 95:174 in our current dataset
 println("Estimation done!")
 
 test_file = load(rawpath(m, "estimate", "smc_cloud.jld2"))
@@ -82,11 +82,10 @@ end
     @test @test_matrix_approx_eq test_w saved_w
     @test @test_matrix_approx_eq test_W saved_W
 end
-=#
+
 ####################################################################
 # Bridging Test
 ####################################################################
-#=
 m = AnSchorfheide()
 
 save = normpath(joinpath(dirname(@__FILE__),"save"))
@@ -116,7 +115,7 @@ m <= Setting(:use_chand_recursion, true)
 m_old = deepcopy(m)
 m_old <= Setting(:n_particles, 600, true, "npart", "") #1000)
 m_old <= Setting(:data_vintage, "000000")
-#DSGE.smc2(m_old, data[:,1:Int(floor(end/2))], verbose = :low)
+DSGE.smc2(m_old, data[:,1:Int(floor(end/2))], run_csminwel = false, verbose = :low)
 
 m_new = deepcopy(m)
 
@@ -125,17 +124,15 @@ m_new <= Setting(:data_vintage, "200218")
 m_new <= Setting(:tempered_update_prior_weight, .5)
 m_new <= Setting(:tempered_update, true)
 m_new <= Setting(:n_particles, 600, true, "npart", "")
-
 old_vint = "000000"
 m_new <= Setting(:previous_data_vintage, old_vint)
-
 loadpath = rawpath(m_old, "estimate", "smc_cloud.jld2")
 loadpath = replace(loadpath, "vint=[0-9]{6}" => "vint=" * old_vint)
-
 old_cloud = ParticleCloud(load(loadpath, "cloud"), map(x -> x.key, m.parameters))
 m_new <= Setting(:n_particles, 600, true, "npart", "")
-DSGE.smc2(m_new, data, old_data = data[:,1:Int(floor(end/2))],
-          old_cloud = old_cloud, save_intermediate = true, intermediate_stage_increment = 1)
+DSGE.smc2(m_new, data,
+          old_data = data[:,1:Int(floor(end/2))], old_cloud = old_cloud,
+          run_csminwel = false)
 
 #=loadpath = rawpath(m_new, "estimate", "smc_cloud.jld2")
 loadpath = replace(loadpath, "vint=[0-9]{6}" => "vint=200218")
@@ -144,4 +141,5 @@ for i in 1:64
     cloud = load(replace(loadpath, ".jld" => "_stage=$(i).jld"), "cloud")
     histogram(cloud.particles[:, 1])
 end=#
-=#
+
+#error()
