@@ -28,7 +28,7 @@ m <= Setting(:use_chand_recursion, true)
 
 @everywhere Random.seed!(42)
 
-println("Estimating AnSchorfheide Model... (approx. 2 minutes)")
+#=println("Estimating AnSchorfheide Model... (approx. 2 minutes)")
 DSGE.smc2(m, data, run_csminwel = false, verbose = :none) # us.txt gives equiv to periods 95:174 in our current dataset
 println("Estimation done!")
 
@@ -82,7 +82,7 @@ end
     @test @test_matrix_approx_eq test_w saved_w
     @test @test_matrix_approx_eq test_W saved_W
 end
-
+=#
 ####################################################################
 # Bridging Test
 ####################################################################
@@ -113,7 +113,7 @@ m <= Setting(:use_chand_recursion, true)
 
 # Estimate with 1st half of sample
 m_old = deepcopy(m)
-m_old <= Setting(:n_particles, 600, true, "npart", "") #1000)
+m_old <= Setting(:n_particles, 900, true, "npart", "") #590)
 m_old <= Setting(:data_vintage, "000000")
 DSGE.smc2(m_old, data[:,1:Int(floor(end/2))], run_csminwel = false, verbose = :low)
 
@@ -121,19 +121,23 @@ m_new = deepcopy(m)
 
 # Estimate with 2nd half of sample
 m_new <= Setting(:data_vintage, "200218")
-m_new <= Setting(:tempered_update_prior_weight, .5)
-m_new <= Setting(:tempered_update, true)
-m_new <= Setting(:n_particles, 600, true, "npart", "")
+m_new <= Setting(:tempered_update_prior_weight, 0.5)
+#m_new <= Setting(:tempered_update, true)
 old_vint = "000000"
 m_new <= Setting(:previous_data_vintage, old_vint)
 loadpath = rawpath(m_old, "estimate", "smc_cloud.jld2")
-loadpath = replace(loadpath, "vint=[0-9]{6}" => "vint=" * old_vint)
+loadpath = replace(loadpath, r"vint=[0-9]{6}" => "vint=" * old_vint)
+@show loadpath
 old_cloud = ParticleCloud(load(loadpath, "cloud"), map(x -> x.key, m.parameters))
-m_new <= Setting(:n_particles, 600, true, "npart", "")
+m_new <= Setting(:n_particles, 1000, true, "npart", "")
 DSGE.smc2(m_new, data,
           old_data = data[:,1:Int(floor(end/2))], old_cloud = old_cloud,
           run_csminwel = false)
 
+loadpath = rawpath(m_new, "estimate", "smc_cloud.jld2")
+new_cloud = ParticleCloud(load(loadpath, "cloud"), map(x -> x.key, m.parameters))
+
+@test mean(SMC.get_vals(new_cloud), dims = 1) == mean(SMC.get_vals(old_cloud), dims = 1)
 #=loadpath = rawpath(m_new, "estimate", "smc_cloud.jld2")
 loadpath = replace(loadpath, "vint=[0-9]{6}" => "vint=200218")
 
