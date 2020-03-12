@@ -1,3 +1,7 @@
+# SMC.jl 0.1.8 Release Notes
+New Features:
+- Bug fixes and cleanup:
+
 # SMC.jl 0.1.7 Release Notes
 New Features:
 - Permit bridging between clouds with differing numbers of particles
