@@ -7,22 +7,24 @@ Finds and returns one valid draw from parameter distribution, along with its
 log likelihood and log posterior.
 """
 function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
-                  data::Matrix{Float64}) where {U<:Number}
-
+                  data::Matrix{Float64}; aug::Bool = false) where {U<:Number}
+    @show "one draw"
+    @show aug
     success    = false
-    draw       = vec(rand(parameters, 1))
+    draw       = vec(rand(parameters, 1, aug = aug))
+
     draw_loglh = draw_logpost = 0.0
 
     while !success
-        try
+       # try
             update!(parameters, draw)
-            draw_loglh   = loglikelihood(parameters, data)
+            draw_loglh   = loglikelihood(parameters, data, aug = aug)
             draw_logpost = prior(parameters)
 
             if (draw_loglh == -Inf) || (draw_loglh === NaN)
                 draw_loglh = draw_logpost = -Inf
             end
-        catch err
+       #= catch err
             if isa(err, ParamBoundsError) || isa(err, SingularException) ||
                isa(err, LinearAlgebra.LAPACKException) || isa(err, PosDefException) ||
                isa(err, DomainError)
@@ -30,14 +32,15 @@ function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
             else
                 throw(err)
             end
-        end
+        end=#
 
         if any(isinf.(draw_loglh))
-            draw = vec(rand(parameters, 1))
+            draw = vec(rand(parameters, 1, aug = true))
         else
             success = true
         end
     end
+    @show draw_loglh
     return vector_reshape(draw, draw_loglh, draw_logpost)
 end
 
@@ -51,16 +54,18 @@ initialize the SMC algorithm. Returns a tuple (logpost, loglh) and modifies the
 particle objects in the particle cloud in place.
 """
 function initial_draw!(loglikelihood::Function, parameters::ParameterVector{U},
-                       data::Matrix{Float64}, c::Cloud; parallel::Bool = false) where {U<:Number}
+                       data::Matrix{Float64}, c::Cloud; parallel::Bool = false,
+                       aug::Bool = false) where {U<:Number}
     n_parts = length(c)
 
     # ================== Define closure on one_draw function ==================
     sendto(workers(), loglikelihood = loglikelihood)
     sendto(workers(), parameters = parameters)
     sendto(workers(), data       = data)
-
-    one_draw_closure() = one_draw(loglikelihood, parameters, data)
-    @everywhere one_draw_closure() = one_draw(loglikelihood, parameters, data)
+    @show "initial draw"
+    @show aug
+    one_draw_closure() = one_draw(loglikelihood, parameters, data, aug = aug)
+    @everywhere one_draw_closure() = one_draw(loglikelihood, parameters, data, aug = aug)
     # =========================================================================
 
     # For each particle, finds valid parameter draw and returns loglikelihood & posterior

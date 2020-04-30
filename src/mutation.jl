@@ -41,12 +41,14 @@ Execute one proposed move of the Metropolis-Hastings algorithm for a given param
 """
 function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                   data::Matrix{S}, p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
+                  n_free_para::Int,
                   blocks_free::Vector{Vector{Int}}, blocks_all::Vector{Vector{Int}},
                   ϕ_n::S, ϕ_n1::S; c::S = 1., α::S = 1., n_mh_steps::Int = 1,
-                  old_data::T = T(undef, size(data, 1), 0)) where {S<:AbstractFloat,
+                  old_data::T = T(undef, size(data, 1), 0),
+                  aug::Bool = false) where {S<:AbstractFloat,
                                                                    T<:AbstractMatrix, U<:Number}
-
-    n_free_para = length([!θ.fixed for θ in parameters])
+#    @show n_free_para
+    #n_free_para = length([!θ.fixed for θ in parameters])
     step_prob   = rand() # Draw initial step probability
 
     N         = length(p)
@@ -55,6 +57,7 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
     logprior  = p[ind_logprior(N)]
     like_prev = p[ind_old_loglh(N)] # Likelihood evaluated at the old data (for time tempering)
     accept    = 0.0
+ #   @show N, length(para)
 
     for step in 1:n_mh_steps
         for (block_f, block_a) in zip(blocks_free, blocks_all)
@@ -76,8 +79,20 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
             try
                 update!(parameters, para_new)
                 para_new  = [θ.value for θ in parameters]
+                i = 0
+                for para in parameters
+                    if !isempty(para.regimes)
+                        i = i+1
+                        for (reg, val) in para.regimes[:value]
+                            if reg != 1
+                                push!(para_new, ModelConstructors.regime_val(para, reg))
+                            end
+                        end
+                    end
+                end
+
                 prior_new = prior(parameters)
-                like_new  = loglikelihood(parameters, data)
+                like_new  = loglikelihood(parameters, data, aug = aug)
 
                 if like_new == -Inf
                     prior_new = like_old_data = -Inf

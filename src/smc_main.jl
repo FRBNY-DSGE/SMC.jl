@@ -126,8 +126,10 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
              intermediate_stage_start::Int = 0,
              save_intermediate::Bool = false,
              intermediate_stage_increment::Int = 10,
-             tempered_update_prior_weight::S = 0.0) where {S<:AbstractFloat, U<:Number}
-
+             tempered_update_prior_weight::S = 0.0,
+             aug::Bool = false) where {S<:AbstractFloat, U<:Number}
+    @show "smc main"
+    @show aug
     ########################################################################################
     ### Settings
     ########################################################################################
@@ -138,18 +140,20 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     sendto(workers(), data = data)
 
     function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
-             blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
-             ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
-             old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64, T<:Matrix}
-        return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, blocks_free, blocks_all,
-                        ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data)
+                              n_free_para::Int,
+                              blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
+                              ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
+                              old_data::T = Matrix{S}(undef, size(data, 1), 0),
+                              aug::Bool = false) where {S<:Float64, T<:Matrix}
+        return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, n_free_para, blocks_free, blocks_all,
+                        ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data, aug = aug)
     end
     @everywhere function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
-             blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
+             blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}}, n_free_para::Int,
              ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
-             old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64, T<:Matrix}
-        return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, blocks_free, blocks_all,
-                        ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data)
+             old_data::T = Matrix{S}(undef, size(data, 1), 0), aug::Bool = false) where {S<:Float64, T<:Matrix}
+        return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, blocks_free, blocks_all, n_free_para,
+                        ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data, aug = aug)
     end
 
     # Check that if there's a tempered update, old and current vintages are different
@@ -165,16 +169,31 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     #use_fixed_schedule = (tempering_target == 0.0)
     threshold          = threshold_ratio * n_parts
 
+    n_para          = length(parameters)
+    n_para_aug      = 0
+    for para in parameters
+        if !isempty(para.regimes)
+            for (ind, val) in para.regimes[:value]
+                if ind == 1
+                    nothing
+                else # ind != 1
+                    n_para_aug = n_para_aug + 1
+                end
+            end
+        end
+    end
+
     fixed_para_inds = findall([ θ.fixed for θ in parameters])
     free_para_inds  = findall([!θ.fixed for θ in parameters])
     para_symbols    = [θ.key for θ in parameters]
 
-    n_para          = length(parameters)
-    n_free_para     = length(free_para_inds)
+    n_free_para     = length(free_para_inds) + n_para_aug
+    free_para_inds = vcat(free_para_inds, collect(n_para+1:n_para+n_para_aug))
+
     @assert n_free_para > 0 "All model parameters are fixed!"
 
     # Initialization of Particle Array Cloud
-    cloud = Cloud(n_para, n_parts)
+    cloud = Cloud(n_para + n_para_aug, n_parts)
 
     #################################################################################
     ### Initialize Algorithm: Draws from prior
@@ -208,7 +227,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
             # Make a cloud by drawing from the prior
             if n_from_prior > 0
                 prior_cloud = Cloud(n_para, n_from_prior)
-                initial_draw!(loglikelihood, parameters, old_data, prior_cloud, parallel = parallel)
+                initial_draw!(loglikelihood, parameters, old_data, prior_cloud, parallel = parallel, aug = aug)
 
                 cloud = Cloud(n_para, n_to_resample + n_from_prior)
                 update_cloud!(cloud, vcat(bridge_cloud.particles, prior_cloud.particles))
@@ -232,7 +251,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         cloud = load(loadpath, "cloud")
     else
         # Instantiating Cloud object, update draws, loglh, & logpost
-        initial_draw!(loglikelihood, parameters, data, cloud; parallel = parallel)
+        initial_draw!(loglikelihood, parameters, data, cloud; parallel = parallel, aug = aug)
         initialize_cloud_settings!(cloud; tempered_update = tempered_update,
                                    n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
     end
@@ -352,15 +371,17 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 
         new_particles = if parallel
             @distributed (hcat) for k in 1:n_parts
-                mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr, blocks_free,
-                                 blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
-                                 n_mh_steps = n_mh_steps, old_data = old_data)
+                mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr, n_free_para,
+                                 blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
+                                 n_mh_steps = n_mh_steps, old_data = old_data,
+                                 aug = aug)
             end
         else
-            hcat([mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr,
+            hcat([mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr, n_free_para,
                                    blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c,
                                    α = α, n_mh_steps = n_mh_steps,
-                                   old_data = old_data) for k=1:n_parts]...)
+                                   old_data = old_data,
+                                   aug = aug) for k=1:n_parts]...)
         end
         update_cloud!(cloud, new_particles)
         update_acceptance_rate!(cloud)
