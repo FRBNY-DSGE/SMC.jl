@@ -92,7 +92,7 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                 end
 
                 prior_new = prior(parameters)
-                like_new  = loglikelihood(parameters, data, aug = aug)
+                like_new  = loglikelihood(parameters, data) #, aug = aug)
 
                 if like_new == -Inf
                     prior_new = like_old_data = -Inf

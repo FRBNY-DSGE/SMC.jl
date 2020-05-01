@@ -8,23 +8,22 @@ log likelihood and log posterior.
 """
 function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
                   data::Matrix{Float64}; aug::Bool = false) where {U<:Number}
-    @show "one draw"
-    @show aug
     success    = false
     draw       = vec(rand(parameters, 1, aug = aug))
 
     draw_loglh = draw_logpost = 0.0
 
     while !success
-       # try
+        try
             update!(parameters, draw)
-            draw_loglh   = loglikelihood(parameters, data, aug = aug)
+
+            draw_loglh   = loglikelihood(parameters, data)
             draw_logpost = prior(parameters)
 
             if (draw_loglh == -Inf) || (draw_loglh === NaN)
                 draw_loglh = draw_logpost = -Inf
             end
-       #= catch err
+        catch err
             if isa(err, ParamBoundsError) || isa(err, SingularException) ||
                isa(err, LinearAlgebra.LAPACKException) || isa(err, PosDefException) ||
                isa(err, DomainError)
@@ -32,7 +31,7 @@ function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
             else
                 throw(err)
             end
-        end=#
+        end
 
         if any(isinf.(draw_loglh))
             draw = vec(rand(parameters, 1, aug = true))
@@ -40,7 +39,6 @@ function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
             success = true
         end
     end
-    @show draw_loglh
     return vector_reshape(draw, draw_loglh, draw_logpost)
 end
 

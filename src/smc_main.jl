@@ -128,8 +128,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
              intermediate_stage_increment::Int = 10,
              tempered_update_prior_weight::S = 0.0,
              aug::Bool = false) where {S<:AbstractFloat, U<:Number}
-    @show "smc main"
-    @show aug
+
     ########################################################################################
     ### Settings
     ########################################################################################
