@@ -1,6 +1,6 @@
 ## SMC Main Function
 
-You can use SMC to estimate any Bayesian model. This requires (1) parameters and their associated prior distributions (2) data (3) a likelihood function. These three ingredients are the only inputs into the smc driver.
+You can use SMC to estimate any Bayesian model. This requires (1) parameters and their associated prior distributions (2) data (3) a log-likelihood function. These three ingredients are the only inputs into the smc driver.
 
 `smc(loglikelihood::Function, parameters::ParameterVector, data::Matrix)` function.
 
