@@ -476,3 +476,85 @@ end
 function weighted_cov(c::Cloud)
     return weighted_cov(c.particles)
 end
+
+function split_cloud(filename::String, n_pieces::Int)
+    cloud = load(filename, "cloud")
+    w    = load(filename, "w")
+    W    = load(filename, "W")
+    n_part = size(cloud.particles, 1)
+    n_para = size(cloud.particles, 2)
+
+    @assert mod(n_part, n_pieces) == 0
+    npart_small = Int(n_part / n_pieces)
+    clouds = Vector{Cloud}(undef, n_pieces)
+    ws     = Vector{Matrix{Float64}}(undef, n_pieces)
+    Ws     = Vector{Matrix{Float64}}(undef, n_pieces)
+
+    for i = 1:n_pieces
+        inds = ((i-1)*npart_small+1):(i*npart_small)
+        ws[i] = w[inds, :]
+        Ws[i] = W[inds, :]
+        clouds[i] = Cloud(n_para, npart_small)
+
+        # Since loglh, logpost, old_loglh are all stored in cloud.particles, this updates them all too!
+        SMC.update_cloud!(clouds[i], cloud.particles[inds, :])
+
+        clouds[i].ESS = cloud.ESS
+        clouds[i].c = cloud.c
+        clouds[i].stage_index = cloud.stage_index
+        clouds[i].total_sampling_time = cloud.total_sampling_time
+        clouds[i].accept = cloud.accept
+        clouds[i].n_Φ = cloud.n_Φ
+        clouds[i].resamples = cloud.resamples
+        clouds[i].tempering_schedule = cloud.tempering_schedule
+
+        new_filename = replace(filename, ".jld2" => "_part$(i).jld2")
+        jldopen(new_filename, true, true, true, IOStream) do file
+            write(file, "cloud", clouds[i])
+            write(file, "w", ws[i])
+            write(file, "W", Ws[i])
+        end
+    end
+end
+
+function join_cloud(filename::String, n_pieces::Int)
+    clouds     = Vector{Cloud}(undef, n_pieces)
+    ws         = Vector{Matrix{Float64}}(undef, n_pieces)
+    Ws         = Vector{Matrix{Float64}}(undef, n_pieces)
+    for i = 1:n_pieces
+        small_filename = replace(filename, ".jld2" => "_part$(i).jld2")
+
+        clouds[i]     = load(small_filename, "cloud")
+        ws[i]         = load(small_filename, "w")
+        Ws[i]         = load(small_filename, "W")
+    end
+    n_part = sum(map(x -> size(x, 1), map(y -> y.particles, clouds)))
+    n_para = size(clouds[1].particles, 2)
+
+    cloud = Cloud(n_para, n_part)
+
+    particles  = Matrix{Float64}(undef, 0, n_para)
+    loglhs     = Vector{Float64}(undef, 0)
+    old_loglhs = Vector{Float64}(undef, 0)
+    logposts   = Vector{Float64}(undef, 0)
+
+    for i = 1:n_pieces
+        particles     = vcat(particles, clouds[i].particles)
+        loglhs        = vcat(loglhs, SMC.get_loglh(clouds[i]))
+        old_loglhs    = vcat(old_loglhs, SMC.get_old_loglh(clouds[i]))
+        logposts      = vcat(logposts, SMC.get_logpost(clouds[i]))
+    end
+
+    # Since loglh, logpost, old_loglh are all stored in cloud.particles, this updates them all too!
+    SMC.update_cloud!(cloud, particles)
+
+    cloud.ESS                 = clouds[1].ESS
+    cloud.c                   = clouds[1].c
+    cloud.stage_index         = clouds[1].stage_index
+    cloud.total_sampling_time = clouds[1].total_sampling_time
+    cloud.accept              = clouds[1].accept
+    cloud.n_Φ                 = clouds[1].n_Φ
+    cloud.resamples           = clouds[1].resamples
+    cloud.tempering_schedule  = clouds[1].tempering_schedule
+    return cloud
+end

@@ -16,7 +16,7 @@ module SMC
         compute_parameter_covariance, get_estimation_output_files,
         compute_moments, find_density_bands, mutation, resample, smc,
         mvnormal_mixture_draw, nearest_spd, marginal_data_density,
-        initial_draw!, Cloud, get_cloud, isempty
+        initial_draw!, Cloud, get_cloud, isempty, join_cloud, split_cloud
 
     const VERBOSITY   = Dict(:none => 0, :low => 1, :high => 2)
     const DATE_FORMAT = "yymmdd"
