@@ -528,8 +528,9 @@ function join_cloud(filename::String, n_pieces::Int)
         ws[i]         = load(small_filename, "w")
         Ws[i]         = load(small_filename, "W")
     end
-    n_part = sum(map(x -> size(x, 1), map(y -> y.particles, clouds)))
-    n_para = size(clouds[1].particles, 2)
+    n_part  = sum(map(x -> size(x, 1), map(y -> y.particles, clouds)))
+    n_para  = size(clouds[1].particles, 2)
+    n_stage = size(ws[1], 2)
 
     cloud = Cloud(n_para, n_part)
 
@@ -537,12 +538,16 @@ function join_cloud(filename::String, n_pieces::Int)
     loglhs     = Vector{Float64}(undef, 0)
     old_loglhs = Vector{Float64}(undef, 0)
     logposts   = Vector{Float64}(undef, 0)
+    w          = Matrix{Float64}(undef, 0, n_stage)
+    W          = Matrix{Float64}(undef, 0, n_stage)
 
     for i = 1:n_pieces
         particles     = vcat(particles, clouds[i].particles)
         loglhs        = vcat(loglhs, SMC.get_loglh(clouds[i]))
         old_loglhs    = vcat(old_loglhs, SMC.get_old_loglh(clouds[i]))
         logposts      = vcat(logposts, SMC.get_logpost(clouds[i]))
+        w             = vcat(w, ws[i])
+        W             = vcat(W, Ws[i])
     end
 
     # Since loglh, logpost, old_loglh are all stored in cloud.particles, this updates them all too!
@@ -556,5 +561,12 @@ function join_cloud(filename::String, n_pieces::Int)
     cloud.n_Φ                 = clouds[1].n_Φ
     cloud.resamples           = clouds[1].resamples
     cloud.tempering_schedule  = clouds[1].tempering_schedule
+
+    jldopen(filename, true, true, true, IOStream) do file
+            write(file, "cloud", cloud)
+            write(file, "w", w)
+            write(file, "W", W)
+    end
+
     return cloud
 end
