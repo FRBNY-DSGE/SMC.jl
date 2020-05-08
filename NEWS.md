@@ -1,3 +1,7 @@
+# SMC.jl 0.1.10 Release Notes
+New Features:
+- Bug fixes from last release (save rejoined cloud ater rejoining)"
+
 # SMC.jl 0.1.9 Release Notes
 New Features:
 - New functionality to split and join (after splitting) Clouds (allows users to split a large Cloud into smaller Clouds under the Github size limit, to be rejoined by user).
