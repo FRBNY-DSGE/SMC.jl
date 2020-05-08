@@ -12,7 +12,8 @@ my_tests = [
             "initialization",
             "resample",
             "util",
-            "mutation"
+            "mutation",
+            "particle"
             ]
 
 for test in my_tests
