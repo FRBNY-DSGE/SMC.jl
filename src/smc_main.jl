@@ -59,7 +59,10 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 - `intermediate_stage_start::Int`: Intermediate stage at which one wishes to begin the estimation.
 - `save_intermediate::Bool`: Flag for whether one wants to save intermediate Cloud objects
 - `intermediate_stage_increment::Int`: Save Clouds at every increment
-    (1 = each stage, 10 = every 10th stage, etc.)
+   (1 = each stage, 10 = every 10th stage, etc.)
+- `regime_switching::Bool`: Set to true if
+    there are regime-switching parameters. Otherwise, not all the values of the
+    regimes will be used or saved.
 
 ### Outputs
 
@@ -127,7 +130,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
              save_intermediate::Bool = false,
              intermediate_stage_increment::Int = 10,
              tempered_update_prior_weight::S = 0.0,
-             aug::Bool = false) where {S<:AbstractFloat, U<:Number}
+             regime_switching::Bool = false) where {S<:AbstractFloat, U<:Number}
 
     ########################################################################################
     ### Settings
@@ -143,16 +146,16 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
                               blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
                               ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
                               old_data::T = Matrix{S}(undef, size(data, 1), 0),
-                              aug::Bool = false) where {S<:Float64, T<:Matrix}
+                              regime_switching::Bool = false) where {S<:Float64, T<:Matrix}
         return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, n_free_para, blocks_free, blocks_all,
-                        ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data, aug = aug)
+                        ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data, regime_switching = regime_switching)
     end
     @everywhere function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
              blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}}, n_free_para::Int,
              ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
-             old_data::T = Matrix{S}(undef, size(data, 1), 0), aug::Bool = false) where {S<:Float64, T<:Matrix}
+             old_data::T = Matrix{S}(undef, size(data, 1), 0), regime_switching::Bool = false) where {S<:Float64, T<:Matrix}
         return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, blocks_free, blocks_all, n_free_para,
-                        ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data, aug = aug)
+                        ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data, regime_switching = regime_switching)
     end
 
     # Check that if there's a tempered update, old and current vintages are different
@@ -169,14 +172,14 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     threshold          = threshold_ratio * n_parts
 
     n_para          = length(parameters)
-    n_para_aug      = 0
+    n_para_rs       = 0 # number of regime switching parameter values (excluding regime 1 values), i.e. if one parameter has 3 regimes, then n_para_rs = 2
     for para in parameters
         if !isempty(para.regimes)
             for (ind, val) in para.regimes[:value]
                 if ind == 1
                     nothing
                 else # ind != 1
-                    n_para_aug = n_para_aug + 1
+                    n_para_rs += 1
                 end
             end
         end
@@ -186,13 +189,13 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     free_para_inds  = findall([!θ.fixed for θ in parameters])
     para_symbols    = [θ.key for θ in parameters]
 
-    n_free_para     = length(free_para_inds) + n_para_aug
-    free_para_inds = vcat(free_para_inds, collect(n_para+1:n_para+n_para_aug))
+    n_free_para     = length(free_para_inds) + n_para_rs
+    free_para_inds = vcat(free_para_inds, collect(n_para+1:n_para+n_para_rs))
 
     @assert n_free_para > 0 "All model parameters are fixed!"
 
     # Initialization of Particle Array Cloud
-    cloud = Cloud(n_para + n_para_aug, n_parts)
+    cloud = Cloud(n_para + n_para_rs, n_parts)
 
     #################################################################################
     ### Initialize Algorithm: Draws from prior
@@ -226,7 +229,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
             # Make a cloud by drawing from the prior
             if n_from_prior > 0
                 prior_cloud = Cloud(n_para, n_from_prior)
-                initial_draw!(loglikelihood, parameters, old_data, prior_cloud, parallel = parallel, aug = aug)
+                initial_draw!(loglikelihood, parameters, old_data, prior_cloud, parallel = parallel, regime_switching = regime_switching)
 
                 cloud = Cloud(n_para, n_to_resample + n_from_prior)
                 update_cloud!(cloud, vcat(bridge_cloud.particles, prior_cloud.particles))
@@ -250,7 +253,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         cloud = load(loadpath, "cloud")
     else
         # Instantiating Cloud object, update draws, loglh, & logpost
-        initial_draw!(loglikelihood, parameters, data, cloud; parallel = parallel, aug = aug)
+        initial_draw!(loglikelihood, parameters, data, cloud; parallel = parallel, regime_switching = regime_switching)
         initialize_cloud_settings!(cloud; tempered_update = tempered_update,
                                    n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
     end
@@ -373,14 +376,14 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
                 mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr, n_free_para,
                                  blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
                                  n_mh_steps = n_mh_steps, old_data = old_data,
-                                 aug = aug)
+                                 regime_switching = regime_switching)
             end
         else
             hcat([mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr, n_free_para,
                                    blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c,
                                    α = α, n_mh_steps = n_mh_steps,
                                    old_data = old_data,
-                                   aug = aug) for k=1:n_parts]...)
+                                   regime_switching = regime_switching) for k=1:n_parts]...)
         end
         update_cloud!(cloud, new_particles)
         update_acceptance_rate!(cloud)

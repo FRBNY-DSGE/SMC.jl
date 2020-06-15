@@ -1,15 +1,20 @@
 """
 ```
 function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
-                  data::Matrix{Float64}) where {U<:Number}
+                  data::Matrix{Float64}; regime_switching::Bool = false) where {U<:Number}
 ```
+
 Finds and returns one valid draw from parameter distribution, along with its
 log likelihood and log posterior.
+
+Set `regime_switching` to true if
+there are regime-switching parameters. Otherwise, not all the values of the
+regimes will be used or saved.
 """
 function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
-                  data::Matrix{Float64}; aug::Bool = false) where {U<:Number}
+                  data::Matrix{Float64}; regime_switching::Bool = false) where {U<:Number}
     success    = false
-    draw       = vec(rand(parameters, 1, aug = aug))
+    draw       = vec(rand(parameters, 1, regime_switching = regime_switching))
 
     draw_loglh = draw_logpost = 0.0
 
@@ -34,7 +39,7 @@ function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
         end
 
         if any(isinf.(draw_loglh))
-            draw = vec(rand(parameters, 1, aug = true))
+            draw = vec(rand(parameters, 1, regime_switching = true))
         else
             success = true
         end
@@ -45,25 +50,30 @@ end
 """
 ```
 function initial_draw!(loglikelihood::Function, parameters::ParameterVector{U},
-                       data::Matrix{Float64}, c::Cloud; parallel::Bool = false) where {U<:Number}
+                       data::Matrix{Float64}, c::Cloud; parallel::Bool = false,
+                       regime_switching::Bool = false) where {U<:Number}
 ```
+
 Draw from a general starting distribution (set by default to be from the prior) to
 initialize the SMC algorithm. Returns a tuple (logpost, loglh) and modifies the
 particle objects in the particle cloud in place.
+
+Set `regime_switching` to true if
+there are regime-switching parameters. Otherwise, not all the values of the
+regimes will be used or saved.
 """
 function initial_draw!(loglikelihood::Function, parameters::ParameterVector{U},
                        data::Matrix{Float64}, c::Cloud; parallel::Bool = false,
-                       aug::Bool = false) where {U<:Number}
+                       regime_switching::Bool = false) where {U<:Number}
     n_parts = length(c)
 
     # ================== Define closure on one_draw function ==================
     sendto(workers(), loglikelihood = loglikelihood)
     sendto(workers(), parameters = parameters)
     sendto(workers(), data       = data)
-    @show "initial draw"
-    @show aug
-    one_draw_closure() = one_draw(loglikelihood, parameters, data, aug = aug)
-    @everywhere one_draw_closure() = one_draw(loglikelihood, parameters, data, aug = aug)
+
+    one_draw_closure() = one_draw(loglikelihood, parameters, data, regime_switching = regime_switching)
+    @everywhere one_draw_closure() = one_draw(loglikelihood, parameters, data, regime_switching = regime_switching)
     # =========================================================================
 
     # For each particle, finds valid parameter draw and returns loglikelihood & posterior

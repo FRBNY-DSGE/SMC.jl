@@ -4,8 +4,8 @@ mutation(loglikelihood::Function, parameters::ParameterVector{U},
          data::Matrix{S}, p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
          blocks_free::Vector{Vector{Int}}, blocks_all::Vector{Vector{Int}},
          ϕ_n::S, ϕ_n1::S; c::S = 1., α::S = 1., n_mh_steps::Int = 1,
-         old_data::T = T(undef, size(data, 1), 0)) where {S<:AbstractFloat,
-                                                          T<:AbstractMatrix, U<:Number}
+         old_data::T = T(undef, size(data, 1), 0),
+         regime_switching::Bool = false) where {S<:AbstractFloat,T<:AbstractMatrix, U<:Number})
 ```
 
 Execute one proposed move of the Metropolis-Hastings algorithm for a given parameter
@@ -33,6 +33,9 @@ Execute one proposed move of the Metropolis-Hastings algorithm for a given param
 - `n_mh_steps::Int`: Number of Metropolis Hastings steps to attempt
 - `old_data::Matrix{Float64}`: The matrix of old data to be used in calculating the
     old_loglh, old_logpost in time tempering
+- `regime_switching::Bool`: Set to true if
+    there are regime-switching parameters. Otherwise, not all the values of the
+    regimes will be used or saved.
 
 ### Outputs:
 - `p::Vector{Float64}`: An updated particle containing updated parameter values,
@@ -45,10 +48,8 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                   blocks_free::Vector{Vector{Int}}, blocks_all::Vector{Vector{Int}},
                   ϕ_n::S, ϕ_n1::S; c::S = 1., α::S = 1., n_mh_steps::Int = 1,
                   old_data::T = T(undef, size(data, 1), 0),
-                  aug::Bool = false) where {S<:AbstractFloat,
-                                                                   T<:AbstractMatrix, U<:Number}
-#    @show n_free_para
-    #n_free_para = length([!θ.fixed for θ in parameters])
+                  regime_switching::Bool = false) where {S<:AbstractFloat,T<:AbstractMatrix, U<:Number}
+
     step_prob   = rand() # Draw initial step probability
 
     N         = length(p)
@@ -57,7 +58,6 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
     logprior  = p[ind_logprior(N)]
     like_prev = p[ind_old_loglh(N)] # Likelihood evaluated at the old data (for time tempering)
     accept    = 0.0
- #   @show N, length(para)
 
     for step in 1:n_mh_steps
         for (block_f, block_a) in zip(blocks_free, blocks_all)
@@ -92,7 +92,7 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                 end
 
                 prior_new = prior(parameters)
-                like_new  = loglikelihood(parameters, data) #, aug = aug)
+                like_new  = loglikelihood(parameters, data) #, regime_switching = regime_switching)
 
                 if like_new == -Inf
                     prior_new = like_old_data = -Inf
