@@ -46,22 +46,33 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 - `tempering_target::S`: Coefficient of the sample size metric to be targeted when solving
     for an endogenous ϕ.
 
-- `old_data::Matrix{S}`: data from vintage of last SMC estimation.
+- `old_data::Matrix{S}`: data from vintage of last SMC estimation. Running a bridge
+    estimation requires `old_data` and `old_cloud`.
 - `old_cloud::Cloud`: associated cloud borne of old data in previous SMC estimation.
+    Running a bridge estimation requires `old_data` and `old_cloud`. If no `old_cloud`
+    is provided, then we will attempt to load one using `loadpath`.
 - `old_vintage::String`: String for vintage date of old data
 - `smc_iteration::Int`: The iteration index for the number of times SMC has been run on the
      same data vintage. Primarily for numerical accuracy/testing purposes.
 
 - `run_test::Bool`: Flag for when testing accuracy of program
 - `filestring_addl::Vector{String}`: Additional file string extension for loading old cloud.
+- `save_intermediate::Bool`: Flag for whether one wants to save intermediate Cloud objects
+- `intermediate_stage_increment::Int`: Save Clouds at every increment
+   (1 = each stage, 10 = every 10th stage, etc.). Useful if you are using a cluster with time
+    limits because if you hit the time limit, then you can just
+    start from an intermediate stage rather than start over.
 - `continue_intermediate::Bool`: Flag to indicate whether one is continuing SMC from an
     intermediate stage.
 - `intermediate_stage_start::Int`: Intermediate stage at which one wishes to begin the estimation.
-- `save_intermediate::Bool`: Flag for whether one wants to save intermediate Cloud objects
-- `intermediate_stage_increment::Int`: Save Clouds at every increment
-   (1 = each stage, 10 = every 10th stage, etc.)
-- `regime_switching::Bool`: Set to true if
-    there are regime-switching parameters. Otherwise, not all the values of the
+- `tempered_update_prior_weight::Float64 = 0.0`: Weight placed on the current priors of parameters
+    to construct a convex combination of draws from current priors and the previous estimation's
+    cloud. The convex combination serves as the bridge distribution for a time tempered estimation.
+- `run_csminwel::Bool = true`: Flag to run the csminwel algorithm to identify the true posterior mode
+    (which may not exist) after completing an estimation. The mode identified by SMC is just
+    the particle with the highest posterior value, but we do not check it is actually a mode (i.e.
+    the Hessian is negative definite).
+- `regime_switching::Bool = false`: Flag if there are regime-switching parameters. Otherwise, not all the values of the
     regimes will be used or saved.
 
 ### Outputs
@@ -125,10 +136,10 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
              loadpath::String = "",
              savepath::String = "smc_cloud.jld2",
              particle_store_path::String = "smcsave.h5",
-             continue_intermediate::Bool = false,
-             intermediate_stage_start::Int = 0,
              save_intermediate::Bool = false,
              intermediate_stage_increment::Int = 10,
+             continue_intermediate::Bool = false,
+             intermediate_stage_start::Int = 0,
              tempered_update_prior_weight::S = 0.0,
              regime_switching::Bool = false) where {S<:AbstractFloat, U<:Number}
 
