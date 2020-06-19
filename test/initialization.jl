@@ -58,9 +58,24 @@ end
 m = AnSchorfheide()
 
 file = JLD2.jldopen("reference/one_draw_in.jld2", "r")
-    parameters = file["parameters"]
     data = file["data"]
 close(file)
+file = JLD2.jldopen("reference/one_draw_in_parameter_fields.jld2", "r")
+    parameter_fields = file["parameter_fields"]
+close(file)
+p = parameter_fields
+parameters = map(x -> (:scaling in fieldnames(typeof(p[x]))) ?
+                 parameter(p[x][:key], p[x][:value], p[x][:valuebounds],
+                           p[x][:transform_parameterization], p[x][:transform],
+                           p[x][:prior]; fixed = p[x][:fixed],
+                           description = p[x][:description],
+                           tex_label = p[x][:tex_label],
+                           scaling = p[x][:scaling]) :
+                 parameter(p[x][:key], p[x][:value], p[x][:valuebounds],
+                           p[x][:transform_parameterization], p[x][:transform],
+                           p[x][:prior]; fixed = p[x][:fixed],
+                           description = p[x][:description],
+                           tex_label = p[x][:tex_label]), 1:length(p))
 
 draw = SMC.one_draw(loglik_fn, parameters, data)
 
