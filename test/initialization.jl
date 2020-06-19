@@ -76,6 +76,7 @@ parameters = map(x -> (:scaling in fieldnames(typeof(p[x]))) ?
                            p[x][:prior]; fixed = p[x][:fixed],
                            description = p[x][:description],
                            tex_label = p[x][:tex_label]), 1:length(p))
+parameters = convert(Vector{AbstractParameter{Float64}}, parameters)
 
 draw = SMC.one_draw(loglik_fn, parameters, data)
 
