@@ -39,7 +39,7 @@ function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
         end
 
         if any(isinf.(draw_loglh))
-            draw = vec(rand(parameters, 1, regime_switching = true))
+            draw = vec(rand(parameters, 1, regime_switching = regime_switching))
         else
             success = true
         end
