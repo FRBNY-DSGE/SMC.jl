@@ -138,5 +138,4 @@ new_cloud = ParticleCloud(load(loadpath, "cloud"), map(x -> x.key, m.parameters)
 
 # Clean output files up
 rm(rawpath(m_new, "estimate", "smc_cloud.jld2"))
-rm(rawpath(m_new, "estimate", "smcsave.h5")
-rm(rawpath(m_new, "estimate", "paramsmode.jld2")
+rm(rawpath(m_new, "estimate", "smcsave.h5"))

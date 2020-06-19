@@ -48,6 +48,7 @@ end
 Random.seed!(42)
 new_particles = [SMC.mutation(my_likelihood, m.parameters, data,
                               old_part_cloud.particles[j, :], d.μ, Matrix(d.Σ),
+                              16, #16 because this is what saved test output had (but really AS has only 13 free params)
                               blocks_free, blocks_all, ϕ_n, ϕ_n1;
                               c = c, α = α, old_data = old_data) for j = 1:n_parts]
 
