@@ -7,7 +7,7 @@ import SparseArrays.SparseMatrixCSC
 import ModelConstructors.Setting
 
 my_tests = [
-            "smc",
+            #"smc",
             "helpers",
             "initialization",
             "resample",

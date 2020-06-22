@@ -4,4 +4,6 @@ Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 ModelConstructors = "e47e5152-bd14-11e9-1b46-c951f0a7041d"
 
 [compat]
-Documenter = "~0.22"
+Distributions = "0.18, 0.19, 0.20, 0.21, 0.22, 0.23"
+Documenter = "0.22, 0.24"
+ModelConstructors = "0.1.10, 0.1.11"

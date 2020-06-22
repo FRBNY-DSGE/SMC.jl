@@ -1,3 +1,7 @@
+using Pkg
+Pkg.add("Documenter")
+Pkg.add("Distributions")
+Pkg.add("ModelConstructors")
 using Documenter, ModelConstructors, SMC, Distributions
 
 makedocs(modules = [SMC],
