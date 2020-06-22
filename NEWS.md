@@ -1,3 +1,7 @@
+# SMC.jl 0.1.11 Release Notes
+New Features:
+- Estimate regime switching parameters
+
 # SMC.jl 0.1.10 Release Notes
 New Features:
 - Bug fixes from last release (save rejoined cloud ater rejoining)"
