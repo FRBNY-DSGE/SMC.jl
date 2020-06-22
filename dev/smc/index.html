@@ -4,26 +4,26 @@ ols_model = GenericModel()</code></pre><p>Next, assign our intercept and coeffic
 reg &lt;= parameter(:β1, 0., (-1e5, 1e5), (-1e5, 1e5), Untransformed(), Normal(0, 10), fixed = false)</code></pre><p>The first argument is the name of the parameter, the second is its initial value, the third and fourther are bounds on the parameter (they should always be the same). If the sampler draws a value outside of these bounds, it&#39;ll try again. The fifth argument is whether you would like to perform a transformation on the parameter when using it (ignore this for now–it&#39;s for more advanced users). The sixth argument is the prior, <span>$N(0, 10)$</span>, and last argument says the parameters aren&#39;t fixed parameters (i.e. we&#39;re trying to estimate them!)</p><p>We&#39;ll make some artifical data to test our model</p><pre><code class="language-julia">β = 1.
 α = 1.
 y = β*X + α</code></pre><pre><code class="language-none">100-element Array{Float64,1}:
- 1.9114487122668171
- 1.2536821420006001
- 1.095253253357596 
- 1.6177456815713882
- 1.1317824623243298
- 1.4934612820196953
- 1.7395732048963388
- 1.8864998423763424
- 1.2949563983555021
- 1.7781624567023226
+ 1.767280558084675 
+ 1.3278707470757427
+ 1.6649577504276103
+ 1.567769626134993 
+ 1.0272045309847773
+ 1.631854462931172 
+ 1.312124098173556 
+ 1.6240199835226612
+ 1.7441555227132375
+ 1.815641714491947 
  ⋮                 
- 1.323924832329058 
- 1.7624675352396322
- 1.0412210725026532
- 1.1119811632488885
- 1.7926354266273228
- 1.223837446487221 
- 1.2341718648220341
- 1.0182525496631096
- 1.7405101956506177</code></pre><p>We need a log-likelihood function! Note that it&#39;s important you define a log-likelihood function rather than a likelihood function.</p><pre><code class="language-julia">function likelihood_fnct(p, d)
+ 1.7754403293848342
+ 1.3789813423424426
+ 1.2807028104458429
+ 1.1013846158885618
+ 1.1765781768834145
+ 1.6819635063937353
+ 1.472199894070791 
+ 1.2579052584159551
+ 1.9955842227363652</code></pre><p>We need a log-likelihood function! Note that it&#39;s important you define a log-likelihood function rather than a likelihood function.</p><pre><code class="language-julia">function likelihood_fnct(p, d)
     α = p[1]
     β = p[2]
     Σ = 1
