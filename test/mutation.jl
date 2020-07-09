@@ -1,33 +1,21 @@
 write_test_output = false
+include("modelsetup.jl")
 
 path = dirname(@__FILE__)
 
-m = AnSchorfheide()
+m = setup_linear_model()
 
 save = normpath(joinpath(dirname(@__FILE__),"save"))
 m <= Setting(:saveroot, saveroot)
 
-data = h5read("reference/smc.h5", "data")
-
-m <= Setting(:n_particles, 400)
-m <= Setting(:n_Φ, 100)
-m <= Setting(:λ, 2.0)
-m <= Setting(:n_smc_blocks, 1)
-m <= Setting(:use_parallel_workers, false)
-m <= Setting(:step_size_smc, 0.5)
-m <= Setting(:n_mh_steps_smc, 1)
-m <= Setting(:resampler_smc, :multinomial)
-m <= Setting(:target_accept, 0.25)
-
-m <= Setting(:mixture_proportion, .9)
-m <= Setting(:tempering_target, 0.95)
-m <= Setting(:resampling_threshold, .5)
-m <= Setting(:use_fixed_schedule, true)
+data = h5read("reference/test_data.h5", "data")
 
 n_parts = get_setting(m, :n_particles)
+n_params = length(m.parameters)
 
 file = JLD2.jldopen("reference/mutation_inputs.jld2", "r")
-old_particles = read(file, "particles")
+old_cloud = read(file, "particles")
+
 d = read(file, "d")
 blocks_free = read(file, "blocks_free")
 blocks_all = read(file, "blocks_all")
@@ -38,30 +26,28 @@ c = read(file, "c")
 old_data = read(file, "old_data")
 close(file)
 
-old_part_cloud = DSGE.vector_particles_to_cloud(m, old_particles)
-function my_likelihood(parameters::ParameterVector, data::Matrix{Float64})::Float64
-    DSGE.update!(m, parameters)
-    DSGE.likelihood(m, data; sampler = false, catch_errors = true,
-                    use_chand_recursion = true, verbose = :low)
-end
 
 Random.seed!(42)
-new_particles = [SMC.mutation(my_likelihood, m.parameters, data,
-                              old_part_cloud.particles[j, :], d.μ, Matrix(d.Σ),
-                              16, #16 because this is what saved test output had (but really AS has only 13 free params)
-                              blocks_free, blocks_all, ϕ_n, ϕ_n1;
-                              c = c, α = α, old_data = old_data) for j = 1:n_parts]
+
+new_cloud = Cloud(n_params, n_parts)
+for i in 1:n_parts
+    new_cloud.particles[i,:] = SMC.mutation(loglik_fn, m.parameters, data,
+                          	       old_cloud.particles[i, :], d.μ, Matrix(d.Σ),
+                              	       n_params, 
+                              	       blocks_free, blocks_all, ϕ_n, ϕ_n1;
+                              	       c = c, α = α, old_data = old_data)
+end
 
 if write_test_output
     JLD2.jldopen("reference/mutation_outputs.jld2", "w") do file
-        write(file, "particles", new_particles)
+        write(file, "particles", new_cloud)
     end
 end
 
-saved_particles = load("reference/mutation_outputs.jld2", "particles")
+saved_cloud = load("reference/mutation_outputs.jld2", "particles")
 
 @testset "Test mutation outputs, particle by particle" begin
-    for i = 1:length(saved_particles)
-        @test isapprox(saved_particles[i], new_particles[i], nans = true)
+    for i = 1:n_parts
+        @test isapprox(saved_cloud.particles[i, :], new_cloud.particles[i, :], nans = true)
     end
 end

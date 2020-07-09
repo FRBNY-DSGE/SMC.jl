@@ -5,36 +5,19 @@ path = dirname(@__FILE__)
 ###################################################################
 # Test: initial_draw!()
 ###################################################################
-m = AnSchorfheide()
+include("modelsetup.jl")
 
-function loglik_fn(para::ModelConstructors.ParameterVector, data::Matrix{Float64})::Float64
-    DSGE.update!(m, para)
-    DSGE.likelihood(m, data; sampler = false, catch_errors = true,
-               use_chand_recursion = get_setting(m, :use_chand_recursion), verbose = :low)
-end
+m = setup_linear_model()
+
+# Read in generated data
+data = h5read("reference/test_data.h5", "data")
+X = h5read("reference/test_data.h5", "X")
 
 save = normpath(joinpath(dirname(@__FILE__),"save"))
 m <= Setting(:saveroot, save)
 
-data = h5read("reference/smc.h5", "data")
-
-m <= Setting(:n_particles, 400)
-m <= Setting(:n_Φ, 100)
-m <= Setting(:λ, 2.0)
-m <= Setting(:n_smc_blocks, 1)
-m <= Setting(:use_parallel_workers, false)
-m <= Setting(:step_size_smc, 0.5)
-m <= Setting(:n_mh_steps_smc, 1)
-m <= Setting(:resampler_smc, :polyalgo)
-m <= Setting(:target_accept, 0.25)
-
-m <= Setting(:mixture_proportion, .9)
-m <= Setting(:tempering_target, 0.95)
-m <= Setting(:resampling_threshold, .5)
-m <= Setting(:use_fixed_schedule, true)
-
 ####################################################################
-init_cloud = SMC.Cloud(length(m.parameters), get_setting(m, :n_particles))
+init_cloud = SMC.Cloud(length(m.parameters), get_setting(m,:n_particles))
 
 @everywhere Random.seed!(42)
 SMC.initial_draw!(loglik_fn, m.parameters, data, init_cloud)
@@ -55,30 +38,7 @@ end
 ###################################################################
 # Test: one_draw()
 ###################################################################
-m = AnSchorfheide()
-
-file = JLD2.jldopen("reference/one_draw_in.jld2", "r")
-    data = file["data"]
-close(file)
-file = JLD2.jldopen("reference/one_draw_in_parameter_fields.jld2", "r")
-    parameter_fields = file["parameter_fields"]
-close(file)
-p = parameter_fields
-parameters = map(x -> (:scaling in fieldnames(typeof(p[x]))) ?
-                 parameter(p[x][:key], p[x][:value], p[x][:valuebounds],
-                           p[x][:transform_parameterization], p[x][:transform],
-                           p[x][:prior]; fixed = p[x][:fixed],
-                           description = p[x][:description],
-                           tex_label = p[x][:tex_label],
-                           scaling = p[x][:scaling]) :
-                 parameter(p[x][:key], p[x][:value], p[x][:valuebounds],
-                           p[x][:transform_parameterization], p[x][:transform],
-                           p[x][:prior]; fixed = p[x][:fixed],
-                           description = p[x][:description],
-                           tex_label = p[x][:tex_label]), 1:length(p))
-parameters = convert(Vector{AbstractParameter{Float64}}, parameters)
-
-draw = SMC.one_draw(loglik_fn, parameters, data)
+draw = SMC.one_draw(loglik_fn, m.parameters, data)
 
 if write_test_output
     JLD2.jldopen("reference/one_draw_out.jld2", true, true, true, IOStream) do file
@@ -99,7 +59,7 @@ end
 ###################################################################
 # Test: draw_likelihood()
 ###################################################################
-draw_lik = SMC.draw_likelihood(loglik_fn, parameters, data, vec(draw[1]))
+draw_lik = SMC.draw_likelihood(loglik_fn, m.parameters, data, vec(draw[1]))
 
 if write_test_output
     JLD2.jldopen("reference/draw_likelihood_out.jld2", true, true, true, IOStream) do file
@@ -119,7 +79,7 @@ end
 ###################################################################
 # Test: initialize_likelihoods!()
 ###################################################################
-SMC.initialize_likelihoods!(loglik_fn, parameters, data, init_cloud)
+SMC.initialize_likelihoods!(loglik_fn, m.parameters, data, init_cloud)
 
 if write_test_output
     JLD2.jldopen("reference/initialize_likelihood_out.jld2", true, true, true, IOStream) do file

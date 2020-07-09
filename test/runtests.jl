@@ -1,5 +1,5 @@
 using Test
-using ModelConstructors, SMC, DSGE
+using ModelConstructors, SMC
 using LinearAlgebra, PDMats, Distributions, SparseArrays
 using Printf, Distributed, Random, HDF5, FileIO, JLD2
 
@@ -21,3 +21,4 @@ for test in my_tests
     @printf " * %s\n" test_file
     include(test_file)
 end
+

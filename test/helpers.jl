@@ -1,4 +1,7 @@
 writing_output = false
+include("modelsetup.jl")
+
+
 @everywhere Random.seed!(42)
 
 ####################################################################
@@ -168,7 +171,9 @@ end
 ####################################################################
 # Testing Block Creation
 ####################################################################
-m = AnSchorfheide()
+m = setup_linear_model()
+
+
 
 free_para_inds = findall(x -> !x.fixed, m.parameters)
 n_free_para    = length(free_para_inds)
