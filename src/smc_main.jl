@@ -169,6 +169,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
                         ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data, regime_switching = regime_switching)
     end
 
+
     # Check that if there's a tempered update, old and current vintages are different
     tempered_update = !isempty(old_data) # Time tempering
     @warn !(tempered_update & (old_vintage == data_vintage)) "Old & current vintages the same!"
