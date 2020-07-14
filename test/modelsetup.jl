@@ -90,6 +90,6 @@ function loglik_fn(p, d)
     for t in 1:size(d,2) #see above
         logprob += term1 - 1/2 * dot(errors, inv_Σ * errors)
     end
-    return exp(logprob)
+    return logprob
 end
 
