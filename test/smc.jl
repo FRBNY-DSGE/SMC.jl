@@ -1,36 +1,27 @@
-using DSGE, ModelConstructors, HDF5, Random, JLD2, FileIO, SMC, Test
+using ModelConstructors, HDF5, Random, JLD2, FileIO, SMC, Test
+include("modelsetup.jl")
 
 path = dirname(@__FILE__)
 writing_output = false
 
-m = AnSchorfheide()
+m = setup_linear_model()
 
 save = normpath(joinpath(dirname(@__FILE__),"save"))
 m <= Setting(:saveroot, save)
+savepath = rawpath(m, "estimate", "smc_cloud.jld2")
+particle_store_path = rawpath(m, "estimate", "smcsave.h5")
 
-data = h5read("reference/smc.h5", "data")
-
-m <= Setting(:n_particles, 400)
-m <= Setting(:n_Φ, 100)
-m <= Setting(:λ, 2.0)
-m <= Setting(:n_smc_blocks, 1)
-m <= Setting(:use_parallel_workers, true)
-m <= Setting(:step_size_smc, 0.5)
-m <= Setting(:n_mh_steps_smc, 1)
-m <= Setting(:resampler_smc, :polyalgo)
-m <= Setting(:target_accept, 0.25)
-
-m <= Setting(:mixture_proportion, .9)
-m <= Setting(:adaptive_tempering_target_smc, false)
-m <= Setting(:resampling_threshold, .5)
-m <= Setting(:smc_iteration, 0)
-m <= Setting(:use_chand_recursion, true)
+data = h5read("reference/test_data.h5", "data")
 
 @everywhere Random.seed!(42)
 
-println("Estimating AnSchorfheide Model... (approx. 2 minutes)")
-DSGE.smc2(m, data, verbose = :none, run_csminwel = false) # Uncomment once new DSGE version comes out: run_csminwel = false, verbose = :none) # us.txt gives equiv to periods 95:174 in our current dataset
+
+println("Estimating Linear Model... (approx. 2 minutes)")
+
+SMC.smc(loglik_fn, m.parameters, data, verbose = :none, use_fixed_schedule = true, parallel = true, n_Φ = 100, n_mh_steps = 1, resampling_method = :polyalgo, data_vintage = "200707", target = 0.25, savepath = savepath, particle_store_path = particle_store_path, α = .9, threshold_ratio = .5, smc_iteration = 0)
+
 println("Estimation done!")
+
 
 test_file = load(rawpath(m, "estimate", "smc_cloud.jld2"))
 test_cloud  = test_file["cloud"]
@@ -52,7 +43,7 @@ saved_W     = saved_file["W"]
 
 ####################################################################
 cloud_fields = fieldnames(typeof(test_cloud))
-@testset "ParticleCloud Fields: AnSchorf" begin
+@testset "ParticleCloud Fields: Linear" begin
     @test @test_matrix_approx_eq SMC.get_vals(test_cloud) SMC.get_vals(saved_cloud)
     @test @test_matrix_approx_eq SMC.get_loglh(test_cloud) SMC.get_loglh(saved_cloud)
     @test length(test_cloud.particles) == length(saved_cloud.particles)
@@ -68,7 +59,7 @@ end
 test_particle  = test_cloud.particles[1,:]
 saved_particle = saved_cloud.particles[1,:]
 N = length(test_particle)
-@testset "Individual Particle Fields Post-SMC: AnSchorf" begin
+@testset "Individual Particle Fields Post-SMC: Linear" begin
     @test test_particle[1:SMC.ind_para_end(N)] ≈ saved_particle[1:SMC.ind_para_end(N)]
     @test test_particle[SMC.ind_loglh(N)]      ≈ saved_particle[SMC.ind_loglh(N)]
     @test test_particle[SMC.ind_logpost(N)]    ≈ saved_particle[SMC.ind_logpost(N)]
@@ -78,64 +69,50 @@ N = length(test_particle)
     @test test_particle[SMC.ind_weight(N)]     ≈ saved_particle[SMC.ind_weight(N)]
 end
 
-@testset "Weight Matrices: AnSchorf" begin
+@testset "Weight Matrices: Linear" begin
     @test @test_matrix_approx_eq test_w saved_w
     @test @test_matrix_approx_eq test_W saved_W
 end
 
+
+
+
 ####################################################################
 # Bridging Test
 ####################################################################
-m = AnSchorfheide()
+include("modelsetup.jl")
+m = setup_linear_model()
 
 save = normpath(joinpath(dirname(@__FILE__),"save"))
 m <= Setting(:saveroot, save)
 
-data = h5read("reference/smc.h5", "data")
-
-m <= Setting(:n_particles, 400)
-m <= Setting(:n_Φ, 100)
-m <= Setting(:λ, 2.0)
-m <= Setting(:n_smc_blocks, 1)
-m <= Setting(:use_parallel_workers, true)
-m <= Setting(:step_size_smc, 0.5)
-m <= Setting(:n_mh_steps_smc, 1)
-m <= Setting(:resampler_smc, :polyalgo)
-m <= Setting(:target_accept, 0.25)
-
-m <= Setting(:mixture_proportion, .9)
-m <= Setting(:adaptive_tempering_target_smc, false)
-m <= Setting(:resampling_threshold, .5)
-m <= Setting(:smc_iteration, 0)
-m <= Setting(:use_chand_recursion, true)
+data = h5read("reference/test_data.h5", "data")
 
 @everywhere Random.seed!(42)
 
 # Estimate with 1st half of sample
 m_old = deepcopy(m)
-m_old <= Setting(:n_particles, 1000, true, "npart", "")
-m_old <= Setting(:data_vintage, "000000")
-#DSGE.smc2(m_old, data[:,1:Int(floor(end/2))], run_csminwel = false, verbose = :low)
+
+SMC.smc(loglik_fn, m_old.parameters, data[:, 1:Int(floor(end/2))], verbose = :none, use_fixed_schedule = true, parallel = true,  n_Φ = 100, n_mh_steps = 1, resampling_method = :polyalgo, data_vintage = "000000", target = 0.25, savepath = savepath, particle_store_path = particle_store_path, α = .9, threshold_ratio = .5, smc_iteration = 0, n_parts = 1000)
 
 m_new = deepcopy(m)
 
 # Estimate with 2nd half of sample
-m_new <= Setting(:data_vintage, "200218")
+m_new <= Setting(:data_vintage, "200708")
 m_new <= Setting(:tempered_update_prior_weight, 0.5)
 #m_new <= Setting(:tempered_update, true)
 old_vint = "000000"
 m_new <= Setting(:previous_data_vintage, old_vint)
 loadpath = rawpath(m_old, "estimate", "smc_cloud.jld2")
-loadpath = replace(loadpath, r"vint=[0-9]{6}" => "vint=" * old_vint)
-old_cloud = ParticleCloud(load(loadpath, "cloud"), map(x -> x.key, m.parameters))
-m_new <= Setting(:n_particles, 2000, true, "npart", "")
-DSGE.smc2(m_new, data,
-          old_data = data[:,1:Int(floor(end/2))], old_cloud = old_cloud,
-          run_csminwel = false)
+
+old_cloud = load(loadpath, "cloud")
+
+SMC.smc(loglik_fn, m_new.parameters, data, old_data=data[:,1:Int(floor(end/2))], old_cloud=old_cloud, verbose = :none, use_fixed_schedule = true, parallel = true,  n_Φ = 100, n_mh_steps = 1, resampling_method = :polyalgo, data_vintage = "200708", target = 0.25, savepath = savepath, particle_store_path = particle_store_path, α = .9, threshold_ratio = .5, smc_iteration = 0)
 
 loadpath = rawpath(m_new, "estimate", "smc_cloud.jld2")
-new_cloud = ParticleCloud(load(loadpath, "cloud"), map(x -> x.key, m.parameters))
-
+new_cloud = load(loadpath, "cloud")
+ 
 # Clean output files up
 rm(rawpath(m_new, "estimate", "smc_cloud.jld2"))
 rm(rawpath(m_new, "estimate", "smcsave.h5"))
+

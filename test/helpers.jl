@@ -1,4 +1,7 @@
 writing_output = false
+include("modelsetup.jl")
+
+
 @everywhere Random.seed!(42)
 
 ####################################################################
@@ -136,6 +139,7 @@ close(file)
 test_ESS = SMC.compute_ESS(loglh, current_weights, ϕ_n, ϕ_n1)
 
 if writing_output
+
     JLD2.jldopen("reference/smc_sw_cloud_fix=true_blocks=3.jld2", "r") do file
         cloud = file["cloud"]
         current_weights = file["w"][:,3]
@@ -168,7 +172,9 @@ end
 ####################################################################
 # Testing Block Creation
 ####################################################################
-m = AnSchorfheide()
+m = setup_linear_model()
+
+
 
 free_para_inds = findall(x -> !x.fixed, m.parameters)
 n_free_para    = length(free_para_inds)
