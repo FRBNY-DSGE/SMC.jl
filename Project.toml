@@ -6,7 +6,6 @@ version = "0.1.11"
 [deps]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 Calculus = "49dc2e85-a5d0-5ad3-a950-438e2897f1b9"
-DSGE = "6cf23378-2c47-544c-b0c3-6efefe57ca11"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
@@ -32,12 +31,11 @@ Distributions = "0.18, 0.19, 0.20, 0.21, 0.22, 0.23"
 FileIO = "1.0.7, 1.1, 1.2, 1.3"
 HDF5 = "0.12, 0.13"
 JLD2 = "^0.1.3"
-ModelConstructors = "0.1.10, 0.1.11"
+ModelConstructors = "0.1.10, 0.1.11, 0.1.12"
 PDMats = "^0.9.10, 0.10"
 Roots = "0.7, 0.8, 1"
 StatsBase = "0.29, 0.30, 0.31, 0.32.0, 0.33.0"
 julia = "1"
-
 
 [extras]
 InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
