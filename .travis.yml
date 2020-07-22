@@ -34,7 +34,7 @@ after_success:
 jobs:
   include:
     - stage: "Documentation"
-      julia: 1.1
+      julia: 1
       os: linux
       script:
         - julia --project=docs/ -e 'using Pkg; Pkg.add("SMC"); Pkg.add("Distributions"); Pkg.develop(PackageSpec(path=pwd()));
