@@ -16,7 +16,7 @@ Comments and suggestions are welcome, and best submitted as either an issue or a
 
 ## Installation and Versioning
 
-`SMC.jl` is a registered Julia package in the [`General`](https://github.com/JuliaRegistries/General) registry, compatible with Julia `v0.7`, `v1.0`, and `v1.1`. To install it, open your Julia REPL, type `]` to enter the package manager, and run
+`SMC.jl` is a registered Julia package in the [`General`](https://github.com/JuliaRegistries/General) registry, compatible with Julia `v1.x`. To install it, open your Julia REPL, type `]` to enter the package manager, and run
 
 ```julia
 pkg> add SMC
