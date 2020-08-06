@@ -528,7 +528,7 @@ function join_cloud(filename::String, n_pieces::Int)
         ws[i]         = load(small_filename, "w")
         Ws[i]         = load(small_filename, "W")
     end
-    n_part  = sum(map(x -> size(x, 1), map(y -> y.particles, clouds)))
+    n_part  = sum([size(y.particles, 1) for y in clouds])
     n_para  = size(clouds[1].particles, 2)
     n_stage = size(ws[1], 2)
 
