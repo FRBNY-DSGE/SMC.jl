@@ -2,6 +2,12 @@ write_test_output = false
 
 path = dirname(@__FILE__)
 
+if VERSION < v"1.5"
+    ver = "111"
+else 
+    ver = "150"
+end
+
 ###################################################################
 # Test: initial_draw!()
 ###################################################################
@@ -23,12 +29,12 @@ init_cloud = SMC.Cloud(length(m.parameters), get_setting(m,:n_particles))
 SMC.initial_draw!(loglik_fn, m.parameters, data, init_cloud)
 
 if write_test_output
-    JLD2.jldopen("reference/initial_draw_out.jld2", "w") do file
+    JLD2.jldopen(string("reference/initial_draw_out_version=", ver, ".jld2"), "w") do file
         write(file, "cloud", init_cloud)
     end
 end
 
-saved_init_cloud = load("reference/initial_draw_out.jld2", "cloud")
+saved_init_cloud = load(string("reference/initial_draw_out_version=", ver, ".jld2"), "cloud")
 
 @testset "Initial draw" begin
     @test @test_matrix_approx_eq SMC.get_vals(init_cloud) SMC.get_vals(saved_init_cloud)
@@ -41,12 +47,12 @@ end
 draw = SMC.one_draw(loglik_fn, m.parameters, data)
 
 if write_test_output
-    JLD2.jldopen("reference/one_draw_out.jld2", true, true, true, IOStream) do file
+    JLD2.jldopen(string("reference/one_draw_out_version=", ver, ".jld2"), true, true, true, IOStream) do file
         file["draw"] = draw
     end
 end
 
-test_draw = JLD2.jldopen("reference/one_draw_out.jld2", "r") do file
+test_draw = JLD2.jldopen(string("reference/one_draw_out_version=", ver, ".jld2"), "r") do file
     file["draw"]
 end
 
@@ -62,11 +68,11 @@ end
 draw_lik = SMC.draw_likelihood(loglik_fn, m.parameters, data, vec(draw[1]))
 
 if write_test_output
-    JLD2.jldopen("reference/draw_likelihood_out.jld2", true, true, true, IOStream) do file
+    JLD2.jldopen(string("reference/draw_likelihood_out_version=", ver, ".jld2"), true, true, true, IOStream) do file
         file["draw_lik"] = draw_lik
     end
 end
-test_draw_lik = JLD2.jldopen("reference/draw_likelihood_out.jld2", "r") do file
+test_draw_lik = JLD2.jldopen(string("reference/draw_likelihood_out_version=", ver, ".jld2"), "r") do file
     file["draw_lik"]
 end
 
@@ -82,11 +88,11 @@ end
 SMC.initialize_likelihoods!(loglik_fn, m.parameters, data, init_cloud)
 
 if write_test_output
-    JLD2.jldopen("reference/initialize_likelihood_out.jld2", true, true, true, IOStream) do file
+    JLD2.jldopen(string("reference/initialize_likelihood_out_version=", ver, ".jld2"), true, true, true, IOStream) do file
         file["init_lik_cloud"] = init_cloud
     end
 end
-test_init_cloud = JLD2.jldopen("reference/initialize_likelihood_out.jld2", "r") do file
+test_init_cloud = JLD2.jldopen(string("reference/initialize_likelihood_out_version=", ver, ".jld2"), "r") do file
     file["init_lik_cloud"]
 end
 
@@ -103,11 +109,11 @@ end
 SMC.initialize_cloud_settings!(init_cloud)
 
 if write_test_output
-    JLD2.jldopen("reference/initialize_cloud_settings.jld2", true, true, true, IOStream) do file
+    JLD2.jldopen(string("reference/initialize_cloud_settings_version=", ver, ".jld2"), true, true, true, IOStream) do file
         file["init_cloud"] = init_cloud
     end
 end
-test_init_cloud = JLD2.jldopen("reference/initialize_cloud_settings.jld2", "r") do file
+test_init_cloud = JLD2.jldopen(string("reference/initialize_cloud_settings_version=", ver, ".jld2"), "r") do file
     file["init_cloud"]
 end
 

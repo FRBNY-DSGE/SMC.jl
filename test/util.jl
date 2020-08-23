@@ -3,6 +3,12 @@ import SparseArrays.SparseMatrixCSC
 write_test_output = false
 path = dirname(@__FILE__)
 
+if VERSION < v"1.5"
+    ver = "111"
+else 
+    ver = "150"
+end
+
 ###################################################################
 # Test: scalar_reshape()
 ###################################################################
@@ -23,14 +29,14 @@ v2 = SMC.vector_reshape([1, 0], 1, 0)
 v3 = SMC.vector_reshape([1.0, 0.0], 1.0, 0.0)
 
 if write_test_output
-    JLD2.jldopen("reference/vector_reshape.jld2", true, true, true, IOStream) do file
+    JLD2.jldopen(string("reference/vector_reshape_version=", ver, ".jld2"), true, true, true, IOStream) do file
         file["v1"] = v1
         file["v2"] = v2
         file["v3"] = v3
     end
 end
 
-test_v1, test_v2, test_v3 = JLD2.jldopen("reference/vector_reshape.jld2", "r") do file
+test_v1, test_v2, test_v3 = JLD2.jldopen(string("reference/vector_reshape_version=", ver, ".jld2"), "r") do file
     file["v1"], file["v2"], file["v3"]
 end
 ###################################################################
@@ -48,13 +54,13 @@ s1_r = SMC.scalar_reduce([s1]...)
 s2_r = SMC.scalar_reduce([s2 for i in 1:5]...)
 
 if write_test_output
-    JLD2.jldopen("reference/scalar_reduce.jld2", true, true, true, IOStream) do file
+    JLD2.jldopen(string("reference/scalar_reduce_version=", ver, ".jld2"), true, true, true, IOStream) do file
         file["s1_r"] = s1_r
         file["s2_r"] = s2_r
     end
 end
 
-test_s1_r, test_s2_r = JLD2.jldopen("reference/scalar_reduce.jld2", "r") do file
+test_s1_r, test_s2_r = JLD2.jldopen(string("reference/scalar_reduce_version=", ver, ".jld2"), "r") do file
     file["s1_r"], file["s2_r"]
 end
 ###################################################################
@@ -72,14 +78,14 @@ v2_r = SMC.vector_reduce([v2 for i in 1:5]...)
 v3_r = SMC.vector_reduce([v3 for i in 1:5]...)
 
 if write_test_output
-    JLD2.jldopen("reference/vector_reduce.jld2", true, true, true, IOStream) do file
+    JLD2.jldopen(string("reference/vector_reduce_version=", ver, ".jld2"), true, true, true, IOStream) do file
         file["v1_r"] = v1_r
         file["v2_r"] = v2_r
         file["v3_r"] = v3_r
     end
 end
 
-test_v1_r, test_v2_r, test_v3_r = JLD2.jldopen("reference/vector_reduce.jld2", "r") do file
+test_v1_r, test_v2_r, test_v3_r = JLD2.jldopen(string("reference/vector_reduce_version=", ver, ".jld2"), "r") do file
     file["v1_r"], file["v2_r"], file["v3_r"]
 end
 

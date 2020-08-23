@@ -4,6 +4,12 @@ include("modelsetup.jl")
 path = dirname(@__FILE__)
 writing_output = false
 
+if VERSION < v"1.5"
+    ver = "111"
+else
+    ver = "150"
+end
+
 m = setup_linear_model()
 
 save = normpath(joinpath(dirname(@__FILE__),"save"))
@@ -29,14 +35,14 @@ test_w      = test_file["w"]
 test_W      = test_file["W"]
 
 if writing_output
-    jldopen("reference/smc_cloud_fix=true.jld2", true, true, true, IOStream) do file
+    jldopen(string("reference/smc_cloud_fix=true_version=", ver, ".jld2"), true, true, true, IOStream) do file
         write(file, "cloud", test_cloud)
         write(file, "w", test_w)
         write(file, "W", test_W)
     end
 end
 
-saved_file  = load("reference/smc_cloud_fix=true.jld2")
+saved_file  = load(string("reference/smc_cloud_fix=true_version=", ver, ".jld2"))
 saved_cloud = saved_file["cloud"]
 saved_w     = saved_file["w"]
 saved_W     = saved_file["W"]

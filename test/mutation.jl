@@ -1,6 +1,12 @@
 write_test_output = false
 include("modelsetup.jl")
 
+if VERSION < v"1.5"
+    ver = "111"
+else 
+    ver = "150"
+end
+
 path = dirname(@__FILE__)
 
 m = setup_linear_model()
@@ -39,12 +45,12 @@ for i in 1:n_parts
 end
 
 if write_test_output
-    JLD2.jldopen("reference/mutation_outputs.jld2", "w") do file
+    JLD2.jldopen(string("reference/mutation_outputs_version=", ver, ".jld2"), "w") do file
         write(file, "particles", new_cloud)
     end
 end
 
-saved_cloud = load("reference/mutation_outputs.jld2", "particles")
+saved_cloud = load(string("reference/mutation_outputs_version=", ver, ".jld2"), "particles")
 
 @testset "Test mutation outputs, particle by particle" begin
     for i = 1:n_parts
