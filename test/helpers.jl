@@ -130,7 +130,7 @@ end
 ####################################################################
 # Testing ESS Computation
 ####################################################################
-file = JLD2.jldopen(string("reference/ess_inputs.jld2"))
+file = JLD2.jldopen(string("reference/ess_inputs_version=", ver, ".jld2"))
     loglh           = read(file, "loglh")
     current_weights = read(file, "current_weights")
     ϕ_n             = read(file, "ϕ_n")
@@ -149,15 +149,12 @@ if writing_output
         current_weights = file["w"][:,3]
     end
 
-    n_part    = length(cloud.particles)
+    current_weights = SMC.get_weights(cloud)
+    n_part    = size(cloud.particles, 1)
     loglh     = SMC.get_loglh(cloud)
     old_loglh = SMC.get_old_loglh(cloud)
- #   loglh     = [cloud.particles[i].loglh for i=1:n_part]
-  #  old_loglh = [cloud.particles[i].old_loglh for i=1:n_part]
     ϕ_n       = 9.25022e-6
     ϕ_n1      = 2.15769e-6
-
-    
 
     JLD2.jldopen(string("reference/ess_inputs_version=", ver, ".jld2"), true, true, true, IOStream) do file
         write(file, "loglh", loglh)
