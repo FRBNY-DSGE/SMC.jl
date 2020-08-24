@@ -130,21 +130,20 @@ end
 ####################################################################
 # Testing ESS Computation
 ####################################################################
-file = JLD2.jldopen("reference/ess_inputs.jld2")
+file = JLD2.jldopen(string("reference/ess_inputs.jld2"))
     loglh           = read(file, "loglh")
     current_weights = read(file, "current_weights")
     ϕ_n             = read(file, "ϕ_n")
     ϕ_n1            = read(file, "ϕ_n1")
 close(file)
 
-file = JLD2.jldopen("reference/ess_output.jld2")
+file = JLD2.jldopen(string("reference/ess_output_version=", ver, ".jld2"))
     saved_ESS = read(file, "ess")
 close(file)
 
 test_ESS = SMC.compute_ESS(loglh, current_weights, ϕ_n, ϕ_n1)
 
 if writing_output
-
     JLD2.jldopen("reference/smc_sw_cloud_fix=true_blocks=3.jld2", "r") do file
         cloud = file["cloud"]
         current_weights = file["w"][:,3]
@@ -157,6 +156,8 @@ if writing_output
   #  old_loglh = [cloud.particles[i].old_loglh for i=1:n_part]
     ϕ_n       = 9.25022e-6
     ϕ_n1      = 2.15769e-6
+
+    
 
     JLD2.jldopen(string("reference/ess_inputs_version=", ver, ".jld2"), true, true, true, IOStream) do file
         write(file, "loglh", loglh)

@@ -1,4 +1,10 @@
-file = "reference/smc_cloud_fix=true.jld2"
+if VERSION < v"1.5"
+    ver = "111"
+else 
+    ver = "151"
+end
+
+file = string("reference/smc_cloud_fix=true_version=", ver, ".jld2")
 cloud = load(file, "cloud")
 split_cloud(file, 2)
 rejoined_cloud = join_cloud(file, 2)
