@@ -10,6 +10,7 @@ os:
 julia:
     #- 0.7.0
     - 1
+    - 1.1
     - 1.4 # ensure SMC tests pass why tests are updated to handle seed changes in Julia 1.5
 notifications:
     email: false
