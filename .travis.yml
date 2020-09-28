@@ -29,7 +29,7 @@ branches:
     - master
     - gh-pages
 after_success:
-- julia -e 'using Pkg; cd(Pkg.dir("SMC")); Pkg.add("Coverage"); Pkg.add("SMC"); Pkg.add("Distributions"); using Coverage; Coveralls.submit(process_folder())'
+- julia -e 'using Pkg; cd(Pkg.dir("SMC")); Pkg.add("Coverage"); using Coverage; Coveralls.submit(process_folder())'
 - julia -e 'using Pkg; Pkg.add("Documenter")'
 - julia -e 'using Pkg; cd(Pkg.dir("SMC")); include(joinpath("docs", "make.jl"))'
 
