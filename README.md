@@ -2,7 +2,7 @@
 <img width="450px" src="https://github.com/FRBNY-DSGE/SMC.jl/blob/master/docs/smc_logo_thin_crop.png" alt="SMC.jl"/>
 </p>
 
-[![Build Status](https://travis-ci.com/FRBNY-DSGE/SMC.jl.svg?branch=master)](https://travis-ci.com/FRBNY-DSGE/SMC.jl)
+![Build Status](https://github.com/FRBNY-DSGE/SMC.jl/workflows/build/badge.svg?branch=master)
 [![](https://img.shields.io/badge/docs-latest-blue.svg)](https://frbny-dsge.github.io/SMC.jl/latest)
 [![Coverage Status](https://coveralls.io/repos/github/FRBNY-DSGE/SMC.jl/badge.svg?branch=master)](https://coveralls.io/github/FRBNY-DSGE/SMC.jl?branch=master)
 
