@@ -15,6 +15,9 @@ jobs:
       - uses: julia-actions/setup-julia@latest
         with:
           version: '1.5'
+      - run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
       - name: Install dependencies
         run: julia --project=docs/ -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
       - name: Build and deploy
