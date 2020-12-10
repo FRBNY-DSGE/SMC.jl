@@ -4,7 +4,7 @@
 
 ![Build Status](https://github.com/FRBNY-DSGE/SMC.jl/workflows/build/badge.svg?branch=master)
 [![](https://img.shields.io/badge/docs-latest-blue.svg)](https://frbny-dsge.github.io/SMC.jl/latest)
-[![Coverage Status](https://coveralls.io/repos/github/FRBNY-DSGE/SMC.jl/badge.svg?branch=master)](https://coveralls.io/github/FRBNY-DSGE/SMC.jl?branch=master)
+[![codecov](https://codecov.io/gh/FRBNY-DSGE/SMC.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/FRBNY-DSGE/SMC.jl)
 
 # Sequential Monte Carlo
 
