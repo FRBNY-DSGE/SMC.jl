@@ -1,10 +1,10 @@
 <p align="center">
-<img width="450px" src="https://github.com/FRBNY-DSGE/SMC.jl/blob/master/docs/smc_logo_thin_crop.png" alt="SMC.jl"/>
+<img width="450px" src="https://github.com/FRBNY-DSGE/SMC.jl/blob/main/docs/smc_logo_thin_crop.png" alt="SMC.jl"/>
 </p>
 
-![Build Status](https://github.com/FRBNY-DSGE/SMC.jl/workflows/build/badge.svg?branch=master)
+![Build Status](https://github.com/FRBNY-DSGE/SMC.jl/workflows/build/badge.svg?branch=main)
 [![](https://img.shields.io/badge/docs-latest-blue.svg)](https://frbny-dsge.github.io/SMC.jl/latest)
-[![codecov](https://codecov.io/gh/FRBNY-DSGE/SMC.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/FRBNY-DSGE/SMC.jl)
+[![codecov](https://codecov.io/gh/FRBNY-DSGE/SMC.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/FRBNY-DSGE/SMC.jl)
 
 # Sequential Monte Carlo
 
@@ -26,7 +26,7 @@ pkg> add SMC
 
 The package requires our auxiliary package, [ModelConstructors.jl](https://github.com/FRBNY-DSGE/ModelConstructors.jl), which contains useful data structures for creating custom models (e.g. `Parameter`, `State`, `Observable`, `Setting` types).
 
-For examples of how to set up a model in the form SMC can estimate, see scripts in the [`examples/`](https://github.com/FRBNY-DSGE/SMC.jl/tree/master/examples) folder.
+For examples of how to set up a model in the form SMC can estimate, see scripts in the [`examples/`](https://github.com/FRBNY-DSGE/SMC.jl/tree/main/examples) folder.
 
 ## Precompilation
 
