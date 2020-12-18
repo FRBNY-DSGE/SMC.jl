@@ -10,23 +10,24 @@ function setup_linear_model(; regime_switching::Bool = false)
     m = GenericModel()
 
     # Set up linear parameters
-    m <= parameter(:α1, 0., (-1e5, 1e5), (-1e5, 1e5), Untransformed(), Normal(0, 1e3),
+    prior_para = regime_switching ? 1e1 : 1e3
+    m <= parameter(:α1, 0., (-1e5, 1e5), (-1e5, 1e5), Untransformed(), Normal(0, prior_para),
                   fixed = false)
-    m <= parameter(:β1, 0., (-1e5, 1e5), (-1e5, 1e5), Untransformed(), Normal(0, 1e3),
+    m <= parameter(:β1, 0., (-1e5, 1e5), (-1e5, 1e5), Untransformed(), Normal(0, prior_para),
                   fixed = false)
-    m <= parameter(:σ1, 1., (1e-5, 1e5), (1e-5, 1e5), SquareRoot(), Uniform(0, 1e3),
+    m <= parameter(:σ1, 1., (1e-5, 1e5), (1e-5, 1e5), SquareRoot(), Uniform(0, prior_para),
                   fixed = false)
-    m <= parameter(:α2, 0., (-1e5, 1e5), (-1e5, 1e5), Untransformed(), Normal(0, 1e3),
+    m <= parameter(:α2, 0., (-1e5, 1e5), (-1e5, 1e5), Untransformed(), Normal(0, prior_para),
                   fixed = false)
-    m <= parameter(:β2, 0., (-1e5, 1e5), (-1e5, 1e5), Untransformed(), Normal(0, 1e3),
+    m <= parameter(:β2, 0., (-1e5, 1e5), (-1e5, 1e5), Untransformed(), Normal(0, prior_para),
                   fixed = false)
-    m <= parameter(:σ2, 1., (1e-5, 1e5), (1e-5, 1e5), SquareRoot(), Uniform(0, 1e3),
+    m <= parameter(:σ2, 1., (1e-5, 1e5), (1e-5, 1e5), SquareRoot(), Uniform(0, prior_para),
                   fixed = false)
-    m <= parameter(:α3, 0., (-1e5, 1e5), (-1e5, 1e5), Untransformed(), Normal(0, 1e3),
+    m <= parameter(:α3, 0., (-1e5, 1e5), (-1e5, 1e5), Untransformed(), Normal(0, prior_para),
                   fixed = false)
-    m <= parameter(:β3, 0., (-1e5, 1e5), (-1e5, 1e5), Untransformed(), Normal(0, 1e3),
+    m <= parameter(:β3, 0., (-1e5, 1e5), (-1e5, 1e5), Untransformed(), Normal(0, prior_para),
                   fixed = false)
-    m <= parameter(:σ3, 1., (1e-5, 1e5), (1e-5, 1e5), SquareRoot(), Uniform(0, 1e3),
+    m <= parameter(:σ3, 1., (1e-5, 1e5), (1e-5, 1e5), SquareRoot(), Uniform(0, prior_para),
                   fixed = false)
     m <= Setting(:n_particles, 400) #-> will get commented eventually
     m <= Setting(:n_Φ, 100)
@@ -55,11 +56,11 @@ function setup_linear_model(; regime_switching::Bool = false)
         end
         for i in 1:3
             ModelConstructors.set_regime_val!(m[Symbol("β$(i)")], 1, .2 * i)
-            ModelConstructors.set_regime_prior!(m[Symbol("β$(i)")], 1, Normal(0, 1e3)) # regime-switching prior, just to check functionality
+            ModelConstructors.set_regime_prior!(m[Symbol("β$(i)")], 1, Normal(0, prior_para)) # regime-switching prior, just to check functionality
             ModelConstructors.set_regime_val!(m[Symbol("β$(i)")], 2, -.1 * i)
-            ModelConstructors.set_regime_prior!(m[Symbol("β$(i)")], 2, Normal(0, 1e3))
+            ModelConstructors.set_regime_prior!(m[Symbol("β$(i)")], 2, Normal(0, prior_para * 1.2))
             ModelConstructors.set_regime_val!(m[Symbol("β$(i)")], 3, .1 * i)
-            ModelConstructors.set_regime_prior!(m[Symbol("β$(i)")], 3, Normal(0, 1e2))
+            ModelConstructors.set_regime_prior!(m[Symbol("β$(i)")], 3, Normal(0, prior_para * 1.5))
         end
     end
 
@@ -104,6 +105,10 @@ if regenerate_data
         write(file, "X", X)
         write(file, "Xrs", Xrs)
     end
+else # Need to define reg1, reg2, and reg3 for regime-switching log likelihood function
+    reg1 = 1:100
+    reg2 = 101:200
+    reg3 = 201:300
 end
 
 # Read Predictors from data
