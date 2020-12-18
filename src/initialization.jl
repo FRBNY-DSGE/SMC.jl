@@ -1,7 +1,8 @@
 """
 ```
-function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
-                  data::Matrix{Float64}; regime_switching::Bool = false) where {U<:Number}
+one_draw(loglikelihood::Function, parameters::ParameterVector{U},
+         data::Matrix{Float64}; regime_switching::Bool = false,
+         toggle::Bool = true) where {U<:Number}
 ```
 
 Finds and returns one valid draw from parameter distribution, along with its
@@ -10,11 +11,20 @@ log likelihood and log posterior.
 Set `regime_switching` to true if
 there are regime-switching parameters. Otherwise, not all the values of the
 regimes will be used or saved.
+
+Set `toggle` to false if, after calculating the loglikelihood,
+the values in the fields of every parameter in `parameters`
+are set to their regime 1 values. The regime-switching version of `rand`
+requires that the fields of all parameters take their regime 1 values,
+or else sampling may be wrong. The default is `true` as a safety, but
+if speed is a paramount concern, setting `toggle = true` will avoid
+unnecessary computations.
 """
 function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
-                  data::Matrix{Float64}; regime_switching::Bool = false) where {U<:Number}
+                  data::Matrix{Float64}; regime_switching::Bool = false,
+                  toggle::Bool = true) where {U<:Number}
     success    = false
-    draw       = vec(rand(parameters, 1, regime_switching = regime_switching))
+    draw       = vec(rand(parameters, 1, regime_switching = regime_switching, toggle = toggle))
 
     draw_loglh = draw_logpost = 0.0
 
@@ -22,7 +32,12 @@ function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
         try
             update!(parameters, draw)
 
-            draw_loglh   = loglikelihood(parameters, data)
+            draw_loglh = loglikelihood(parameters, data)
+
+            if toggle
+                toggle_regime!(parameters, 1)
+            end
+
             draw_logpost = prior(parameters)
 
             if (draw_loglh == -Inf) || (draw_loglh === NaN)
@@ -39,7 +54,7 @@ function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
         end
 
         if any(isinf.(draw_loglh))
-            draw = vec(rand(parameters, 1, regime_switching = regime_switching))
+            draw = vec(rand(parameters, 1, regime_switching = regime_switching, toggle = false))
         else
             success = true
         end
@@ -51,7 +66,7 @@ end
 ```
 function initial_draw!(loglikelihood::Function, parameters::ParameterVector{U},
                        data::Matrix{Float64}, c::Cloud; parallel::Bool = false,
-                       regime_switching::Bool = false) where {U<:Number}
+                       regime_switching::Bool = false, toggle::Bool = true) where {U<:Number}
 ```
 
 Draw from a general starting distribution (set by default to be from the prior) to
@@ -61,10 +76,18 @@ particle objects in the particle cloud in place.
 Set `regime_switching` to true if
 there are regime-switching parameters. Otherwise, not all the values of the
 regimes will be used or saved.
+
+Set `toggle` to false if, after calculating the loglikelihood,
+the values in the fields of every parameter in `parameters`
+are set to their regime 1 values. The regime-switching version of `rand`
+requires that the fields of all parameters take their regime 1 values,
+or else sampling may be wrong. The default is `true` as a safety, but
+if speed is a paramount concern, setting `toggle = true` will avoid
+unnecessary computations.
 """
 function initial_draw!(loglikelihood::Function, parameters::ParameterVector{U},
                        data::Matrix{Float64}, c::Cloud; parallel::Bool = false,
-                       regime_switching::Bool = false) where {U<:Number}
+                       regime_switching::Bool = false, toggle::Bool = true) where {U<:Number}
     n_parts = length(c)
 
     # ================== Define closure on one_draw function ==================
@@ -72,8 +95,8 @@ function initial_draw!(loglikelihood::Function, parameters::ParameterVector{U},
     sendto(workers(), parameters = parameters)
     sendto(workers(), data       = data)
 
-    one_draw_closure() = one_draw(loglikelihood, parameters, data, regime_switching = regime_switching)
-    @everywhere one_draw_closure() = one_draw(loglikelihood, parameters, data, regime_switching = regime_switching)
+    one_draw_closure() = one_draw(loglikelihood, parameters, data, regime_switching = regime_switching, toggle = toggle)
+    @everywhere one_draw_closure() = one_draw(loglikelihood, parameters, data, regime_switching = regime_switching, toggle = toggle)
     # =========================================================================
 
     # For each particle, finds valid parameter draw and returns loglikelihood & posterior
@@ -97,24 +120,30 @@ end
 
 """
 ```
-function draw_likelihood(loglikelihood::Function, parameters::ParameterVector{U},
-                         data::Matrix{Float64}, draw::Vector{Float64}) where {U<:Number}
+draw_likelihood(loglikelihood::Function, parameters::ParameterVector{U},
+                data::Matrix{Float64}, draw::Vector{Float64};
+                toggle::Bool = true) where {U<:Number}
 ```
 Computes likelihood of a particular parameter draw; returns loglh and logpost.
 """
 function draw_likelihood(loglikelihood::Function, parameters::ParameterVector{U},
-                         data::Matrix{Float64}, draw::Vector{Float64}) where {U<:Number}
+                         data::Matrix{Float64}, draw::Vector{Float64};
+                         toggle::Bool = true) where {U<:Number}
     update!(parameters, draw)
     loglh   = loglikelihood(parameters, data)
+    if toggle
+        ModelConstructors.toggle_regime!(parameters, 1)
+    end
     logpost = prior(parameters)
     return scalar_reshape(loglh, logpost)
 end
 
 """
 ```
-function initialize_likelihoods!(loglikelihood::Function, parameters::ParameterVector{U},
-                                 data::Matrix{Float64}, c::Cloud;
-                                 parallel::Bool = false) where {U<:Number}
+initialize_likelihoods!(loglikelihood::Function, parameters::ParameterVector{U},
+                        data::Matrix{Float64}, c::Cloud;
+                        parallel::Bool = false,
+                        toggle::Bool = true) where {U<:Number}
 ```
 This function is made for transfering the log-likelihood values saved in the
 Cloud from a previous estimation to each particle's respective old_loglh
@@ -123,7 +152,8 @@ here is just the argument, data.
 """
 function initialize_likelihoods!(loglikelihood::Function, parameters::ParameterVector{U},
                                  data::Matrix{Float64}, c::Cloud;
-                                 parallel::Bool = false) where {U<:Number}
+                                 parallel::Bool = false,
+                                 toggle::Bool = true) where {U<:Number}
     n_parts = length(c)
     draws   = get_vals(c; transpose = false)
 
@@ -136,10 +166,10 @@ function initialize_likelihoods!(loglikelihood::Function, parameters::ParameterV
     sendto(workers(), data = data)
 
     draw_likelihood_closure(draw::Vector{Float64}) = draw_likelihood(loglikelihood, parameters,
-                                                                     data, draw)
+                                                                     data, draw, toggle = toggle)
     @everywhere draw_likelihood_closure(draw::Vector{Float64}) = draw_likelihood(loglikelihood,
                                                                                  parameters,
-                                                                                 data, draw)
+                                                                                 data, draw, toggle = toggle)
     # =========================================================================
 
     # TODO: handle when the likelihood with new data cannot be evaluated (returns -Inf),

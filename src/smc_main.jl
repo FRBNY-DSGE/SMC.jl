@@ -74,6 +74,10 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     the Hessian is negative definite).
 - `regime_switching::Bool = false`: Flag if there are regime-switching parameters. Otherwise, not all the values of the
     regimes will be used or saved.
+- `toggle::Bool = true`: Flag for resetting the fields of parameter values to regime 1 anytime
+    the loglikelihood is computed. The regime-switching version of SMC assumes at various points
+    that this resetting occurs. If speed is important, then ensure that the fields of parameters
+    take their regime 1 values at the end of the loglikelihood computation and set `toggle = false`.
 
 ### Outputs
 
@@ -141,7 +145,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
              continue_intermediate::Bool = false,
              intermediate_stage_start::Int = 0,
              tempered_update_prior_weight::S = 0.0,
-             regime_switching::Bool = false) where {S<:AbstractFloat, U<:Number}
+             regime_switching::Bool = false,
+             toggle::Bool = true) where {S<:AbstractFloat, U<:Number}
 
     ########################################################################################
     ### Settings
@@ -157,16 +162,19 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
                               blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
                               ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
                               old_data::T = Matrix{S}(undef, size(data, 1), 0),
-                              regime_switching::Bool = false) where {S<:Float64, T<:Matrix}
+                              regime_switching::Bool = false, toggle::Bool = true) where {S<:Float64, T<:Matrix}
         return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, n_free_para, blocks_free, blocks_all,
-                        ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data, regime_switching = regime_switching)
+                        ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data, regime_switching = regime_switching,
+                        toggle = toggle)
     end
     @everywhere function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
-             blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}}, n_free_para::Int,
-             ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
-             old_data::T = Matrix{S}(undef, size(data, 1), 0), regime_switching::Bool = false) where {S<:Float64, T<:Matrix}
+                                          blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}}, n_free_para::Int,
+                                          ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
+                                          old_data::T = Matrix{S}(undef, size(data, 1), 0), regime_switching::Bool = false,
+                                          toggle::Bool = true) where {S<:Float64, T<:Matrix}
         return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, blocks_free, blocks_all, n_free_para,
-                        ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data, regime_switching = regime_switching)
+                        ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data,
+                        regime_switching = regime_switching, toggle = toggle)
     end
 
     # Check that if there's a tempered update, old and current vintages are different
@@ -189,9 +197,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     for para in parameters
         if !isempty(para.regimes)
             for (ind, val) in para.regimes[:value]
-                if ind == 1
-                    nothing
-                else # ind != 1
+                if ind != 1
                     n_para_rs += 1
                 end
             end
@@ -224,7 +230,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
             initialize_cloud_settings!(cloud; tempered_update = tempered_update,
                                        n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
 
-            initialize_likelihoods!(loglikelihood, parameters, data, cloud; parallel = parallel)
+            initialize_likelihoods!(loglikelihood, parameters, data, cloud; parallel = parallel,
+                                    toggle = toggle)
 
         elseif (tempered_update_prior_weight > 0.0) || (old_n_parts != n_parts)
             # Resample from bridge distribution
@@ -242,7 +249,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
             # Make a cloud by drawing from the prior
             if n_from_prior > 0
                 prior_cloud = Cloud(n_para, n_from_prior)
-                initial_draw!(loglikelihood, parameters, old_data, prior_cloud, parallel = parallel, regime_switching = regime_switching)
+                initial_draw!(loglikelihood, parameters, old_data, prior_cloud, parallel = parallel,
+                              regime_switching = regime_switching, toggle = toggle)
 
                 cloud = Cloud(n_para, n_to_resample + n_from_prior)
                 update_cloud!(cloud, vcat(bridge_cloud.particles, prior_cloud.particles))
@@ -253,7 +261,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
                 cloud = bridge_cloud
             end
 
-            initialize_likelihoods!(loglikelihood, parameters, data, cloud; parallel = parallel)
+            initialize_likelihoods!(loglikelihood, parameters, data, cloud; parallel = parallel,
+                                    toggle = toggle)
 
             reset_weights!(cloud)
             cloud.resamples      += 1
@@ -266,7 +275,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         cloud = load(loadpath, "cloud")
     else
         # Instantiating Cloud object, update draws, loglh, & logpost
-        initial_draw!(loglikelihood, parameters, data, cloud; parallel = parallel, regime_switching = regime_switching)
+        initial_draw!(loglikelihood, parameters, data, cloud; parallel = parallel, regime_switching = regime_switching,
+                      toggle = toggle)
         initialize_cloud_settings!(cloud; tempered_update = tempered_update,
                                    n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
     end
@@ -389,14 +399,16 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
                 mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr, n_free_para,
                                  blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
                                  n_mh_steps = n_mh_steps, old_data = old_data,
-                                 regime_switching = regime_switching)
+                                 regime_switching = regime_switching,
+                                 toggle = toggle)
             end
         else
             hcat([mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr, n_free_para,
                                    blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c,
                                    α = α, n_mh_steps = n_mh_steps,
                                    old_data = old_data,
-                                   regime_switching = regime_switching) for k=1:n_parts]...)
+                                   regime_switching = regime_switching,
+                                   toggle = toggle) for k=1:n_parts]...)
         end
         update_cloud!(cloud, new_particles)
         update_acceptance_rate!(cloud)

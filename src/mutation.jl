@@ -36,6 +36,10 @@ Execute one proposed move of the Metropolis-Hastings algorithm for a given param
 - `regime_switching::Bool`: Set to true if
     there are regime-switching parameters. Otherwise, not all the values of the
     regimes will be used or saved.
+- `toggle::Bool = true`: Flag for resetting the fields of parameter values to regime 1 anytime
+    the loglikelihood is computed. The regime-switching version of SMC assumes at various points
+    that this resetting occurs. If speed is important, then ensure that the fields of parameters
+    take their regime 1 values at the end of the loglikelihood computation and set `toggle = false`.
 
 ### Outputs:
 - `p::Vector{Float64}`: An updated particle containing updated parameter values,
@@ -48,7 +52,8 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                   blocks_free::Vector{Vector{Int}}, blocks_all::Vector{Vector{Int}},
                   ϕ_n::S, ϕ_n1::S; c::S = 1., α::S = 1., n_mh_steps::Int = 1,
                   old_data::T = T(undef, size(data, 1), 0),
-                  regime_switching::Bool = false) where {S<:AbstractFloat,T<:AbstractMatrix, U<:Number}
+                  regime_switching::Bool = false,
+                  toggle::Bool = true) where {S<:AbstractFloat,T<:AbstractMatrix, U<:Number}
 
     step_prob   = rand() # Draw initial step probability
 
@@ -94,11 +99,19 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                 prior_new = prior(parameters)
                 like_new  = loglikelihood(parameters, data) #, regime_switching = regime_switching)
 
+                if toggle
+                    toggle_regime!(parameters, 1)
+                end
+
                 if like_new == -Inf
                     prior_new = like_old_data = -Inf
                 end
 
                 like_old_data = isempty(old_data) ? 0. : loglikelihood(parameters, old_data)
+
+                if toggle && isempty(old_data)
+                    toggle_regime!(parameters, 1)
+                end
 
             catch err
                 if isa(err, ParamBoundsError) || isa(err, LinearAlgebra.LAPACKException) ||

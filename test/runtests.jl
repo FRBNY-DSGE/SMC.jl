@@ -7,13 +7,13 @@ import SparseArrays.SparseMatrixCSC
 import ModelConstructors.Setting
 
 my_tests = [
-            "smc",
             "helpers",
             "initialization",
             "resample",
             "util",
             "mutation",
-            "particle"
+            "particle",
+            "smc"
             ]
 
 for test in my_tests
@@ -21,4 +21,3 @@ for test in my_tests
     @printf " * %s\n" test_file
     include(test_file)
 end
-
