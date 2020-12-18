@@ -2,7 +2,7 @@ using ModelConstructors, HDF5, Random, JLD2, FileIO, SMC, Test
 include("modelsetup.jl")
 
 path = dirname(@__FILE__)
-writing_output = true
+writing_output = false
 
 if VERSION < v"1.5"
     ver = "111"
@@ -137,7 +137,7 @@ new_cloud = load(loadpath, "cloud")
 
 @testset "Linear Regression Parameter Estimates Are Close" begin
     # Posterior mean should be close to true parameters
-    @test maximum(abs.(mean(SMC.get_vals(test_cloud), dims = 2) - [1., 1., 1., 2., 2., 1., 3., 3., 1.])) < .25
+    @test maximum(abs.(mean(SMC.get_vals(test_cloud), dims = 2) - [1., 1., 1., 2., 2., 1., 3., 3., 1.])) < .5
 end
 
 # Clean output files up
