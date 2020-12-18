@@ -223,6 +223,12 @@ function generate_free_blocks(n_free_para::Int64, n_blocks::Int64)
     return blocks_free
 end
 
+# TODO: this code for figuring out which parameters are free (i.e. to be estimated)
+# is not generalized to the case of regime-switching parameters b/c we don't seem to yet
+# have a function that tells us whether or not regime-switching parameters are fixed
+# IF ANY REGIME-SWITCHING PARAMETERS ARE FIXED and SMC is launched, a PositiveDefinite exception will occur
+# during the MH step (variance-covariance matrix Sigma for the proposal distribution)
+# b/c any fixed regime-switching parameter will essentially have zero variance, and the matrix will not be invertible
 """
 ```
 `generate_all_blocks(blocks_free::Vector{Vector{Int64}}, free_para_inds::Vector{Int64})`
