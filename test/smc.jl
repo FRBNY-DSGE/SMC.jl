@@ -2,7 +2,7 @@ using ModelConstructors, HDF5, Random, JLD2, FileIO, SMC, Test
 include("modelsetup.jl")
 
 path = dirname(@__FILE__)
-writing_output = false
+writing_output = true
 
 if VERSION < v"1.5"
     ver = "111"
@@ -21,13 +21,14 @@ data = h5read("reference/test_data.h5", "data")
 
 @everywhere Random.seed!(42)
 
+println("Estimating Linear Model... (approx. 3 minutes)")
 
-println("Estimating Linear Model... (approx. 2 minutes)")
-
-SMC.smc(loglik_fn, m.parameters, data, verbose = :none, use_fixed_schedule = true, parallel = true, n_Φ = 100, n_mh_steps = 1, resampling_method = :polyalgo, data_vintage = "200707", target = 0.25, savepath = savepath, particle_store_path = particle_store_path, α = .9, threshold_ratio = .5, smc_iteration = 0)
+SMC.smc(loglik_fn, m.parameters, data, verbose = :none, use_fixed_schedule = true,
+        parallel = true, n_Φ = 120, n_mh_steps = 1, resampling_method = :polyalgo,
+        data_vintage = "200707", target = 0.25, savepath = savepath,
+        particle_store_path = particle_store_path, α = .9, threshold_ratio = .5, smc_iteration = 0)
 
 println("Estimation done!")
-
 
 test_file = load(rawpath(m, "estimate", "smc_cloud.jld2"))
 test_cloud  = test_file["cloud"]
@@ -49,6 +50,12 @@ saved_W     = saved_file["W"]
 
 ####################################################################
 cloud_fields = fieldnames(typeof(test_cloud))
+@testset "Linear Regression Parameter Estimates Are Close" begin
+    # Posterior mean should be close to true parameters
+    @test maximum(abs.(mean(SMC.get_vals(test_cloud), dims = 2) -
+                       [1., 1., 1., 2., 2., 1., 3., 3., 1.])) < .5
+end
+
 @testset "ParticleCloud Fields: Linear" begin
     @test @test_matrix_approx_eq SMC.get_vals(test_cloud) SMC.get_vals(saved_cloud)
     @test @test_matrix_approx_eq SMC.get_loglh(test_cloud) SMC.get_loglh(saved_cloud)
@@ -80,7 +87,7 @@ end
     @test @test_matrix_approx_eq test_W saved_W
 end
 
-
+# TODO: add a check here that the correct parameters are estimated
 
 
 ####################################################################
@@ -99,7 +106,12 @@ data = h5read("reference/test_data.h5", "data")
 # Estimate with 1st half of sample
 m_old = deepcopy(m)
 
-SMC.smc(loglik_fn, m_old.parameters, data[:, 1:Int(floor(end/2))], verbose = :none, use_fixed_schedule = true, parallel = true,  n_Φ = 100, n_mh_steps = 1, resampling_method = :polyalgo, data_vintage = "000000", target = 0.25, savepath = savepath, particle_store_path = particle_store_path, α = .9, threshold_ratio = .5, smc_iteration = 0, n_parts = 1000)
+println("Estimating Linear Model on 1st half of sample... (approx. 2 minutes)")
+SMC.smc(loglik_fn, m_old.parameters, data[:, 1:Int(floor(end/2))], verbose = :none,
+        use_fixed_schedule = true, parallel = true,  n_Φ = 100, n_mh_steps = 1,
+        resampling_method = :polyalgo, data_vintage = "000000", target = 0.25,
+        savepath = savepath, particle_store_path = particle_store_path, α = .9,
+        threshold_ratio = .5, smc_iteration = 0, n_parts = 1000)
 
 m_new = deepcopy(m)
 
@@ -113,12 +125,21 @@ loadpath = rawpath(m_old, "estimate", "smc_cloud.jld2")
 
 old_cloud = load(loadpath, "cloud")
 
-SMC.smc(loglik_fn, m_new.parameters, data, old_data=data[:,1:Int(floor(end/2))], old_cloud=old_cloud, verbose = :none, use_fixed_schedule = true, parallel = true,  n_Φ = 100, n_mh_steps = 1, resampling_method = :polyalgo, data_vintage = "200708", target = 0.25, savepath = savepath, particle_store_path = particle_store_path, α = .9, threshold_ratio = .5, smc_iteration = 0)
+println("Estimating Linear Model using a bridge distribution... (approx. 2 minutes)")
+SMC.smc(loglik_fn, m_new.parameters, data, old_data=data[:,1:Int(floor(end/2))], old_cloud=old_cloud,
+        verbose = :none, use_fixed_schedule = true, parallel = true,
+        n_Φ = 100, n_mh_steps = 1, resampling_method = :polyalgo, data_vintage = "200708",
+        target = 0.25, savepath = savepath, particle_store_path = particle_store_path,
+        α = .9, threshold_ratio = .5, smc_iteration = 0)
 
 loadpath = rawpath(m_new, "estimate", "smc_cloud.jld2")
 new_cloud = load(loadpath, "cloud")
- 
+
+@testset "Linear Regression Parameter Estimates Are Close" begin
+    # Posterior mean should be close to true parameters
+    @test maximum(abs.(mean(SMC.get_vals(test_cloud), dims = 2) - [1., 1., 1., 2., 2., 1., 3., 3., 1.])) < .25
+end
+
 # Clean output files up
 rm(rawpath(m_new, "estimate", "smc_cloud.jld2"))
 rm(rawpath(m_new, "estimate", "smcsave.h5"))
-
