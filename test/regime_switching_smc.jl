@@ -64,7 +64,7 @@ saved_W     = saved_file["W"]
 
 ####################################################################
 cloud_fields = fieldnames(typeof(test_cloud))
-@testset "Lienar Regression Regime-Switching Parameter Estimates Are Close" begin
+@testset "Linear Regression Regime-Switching Parameter Estimates Are Close" begin
     @test maximum(abs.(mean_para - true_para)) < .5
 end
 
