@@ -172,6 +172,7 @@ function end_stage_print(cloud::Cloud, para_symbols::Vector{Symbol};
     if VERBOSITY[verbose] >= VERBOSITY[:high]
         μ = weighted_mean(cloud)
         σ = weighted_std(cloud)
+        println("Mean and standard deviation of parameter estimates")
         for n=1:length(para_symbols)
             println("$(para_symbols[n]) = $(round(μ[n], digits = 5)), $(round(σ[n], digits = 5))")
         end
