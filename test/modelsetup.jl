@@ -45,19 +45,20 @@ function setup_linear_model(; regime_switching::Bool = false)
 
     if regime_switching
         for i in 1:3
-            ModelConstructors.set_regime_val!(m[Symbol("α$(i)")], 1, 0.)
             ModelConstructors.set_regime_fixed!(m[Symbol("α$(i)")], 1, false)
-            ModelConstructors.set_regime_val!(m[Symbol("α$(i)")], 2, 0.)
             ModelConstructors.set_regime_fixed!(m[Symbol("α$(i)")], 2, false)
+            ModelConstructors.set_regime_fixed!(m[Symbol("α$(i)")], 3, false) # Do not estimate this parameter, just to check this functionality
+            ModelConstructors.set_regime_val!(m[Symbol("α$(i)")], 1, -.1 * i)
+            ModelConstructors.set_regime_val!(m[Symbol("α$(i)")], 2, .1 * i)
             ModelConstructors.set_regime_val!(m[Symbol("α$(i)")], 3, float(i))
-            ModelConstructors.set_regime_fixed!(m[Symbol("α$(i)")], 3, true) # Do not estimate this parameter, just to check this functionality
+
         end
         for i in 1:3
-            ModelConstructors.set_regime_val!(m[Symbol("β$(i)")], 1, 0.)
+            ModelConstructors.set_regime_val!(m[Symbol("β$(i)")], 1, .2 * i)
             ModelConstructors.set_regime_prior!(m[Symbol("β$(i)")], 1, Normal(0, 1e3)) # regime-switching prior, just to check functionality
-            ModelConstructors.set_regime_val!(m[Symbol("β$(i)")], 2, 0.)
+            ModelConstructors.set_regime_val!(m[Symbol("β$(i)")], 2, -.1 * i)
             ModelConstructors.set_regime_prior!(m[Symbol("β$(i)")], 2, Normal(0, 1e3))
-            ModelConstructors.set_regime_val!(m[Symbol("β$(i)")], 3, 0.)
+            ModelConstructors.set_regime_val!(m[Symbol("β$(i)")], 3, .1 * i)
             ModelConstructors.set_regime_prior!(m[Symbol("β$(i)")], 3, Normal(0, 1e2))
         end
     end
@@ -78,6 +79,8 @@ if regenerate_data
     data = β .* X .+ α .+ err
 
     # Regime-switching version
+    Xrs = randn(Float64, (3, 300))
+    err = randn(Float64, (3, 300))
     β₁ = collect(1:3)
     β₂ = collect(2:4)
     β₃ = collect(3:5)
@@ -85,10 +88,13 @@ if regenerate_data
     α₁ = collect(1:3)
     α₂ = collect(1:3)
 
-    rsdata = similar(data)
-    rsdata[:, 1:50] = β₁ .* X[:, 1:50] .+ α₁ .+ err[:, 1:50]
-    rsdata[:, 51:70] = β₂ .* X[:, 51:70] .+ α₂ .+ err[:, 51:70]
-    rsdata[:, 71:end] = β₃ .* X[:, 71:end] .+ α₂ .+ err[:, 71:end]
+    rsdata = similar(err)
+    reg1   = 1:100
+    reg2   = 101:200
+    reg3   = 201:300
+    rsdata[:, reg1] = β₁ .* Xrs[:, reg1] .+ α₁ .+ err[:, reg1]
+    rsdata[:, reg2] = β₂ .* Xrs[:, reg2] .+ α₂ .+ err[:, reg2]
+    rsdata[:, reg3] = β₃ .* Xrs[:, reg3] .+ α₂ .+ err[:, reg3]
 
     # Save Data
 
@@ -96,13 +102,13 @@ if regenerate_data
         write(file, "data", data)
         write(file, "rsdata", rsdata)
         write(file, "X", X)
+        write(file, "Xrs", Xrs)
     end
 end
 
-# Read Data
-data = h5read("reference/test_data.h5", "data")
-rsdata = h5read("reference/test_data.h5", "rsdata")
+# Read Predictors from data
 X = h5read("reference/test_data.h5", "X")
+Xrs = h5read("reference/test_data.h5", "Xrs")
 
 # Log Likelihood Function
 N = 3
@@ -135,7 +141,7 @@ function rs_loglik_fn(p, d)
     for i in 1:N
         α[i]   = regime_val(p[N * (i - 1) + 1], 1)
         β[i]   = regime_val(p[N * (i - 1) + 2], 1)
-        Σ[i,i] = p[N * (i - 1) + 2]
+        Σ[i,i] = p[N * (i - 1) + 3]
     end
     for i in 1:N # Looping over each entry of the constant vector and betas in a given regime
         α[N + i] = regime_val(p[N * (i - 1) + 1], 2) # α1, α2, α3 each has 3 regimes. This line is for regime 2.
@@ -149,9 +155,9 @@ function rs_loglik_fn(p, d)
     term1 = -N / 2 * log(2 * π) - 1 /2 * log(det_Σ)
     logprob = 0.
     errors = similar(d)
-    errors[:, 1:50] = d[:, 1:50] .- α[1:N] .- β[1:N] .* X[:, 1:50]
-    errors[:, 51:70] = d[:, 51:70] .- α[(N + 1):(2 * N)] .- β[(N + 1):(2 * N)] .* X[:, 51:70]
-    errors[:, 71:end] = d[:, 71:end] .- α[(2 * N + 1):(3 * N)] .- β[(2 * N + 1):(3 * N)] .* X[:, 71:end]
+    errors[:, reg1] = d[:, reg1] .- α[1:N] .- β[1:N] .* Xrs[:, reg1]
+    errors[:, reg2] = d[:, reg2] .- α[(N + 1):(2 * N)] .- β[(N + 1):(2 * N)] .* Xrs[:, reg2]
+    errors[:, reg3] = d[:, reg3] .- α[(2 * N + 1):(3 * N)] .- β[(2 * N + 1):(3 * N)] .* Xrs[:, reg3]
     for t in 1:size(d, 2) # see above
         logprob += term1 - 1/2 * dot(errors[:, t], inv_Σ * errors[:, t])
     end
