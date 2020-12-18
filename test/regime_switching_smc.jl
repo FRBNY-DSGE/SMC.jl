@@ -48,7 +48,7 @@ true_para = [1., 1., 1., # α1, β1, σ1 (regime 1)
              3., 4.,     # β2 regimes = 2-3
              3., 3.,     # α3 regimes = 2-3
              4., 5.]     # β3 regimes = 2-3
-@assert false
+
 if writing_output
     jldopen(string("reference/smc_cloud_fix=true_rs=true_version=", ver, ".jld2"), true, true, true, IOStream) do file
         write(file, "cloud", test_cloud)
@@ -64,6 +64,10 @@ saved_W     = saved_file["W"]
 
 ####################################################################
 cloud_fields = fieldnames(typeof(test_cloud))
+@testset "Lienar Regression Regime-Switching Parameter Estimates Are Close" begin
+    @test maximum(abs.(mean_para - true_para)) < .5
+end
+
 @testset "ParticleCloud Fields: Linear" begin
     @test @test_matrix_approx_eq SMC.get_vals(test_cloud) SMC.get_vals(saved_cloud)
     @test @test_matrix_approx_eq SMC.get_loglh(test_cloud) SMC.get_loglh(saved_cloud)
@@ -95,8 +99,6 @@ end
     @test @test_matrix_approx_eq test_W saved_W
 end
 
-# TODO: add a check here that the correct parameters are estimated
-
 # Clean output files up
-#=rm(rawpath(m, "estimate", "smc_cloud.jld2"))
-rm(rawpath(m, "estimate", "smcsave.h5"))=#
+rm(rawpath(m, "estimate", "smc_cloud.jld2"))
+rm(rawpath(m, "estimate", "smcsave.h5"))
