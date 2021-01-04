@@ -223,12 +223,60 @@ function generate_free_blocks(n_free_para::Int64, n_blocks::Int64)
     return blocks_free
 end
 
-# TODO: this code for figuring out which parameters are free (i.e. to be estimated)
-# is not generalized to the case of regime-switching parameters b/c we don't seem to yet
-# have a function that tells us whether or not regime-switching parameters are fixed
-# IF ANY REGIME-SWITCHING PARAMETERS ARE FIXED and SMC is launched, a PositiveDefinite exception will occur
-# during the MH step (variance-covariance matrix Sigma for the proposal distribution)
-# b/c any fixed regime-switching parameter will essentially have zero variance, and the matrix will not be invertible
+function get_fixed_para_inds(parameters::ParameterVector; regime_switching::Bool = false,
+                             toggle::Bool = true)
+    if regime_switching
+        if toggle
+            toggle_regime!(parameters, 1)
+        end
+
+        reg_fixed = [θ.fixed for θ in parameters] # it is assumed all regimes are toggled to regime 1
+        for θ in parameters
+            if !isempty(θ.regimes) # this parameter has regimes
+                if haskey(θ.regimes, :fixed)
+                    push!(reg_fixed, [regime_fixed(θ, i) for i in 2:length(θ.regimes[:value])]...)
+                elseif θ.fixed # since regimes[:fixed] is non-existent but θ.fixed is true,
+                    # it is assumed all regimes are fixed.
+                    push!(reg_fixed, trues(length(θ.regimes[:value]) - 1)...)
+                else # All regimes are not fixed
+                    push!(reg_fixed, falses(length(θ.regimes[:value]) - 1)...)
+                end
+            end
+        end
+
+        return findall(reg_fixed)
+    else
+        return findall([θ.fixed for θ in parameters])
+    end
+end
+
+function get_free_para_inds(parameters::ParameterVector; regime_switching::Bool = false,
+                            toggle::Bool = true)
+    if regime_switching
+        if toggle
+            toggle_regime!(parameters, 1)
+        end
+
+        reg_free = [!θ.fixed for θ in parameters] # it is assumed all regimes are toggled to regime 1
+        for θ in parameters
+            if !isempty(θ.regimes) # this parameter has regimes
+                if haskey(θ.regimes, :fixed)
+                    push!(reg_free, [!regime_fixed(θ, i) for i in 2:length(θ.regimes[:value])]...)
+                elseif θ.fixed # since regimes[:fixed] is non-existent but θ.fixed is true,
+                    # it is assumed all regimes are fixed.
+                    push!(reg_free, falses(length(θ.regimes[:value]) - 1)...)
+                else # All regimes are not fixed
+                    push!(reg_free, trues(length(θ.regimes[:value]) - 1)...)
+                end
+            end
+        end
+
+        return findall(reg_free)
+    else
+        return findall([!θ.fixed for θ in parameters])
+    end
+end
+
 """
 ```
 `generate_all_blocks(blocks_free::Vector{Vector{Int64}}, free_para_inds::Vector{Int64})`
