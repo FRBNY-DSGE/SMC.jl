@@ -1,6 +1,6 @@
 if VERSION < v"1.5"
     ver = "111"
-else 
+else
     ver = "150"
 end
 
@@ -24,3 +24,6 @@ rejoined_cloud = join_cloud(file, 2)
     @test cloud.resamples           == rejoined_cloud.resamples
     @test cloud.tempering_schedule  == rejoined_cloud.tempering_schedule
 end
+
+rm("reference/smc_cloud_fix=true_version=$(ver)_part1.jld2")
+rm("reference/smc_cloud_fix=true_version=$(ver)_part2.jld2")
