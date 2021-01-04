@@ -13,7 +13,8 @@ my_tests = [
             "util",
             "mutation",
             "particle",
-            "smc"
+            "smc",
+            "regime_switching_smc"
             ]
 
 for test in my_tests
