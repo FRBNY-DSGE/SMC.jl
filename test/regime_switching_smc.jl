@@ -57,7 +57,7 @@ if writing_output
     end
 end
 
-saved_file  = load(string("reference/smc_cloud_fix=true_rs=true_version=", ver, ".jld2"))
+saved_file  = JLD2.jldopen(string("reference/smc_cloud_fix=true_rs=true_version=", ver, ".jld2"), "r")
 saved_cloud = saved_file["cloud"]
 saved_w     = saved_file["w"]
 saved_W     = saved_file["W"]

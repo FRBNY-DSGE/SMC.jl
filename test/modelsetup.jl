@@ -46,18 +46,17 @@ function setup_linear_model(; regime_switching::Bool = false)
 
     if regime_switching
         for i in 1:3
-            ModelConstructors.set_regime_fixed!(m[Symbol("α$(i)")], 1, false)
-            ModelConstructors.set_regime_fixed!(m[Symbol("α$(i)")], 2, false)
-            ModelConstructors.set_regime_fixed!(m[Symbol("α$(i)")], 3, false) # Do not estimate this parameter, just to check this functionality
-            ModelConstructors.set_regime_val!(m[Symbol("α$(i)")], 1, -.1 * i)
-            ModelConstructors.set_regime_val!(m[Symbol("α$(i)")], 2, .1 * i)
-            ModelConstructors.set_regime_val!(m[Symbol("α$(i)")], 3, float(i))
-
+            ModelConstructors.set_regime_val!(m[Symbol("α$(i)")], 1, (i == 3) ? 3. : -.1 * i)
+            ModelConstructors.set_regime_val!(m[Symbol("α$(i)")], 2, (i == 3) ? 3. : .1 * i)
+            ModelConstructors.set_regime_val!(m[Symbol("α$(i)")], 3, 3.)
+            ModelConstructors.set_regime_fixed!(m[Symbol("α$(i)")], 1, (i == 3) ? true : false)
+            ModelConstructors.set_regime_fixed!(m[Symbol("α$(i)")], 2, (i == 3) ? true : false) # Do not estimate α3,
+            ModelConstructors.set_regime_fixed!(m[Symbol("α$(i)")], 3, (i == 3) ? true : false) # just to check functionality
         end
         for i in 1:3
             ModelConstructors.set_regime_val!(m[Symbol("β$(i)")], 1, .2 * i)
-            ModelConstructors.set_regime_prior!(m[Symbol("β$(i)")], 1, Normal(0, prior_para)) # regime-switching prior, just to check functionality
-            ModelConstructors.set_regime_val!(m[Symbol("β$(i)")], 2, -.1 * i)
+            ModelConstructors.set_regime_prior!(m[Symbol("β$(i)")], 1, Normal(0, prior_para)) # regime-switching prior,
+            ModelConstructors.set_regime_val!(m[Symbol("β$(i)")], 2, -.1 * i)                 # just to check functionality
             ModelConstructors.set_regime_prior!(m[Symbol("β$(i)")], 2, Normal(0, prior_para * 1.2))
             ModelConstructors.set_regime_val!(m[Symbol("β$(i)")], 3, .1 * i)
             ModelConstructors.set_regime_prior!(m[Symbol("β$(i)")], 3, Normal(0, prior_para * 1.5))
