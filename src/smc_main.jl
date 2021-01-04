@@ -207,6 +207,20 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     fixed_para_inds = findall([ θ.fixed for θ in parameters])
     free_para_inds  = findall([!θ.fixed for θ in parameters])
     para_symbols    = [θ.key for θ in parameters]
+    if regime_switching
+        # Concatenate regime symbols for each extra regimes
+        reg_switch_symbols = Vector{Symbol}(undef, n_para_rs)
+        ind = 0
+        for θ in parameters
+            if !isempty(θ.regimes)
+                for i in 2:length(θ.regimes[:value])
+                    ind += 1
+                    reg_switch_symbols[ind] = Symbol(θ.key, "_reg$(i)")
+                end
+            end
+        end
+        push!(para_symbols, reg_switch_symbols...)
+    end
 
     n_free_para     = length(free_para_inds) + n_para_rs
     free_para_inds = vcat(free_para_inds, collect(n_para+1:n_para+n_para_rs))
