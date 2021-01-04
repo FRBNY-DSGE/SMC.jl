@@ -134,10 +134,8 @@ function init_stage_print(cloud::Cloud, para_symbols::Vector{Symbol};
     if VERBOSITY[verbose] >= VERBOSITY[:high]
         μ = weighted_mean(cloud)
         σ = weighted_std(cloud)
-        # TODO: need to generalize this output for when parameters are regime-switching. Currently just prints the value
-        # store in p.value
         println("Mean and standard deviation of parameter estimates")
-        for n=1:length(para_symbols)
+        for n = 1:length(para_symbols)
             println("$(para_symbols[n]) = $(round(μ[n], digits = 5)), $(round(σ[n], digits = 5))")
 	    end
     end
@@ -174,8 +172,6 @@ function end_stage_print(cloud::Cloud, para_symbols::Vector{Symbol};
     if VERBOSITY[verbose] >= VERBOSITY[:high]
         μ = weighted_mean(cloud)
         σ = weighted_std(cloud)
-        # TODO: need to generalize this output for when parameters are regime-switching. Currently just prints the value
-        # store in p.value
         println("Mean and standard deviation of parameter estimates")
         for n=1:length(para_symbols)
             println("$(para_symbols[n]) = $(round(μ[n], digits = 5)), $(round(σ[n], digits = 5))")
