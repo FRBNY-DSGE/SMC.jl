@@ -24,7 +24,7 @@ data = h5read("reference/test_data.h5", "rsdata")
 
 println("Estimating Linear Model... (approx. 8 minutes)")
 
-SMC.smc(rs_loglik_fn, m.parameters, data, verbose = :high,
+SMC.smc(rs_loglik_fn, m.parameters, data, verbose = :none,
         use_fixed_schedule = true, parallel = false,
         n_Φ = 120, n_mh_steps = 1, resampling_method = :polyalgo,
         data_vintage = "200707", target = 0.25, savepath = savepath,
