@@ -204,8 +204,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         end
     end
 
-    fixed_para_inds = findall([ θ.fixed for θ in parameters])
-    free_para_inds  = findall([!θ.fixed for θ in parameters])
+    fixed_para_inds = get_fixed_para_inds(parameters; regime_switching = regime_switching, toggle = toggle)
+    free_para_inds  = get_free_para_inds( parameters; regime_switching = regime_switching, toggle = toggle)
     para_symbols    = [θ.key for θ in parameters]
     if regime_switching
         # Concatenate regime symbols for each extra regimes
@@ -222,9 +222,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         push!(para_symbols, reg_switch_symbols...)
     end
 
-    n_free_para     = length(free_para_inds) + n_para_rs
-    free_para_inds = vcat(free_para_inds, collect(n_para+1:n_para+n_para_rs))
-
+    n_free_para = length(free_para_inds)
     @assert n_free_para > 0 "All model parameters are fixed!"
 
     # Initialization of Particle Array Cloud
