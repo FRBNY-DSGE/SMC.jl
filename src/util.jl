@@ -138,6 +138,9 @@ function init_stage_print(cloud::Cloud, para_symbols::Vector{Symbol};
         for n = 1:length(para_symbols)
             println("$(para_symbols[n]) = $(round(μ[n], digits = 5)), $(round(σ[n], digits = 5))")
 	    end
+        for n = (length(para_symbols)+1):length(μ)
+            println("$(n) = $(round(μ[n], digits = 5)), $(round(σ[n], digits = 5))")
+        end
     end
 end
 
@@ -175,6 +178,9 @@ function end_stage_print(cloud::Cloud, para_symbols::Vector{Symbol};
         println("Mean and standard deviation of parameter estimates")
         for n=1:length(para_symbols)
             println("$(para_symbols[n]) = $(round(μ[n], digits = 5)), $(round(σ[n], digits = 5))")
+        end
+        for n = (length(para_symbols)+1):length(μ)
+            println("$(n) = $(round(μ[n], digits = 5)), $(round(σ[n], digits = 5))")
         end
     end
 end

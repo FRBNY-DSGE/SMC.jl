@@ -27,9 +27,9 @@ function resample(weights::Vector{Float64}; n_parts::Int64 = length(weights),
         cumulative_weights = cumsum(weights ./ sum(weights))
         offset = rand(n_parts)
 
-        # TODO: parallelize
-        for i in 1:n_parts
-            indx[i] = findfirst(x -> offset[i] < x, cumulative_weights)
+        # DONE: parallelize
+        indx = @sync @distributed (vcat) for i in 1:n_parts
+            findfirst(x -> offset[i] < x, cumulative_weights)
         end
         return indx
 
