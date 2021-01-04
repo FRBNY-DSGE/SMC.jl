@@ -1,3 +1,10 @@
+# SMC.jl 0.1.12 Release Notes
+New Features:
+- Better print statements during estimation
+
+Bug Fixes:
+- Estimation of regime switching parameters works correctly
+
 # SMC.jl 0.1.11 Release Notes
 New Features:
 - Estimate regime switching parameters
