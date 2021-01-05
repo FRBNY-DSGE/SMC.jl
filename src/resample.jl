@@ -1,38 +1,47 @@
 """
 ```
-resample(weights::AbstractArray; method::Symbol = :systematic)
+resample(weights::AbstractArray; n_parts::Int64 = length(weights),
+    method::Symbol = :systematic, parallel::Bool = false)
 ```
 
 Reindexing and reweighting samples from a degenerate distribution
 
-### Arguments:
+### Input Arguments
 - `weights`: wtsim[:,i]
         the weights of a degenerate distribution.
+
+### Keyword Arguments
 - `n_parts`: length(weights)
         the desired length of output vector
 - `method`: :systematic, :multinomial, or :polyalgo
         the method for resampling
+- `parallel`: if true, mulitnomial sampling will be done in parallel.
 
 ### Output:
 - `indx`: the newly assigned indices of parameter draws.
 """
 function resample(weights::Vector{Float64}; n_parts::Int64 = length(weights),
-                  method::Symbol = :systematic)
-    #n_parts = length(weights)
+                  method::Symbol = :systematic, parallel::Bool = false)
 
     if method == :multinomial
-        indx = Vector{Int64}(undef, n_parts)
 
         # Stores cumulative weights until given index
         cumulative_weights = cumsum(weights ./ sum(weights))
         offset = rand(n_parts)
 
-        # TODO: parallelize
-        for i in 1:n_parts
-            indx[i] = findfirst(x -> offset[i] < x, cumulative_weights)
-        end
-        return indx
+        if parallel
+            indx = @sync @distributed (vcat) for i in 1:n_parts
+                findfirst(x -> offset[i] < x, cumulative_weights)
+            end
+        else
+            indx = Vector{Int64}(undef, n_parts)
 
+            for i in 1:n_parts
+                indx[i] = findfirst(x -> offset[i] < x, cumulative_weights)
+            end
+        end
+
+        return indx
     elseif method == :systematic
         # Stores cumulative weights until given index
         cumulative_weights = cumsum(weights ./ sum(weights))

@@ -250,7 +250,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
             n_to_resample = Int(round((1-tempered_update_prior_weight) * n_parts))
             n_from_prior  = n_parts - n_to_resample
             new_inds      = resample(get_weights(cloud); n_parts = n_to_resample,
-                                     method = resampling_method)
+                                     method = resampling_method, parallel = parallel)
 
             bridge_cloud = Cloud(n_para, n_to_resample)
             update_cloud!(bridge_cloud, cloud.particles[new_inds, :])
@@ -374,7 +374,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         if (cloud.ESS[i] < threshold)
 
             # Resample according to particle weights, uniformly reset weights to 1/n_parts
-            new_inds = resample(normalized_weights/n_parts; method = resampling_method)
+            new_inds = resample(normalized_weights/n_parts; method = resampling_method,
+                                parallel = parallel)
             cloud.particles = [deepcopy(cloud.particles[k,j]) for k in new_inds,
                                j=1:size(cloud.particles, 2)]
             reset_weights!(cloud)
