@@ -1,6 +1,7 @@
 # SMC.jl 0.1.12 Release Notes
 New Features:
 - Better print statements during estimation
+- Parallel multinomial sampling
 
 Bug Fixes:
 - Estimation of regime switching parameters works correctly
