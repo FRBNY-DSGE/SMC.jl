@@ -194,9 +194,23 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 
     n_para          = length(parameters)
     n_para_rs       = 0 # number of regime switching parameter values (excluding regime 1 values), i.e. if one parameter has 3 regimes, then n_para_rs = 2
+    n_para_rs_free  = []
+    for para in parameters
+        if !isempty(para.regimes)
+            for (ind, val) in para.regimes[:value]
+                if ind != 1
+                    n_para_rs += 1
+                    if (haskey(para.regimes, :fixed) && !para.regimes[:fixed][ind]) ||
+                        (!haskey(para.regimes, :fixed) && !para.fixed)
+                        append!(n_para_rs_free, n_para_rs)
+                    end
+                end
+            end
+        end
+    end
 
-    fixed_para_inds = get_fixed_para_inds(parameters; regime_switching = regime_switching, toggle = toggle)
-    free_para_inds  = get_free_para_inds( parameters; regime_switching = regime_switching, toggle = toggle)
+#     fixed_para_inds = get_fixed_para_inds(parameters; regime_switching = regime_switching, toggle = toggle)
+#     free_para_inds  = get_free_para_inds( parameters; regime_switching = regime_switching, toggle = toggle)
     fixed_para_inds = findall([(haskey(θ.regimes, :fixed) && length(θ.regimes) >= 1) ? θ.regimes[:fixed][1] : θ.fixed for θ in parameters])
     free_para_inds  = findall([(haskey(θ.regimes, :fixed) && length(θ.regimes) >= 1) ? !θ.regimes[:fixed][1] : !θ.fixed for θ in parameters])
     para_symbols    = [θ.key for θ in parameters]
@@ -215,7 +229,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         push!(para_symbols, reg_switch_symbols...)
     end
 
-    n_free_para = length(free_para_inds)
+#   n_free_para = length(free_para_inds)
 
     n_free_para     = length(free_para_inds) + length(n_para_rs_free)
     free_para_inds = vcat(free_para_inds, collect(n_para+1:n_para+n_para_rs)[n_para_rs_free])
