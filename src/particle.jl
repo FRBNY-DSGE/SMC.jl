@@ -44,17 +44,17 @@ Easier constructor for Cloud, which initializes the weights to be
 equal, and everything else in the particle object to be empty.
 """
 function Cloud(n_params::Int, n_parts::Int)
-    return Cloud(Matrix{Float64}(undef, n_parts, n_params + 5),#TODO: 6),
+    return Cloud(Matrix{Float64}(undef, n_parts, n_params + 5),
                  zeros(1), zeros(1), 1, 0, 0, 0., 0.25, 0.)
 end
 
 """
 Find correct indices for accessing columns of cloud array.
 """
-ind_para_end(N::Int)  = N-5#N-6
-ind_loglh(N::Int)     = N-4#N-5
-ind_logpost(N::Int)   = N-3#N-4
-ind_logprior(N::Int)  = N-3 # DONE: Fix logprior/logpost shenanigans
+ind_para_end(N::Int)  = N-5
+ind_loglh(N::Int)     = N-4
+ind_logpost(N::Int)   = N-3
+ind_logprior(N::Int)  = N-3 # TODO: Fix logprior/logpost shenanigans
 ind_old_loglh(N::Int) = N-2
 ind_accept(N::Int)    = N-1
 ind_weight(N::Int)    = N
@@ -166,7 +166,7 @@ function get_logprior(c::Cloud)
 Returns Vector{Float64}(n_parts) of log-prior of particles in cloud.
 """
 function get_logprior(c::Matrix{Float64})
-    #DONE: Fix logpost/logprior confusion
+    #TODO: Fix logpost/logprior confusion
     return c[:, ind_logprior(size(c,2))]
 end
 function get_logprior(c::Cloud)
@@ -211,7 +211,6 @@ function update_draws!(c::Cloud, draws::Matrix{Float64})
     I, J     = size(draws)
     n_parts  = length(c)
     n_params = ind_para_end(size(c.particles, 2))
-
     if (I, J) == (n_parts, n_params)
         for i = 1:I, j=1:J
             c.particles[i, j] = draws[i, j]

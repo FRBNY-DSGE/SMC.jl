@@ -54,10 +54,6 @@ function setup_linear_model(; regime_switching::Bool = false)
             ModelConstructors.set_regime_fixed!(m[Symbol("α$(i)")], 3, (i == 3) ? true : false) # just to check functionality
         end
         for i in 1:3
-            ModelConstructors.set_regime_valuebounds!(m[Symbol("β$(i)")], 1, m[Symbol("β$(i)")].valuebounds)
-            ModelConstructors.set_regime_valuebounds!(m[Symbol("β$(i)")], 2, m[Symbol("β$(i)")].valuebounds)
-            ModelConstructors.set_regime_valuebounds!(m[Symbol("β$(i)")], 3, m[Symbol("β$(i)")].valuebounds)
-
             ModelConstructors.set_regime_val!(m[Symbol("β$(i)")], 1, .2 * i)
             ModelConstructors.set_regime_prior!(m[Symbol("β$(i)")], 1, Normal(0, prior_para)) # regime-switching prior,
             ModelConstructors.set_regime_val!(m[Symbol("β$(i)")], 2, -.1 * i)                 # just to check functionality

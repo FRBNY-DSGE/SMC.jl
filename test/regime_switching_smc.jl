@@ -10,9 +10,6 @@ else
     ver = "150"
 end
 
-auto_add_procs = false
-n_workers = 96
-
 m = setup_linear_model(; regime_switching = true)
 m <= Setting(:regime_switching, true, true, "rs", "") # For file output purposes
 
@@ -26,13 +23,6 @@ data = h5read("reference/test_data.h5", "rsdata")
 @everywhere Random.seed!(42)
 
 println("Estimating Linear Model... (approx. 8 minutes)")
-
-if auto_add_procs
-    ENV["frbnyjuliamemory"] = "1G"
-    myprocs = addprocs_frbny(n_workers)
-    @everywhere using ModelConstructors, HDF5, Random, JLD2, FileIO, SMC, Test
-    @everywhere include("modelsetup.jl")
-end
 
 SMC.smc(rs_loglik_fn, m.parameters, data, verbose = :none,
         use_fixed_schedule = true, parallel = false,
