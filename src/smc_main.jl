@@ -204,8 +204,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         end
     end
 
-    fixed_para_inds = get_fixed_para_inds(parameters; regime_switching = regime_switching, toggle = toggle)
-    free_para_inds  = get_free_para_inds( parameters; regime_switching = regime_switching, toggle = toggle)
+    fixed_para_inds = ModelConstructors.get_fixed_para_inds(parameters; regime_switching = regime_switching, toggle = toggle)
+    free_para_inds  = ModelConstructors.get_free_para_inds( parameters; regime_switching = regime_switching, toggle = toggle)
     para_symbols    = [θ.key for θ in parameters]
     if regime_switching
         # Concatenate regime symbols for each extra regimes
