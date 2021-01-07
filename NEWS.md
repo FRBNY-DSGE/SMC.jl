@@ -1,3 +1,7 @@
+# SMC.jl 0.1.13 Release Notes
+Miscelleanous:
+- Moved `get_fixed_para_inds` and `get_free_para_inds` to ModelConstructors.jl
+
 # SMC.jl 0.1.12 Release Notes
 New Features:
 - Better print statements during estimation
