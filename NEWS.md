@@ -1,3 +1,7 @@
+# SMC.jl 0.1.14 Release Notes
+Miscelleanous:
+- Update syntax for HDF5 deprecations
+
 # SMC.jl 0.1.13 Release Notes
 Miscelleanous:
 - Moved `get_fixed_para_inds` and `get_free_para_inds` to ModelConstructors.jl
