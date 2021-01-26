@@ -455,8 +455,10 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     ##################################################################################
     if !testing
         simfile = h5open(particle_store_path, "w")
-        particle_store = d_create(simfile, "smcparams", datatype(Float64),
-                                  dataspace(n_parts, n_para))
+        particle_store = isdefined(HDF5, :create_dataset) ?
+            HDF5.create_dataset(simfile, "smcparams", datatype(Float64), dataspace(n_parts, n_para)) :
+            HDF5.d_create(simfile, "smcparams", datatype(Float64), dataspace(n_parts, n_para))
+
         for k in 1:n_parts; particle_store[k,:] = cloud.particles[k, 1:n_para] end
         close(simfile)
         jldopen(savepath, true, true, true, IOStream) do file
