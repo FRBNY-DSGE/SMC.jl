@@ -590,3 +590,62 @@ function join_cloud(filename::String, n_pieces::Int; save_cloud::Bool = true)
 
     return cloud
 end
+
+# W = load(replace(replace(input_file_name, "smcsave" => "smc_cloud"), "h5" => "jld2"), "W")
+function add_parameters_to_cloud(old_cloud::Cloud, old_weights_matrix::AbstractMatrix{T},
+                                 para::ParameterVector, old_para_inds::BitVector,
+                                 loglikelihood::Function, old_data::AbstractMatrix{T},
+                                 regime_switching::Bool = false) where {T <: Real}
+
+    # It is assumed that get_values(old_para) = get_values(para)[old_para_inds]
+
+    # Sample from prior
+    n_parts   = length(old_cloud)
+    para_vals = regime_switching ? Matrix{T}(undef, n_parts, n_parameters_regime_switching(para)) :
+        Matrix{T}(undef, n_parts, length(para))
+    for i in 1:n_parts
+        para_vals[i, :] = rand(new_para; regime_switching = regime_switching)
+    end
+
+    # Resample parameters from old_cloud
+    weights = old_weights_matrix[:, end] # n_parts x n_stages
+    inds    = SMC.resample(weights)
+    old_para_unweighted = get_vals(old_cloud)
+    old_para = Matrix{T}(old_para_unweighted[:, inds]')
+
+    # Combine old parameters (drawn from their posterior from the old estimation)
+    # and the new parameters (drawn from a prior)
+    for i in 1:n_parts
+        # It is assumed that the order of old_para matches the order of old_para_inds
+        # and that the order of parameters haven't been switched around.
+        # If that is the case, then the user need to write a function
+        # that maps the old parameters to their correct indices.
+        para_vals[i, old_para_inds] = view(old_para, i, :)
+    end
+
+    # Create loglh, logprior columns
+    meta_info = Matrix{T}(n_parts, 5) # additional 5 columns of "meta" information about particles
+    part_dim2 = size(old_cloud.particles, 2)
+    for i in 1:n_parts
+        # Update ParameterVector para
+        update!(para, view(para_vals, i, :))
+
+        # Compute loglh
+        meta_info[i, 1] = loglikelihood(para, data)
+
+        # Compute logprior
+        meta_info[i, 2] = prior(para)
+    end
+
+    # Compute old loglh (just zeros since we will be creating a "new" Clou)
+    meta_info[:, 3] .= 0.
+
+    # Add acceptance rate
+    meta_info[:, 4] = view(old_cloud.particles, :, ind_accept(part_dim2))
+
+    # Add weight
+    meta_info[:, 5] = view(old_cloud.particles, :, ind_weight(part_dim2))
+
+    # Form a new Cloud
+    return Cloud(hcat(para_vals, meta_info), zeros(1), old_cloud.ESS, 1, 0, 0, 0., .25, 0.)
+end
