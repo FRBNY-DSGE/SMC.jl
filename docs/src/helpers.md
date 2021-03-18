@@ -1,10 +1,39 @@
 ## Helper Functions
+Here, we document helper functions in which a typical user may be interested
+as well as key lower-level helper functions.
+Less "essential" lower-level helper functions also have docstrings, but
+we do not report their docstrings because only a developer would
+need to know them. However, these functions
+do actually have docstrings, so a developer will find it helpful
+to use  `?` in Julia's interactive mode.
 
+### Cloud Helpers
 ```@docs
 Cloud(n_params::Int, n_parts::Int)
 SMC.get_weights(c::Cloud)
 SMC.get_vals(c::Cloud; transpose::Bool = true)
-prior(parameters::ParameterVector{T}) where {T<:Number}
+SMC.get_loglh(c::Cloud)
+SMC.get_old_loglh(c::Cloud)
+SMC.get_logpost(c::Cloud)
+SMC.get_logprior(c::Cloud)
+SMC.get_accept(c::Cloud)
+SMC.get_likeliest_particle_value(c::Cloud)
+SMC.split_cloud
+SMC.join_cloud
+SMC.add_parameters_to_cloud
+```
+
+### Summary Statistics of Posterior
+```@docs
+SMC.weighted_mean(c::Cloud)
+SMC.weighted_quantile(c::Cloud, i::Int64)
+SMC.weighted_std(c::Cloud)
+SMC.weighted_cov(c::Cloud)
+```
+
+### SMC Algorithm Helpers
+
+```@docs
 SMC.solve_adaptive_ϕ(cloud::Cloud, proposed_fixed_schedule::Vector{Float64},
                                i::Int64, j::Int64, ϕ_prop::Float64, ϕ_n1::Float64,
                                tempering_target::Float64, resampled_last_period::Bool)
