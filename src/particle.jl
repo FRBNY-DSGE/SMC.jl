@@ -475,6 +475,14 @@ function weighted_cov(c::Cloud)
     return weighted_cov(c.particles)
 end
 
+"""
+```
+split_cloud(filename::String, n_pieces::Int)
+```
+splits the cloud saved in `filename` to multiple files (`n_pieces` of them).
+For large clouds, the memory usage by one file may be too large. For example,
+the file may exceed GitHub's 100MB memory limit.
+"""
 function split_cloud(filename::String, n_pieces::Int)
     cloud = load(filename, "cloud")
     w    = load(filename, "w")
@@ -515,7 +523,19 @@ function split_cloud(filename::String, n_pieces::Int)
     end
 end
 
-function join_cloud(filename::String, n_pieces::Int)
+"""
+```
+join_cloud(filename::String, n_pieces::Int; save_cloud::Bool = true)
+```
+joins a cloud saved in `filename` that had previously been
+split into multiple files (`n_pieces` of them) and saves the newly
+joined cloud when the kwarg `save_cloud` is `true`.
+For large clouds, the memory usage by one file may be too large. For example,
+the file may exceed GitHub's 100MB memory limit. For this reason,
+it is useful to split the cloud file into multiple files and then
+rejoin later.
+"""
+function join_cloud(filename::String, n_pieces::Int; save_cloud::Bool = true)
     clouds     = Vector{Cloud}(undef, n_pieces)
     ws         = Vector{Matrix{Float64}}(undef, n_pieces)
     Ws         = Vector{Matrix{Float64}}(undef, n_pieces)
@@ -560,10 +580,12 @@ function join_cloud(filename::String, n_pieces::Int)
     cloud.resamples           = clouds[1].resamples
     cloud.tempering_schedule  = clouds[1].tempering_schedule
 
-    jldopen(filename, true, true, true, IOStream) do file
+    if save_cloud
+        jldopen(filename, true, true, true, IOStream) do file
             write(file, "cloud", cloud)
             write(file, "w", w)
             write(file, "W", W)
+        end
     end
 
     return cloud
