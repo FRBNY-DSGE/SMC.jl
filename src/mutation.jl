@@ -32,7 +32,7 @@ Execute one proposed move of the Metropolis-Hastings algorithm for a given param
 - `α::Float64`: The mixing proportion
 - `n_mh_steps::Int`: Number of Metropolis Hastings steps to attempt
 - `old_data::Matrix{Float64}`: The matrix of old data to be used in calculating the
-    old_loglh, old_logpost in time tempering
+    old_loglh, old_logprior in time tempering
 - `regime_switching::Bool`: Set to true if
     there are regime-switching parameters. Otherwise, not all the values of the
     regimes will be used or saved.
@@ -83,7 +83,7 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
             prior_new = like_new = like_old_data = -Inf
             try
                 update!(parameters, para_new)
-                para_new  = [θ.value for θ in parameters]
+                #=para_new  = [θ.value for θ in parameters]
                 i = 0
                 for para in parameters
                     if !isempty(para.regimes)
@@ -94,7 +94,7 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                             end
                         end
                     end
-                end
+                end=#
 
                 prior_new = prior(parameters)
                 like_new  = loglikelihood(parameters, data) #, regime_switching = regime_switching)

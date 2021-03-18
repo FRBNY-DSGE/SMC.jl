@@ -53,8 +53,7 @@ Find correct indices for accessing columns of cloud array.
 """
 ind_para_end(N::Int)  = N-5
 ind_loglh(N::Int)     = N-4
-ind_logpost(N::Int)   = N-3
-ind_logprior(N::Int)  = N-3 # TODO: Fix logprior/logpost shenanigans
+ind_logprior(N::Int)  = N-3
 ind_old_loglh(N::Int) = N-2
 ind_accept(N::Int)    = N-1
 ind_weight(N::Int)    = N
@@ -166,7 +165,6 @@ function get_logprior(c::Cloud)
 Returns Vector{Float64}(n_parts) of log-prior of particles in cloud.
 """
 function get_logprior(c::Matrix{Float64})
-    #TODO: Fix logpost/logprior confusion
     return c[:, ind_logprior(size(c,2))]
 end
 function get_logprior(c::Cloud)
@@ -278,20 +276,20 @@ end
 
 """
 ```
-function update_logpost!(c::Matrix{Float64}, incweight::Vector{Float64})
-function update_logpost!(c::Cloud, logpost::Vector{Float64})
+function update_logprior!(c::Matrix{Float64}, incweight::Vector{Float64})
+function update_logprior!(c::Cloud, logprior::Vector{Float64})
 ```
-Update log-posterior in cloud.
+Update log-prior in cloud.
 """
-function update_logpost!(c::Matrix{Float64}, logpost::Vector{Float64})
-    @assert size(c, 1) == length(logpost) "Dimensional mismatch"
-    N = ind_logpost(size(c,2))
-    for i=1:length(logpost)
-        c[i, N] = logpost[i]
+function update_logprior!(c::Matrix{Float64}, logprior::Vector{Float64})
+    @assert size(c, 1) == length(logprior) "Dimensional mismatch"
+    N = ind_logprior(size(c,2))
+    for i=1:length(logprior)
+        c[i, N] = logprior[i]
     end
 end
-function update_logpost!(c::Cloud, logpost::Vector{Float64})
-    update_logpost!(c.particles, logpost)
+function update_logprior!(c::Cloud, logprior::Vector{Float64})
+    update_logprior!(c.particles, logprior)
 end
 
 
@@ -347,18 +345,18 @@ end
 """
 ```
 function update_mutation!(p::Vector{Float64}, para::Vector{Float64},
-                          like::Float64, post::Float64, old_like::Float64,
+                          like::Float64, prior::Float64, old_like::Float64,
                           accept::Float64)
 ```
-Update a particle's parameter vector, log-likelihood, log-posteriod,
+Update a particle's parameter vector, log-likelihood, log-prior,
 old log-likelihood, and acceptance rate at the end of mutation.
 """
 function update_mutation!(p::Vector{Float64}, para::Vector{Float64}, like::Float64,
-                          post::Float64, old_like::Float64, accept::Float64)
+                          prior::Float64, old_like::Float64, accept::Float64)
     N = length(p)
     p[1:ind_para_end(N)] = para
     p[ind_loglh(N)]      = like
-    p[ind_logpost(N)]    = post
+    p[ind_logprior(N)]   = prior
     p[ind_old_loglh(N)]  = old_like
     p[ind_accept(N)]     = accept
 end
@@ -496,7 +494,7 @@ function split_cloud(filename::String, n_pieces::Int)
         Ws[i] = W[inds, :]
         clouds[i] = Cloud(n_para, npart_small)
 
-        # Since loglh, logpost, old_loglh are all stored in cloud.particles, this updates them all too!
+        # Since loglh, logprior, old_loglh are all stored in cloud.particles, this updates them all too!
         SMC.update_cloud!(clouds[i], cloud.particles[inds, :])
 
         clouds[i].ESS = cloud.ESS
@@ -537,7 +535,7 @@ function join_cloud(filename::String, n_pieces::Int)
     particles  = Matrix{Float64}(undef, 0, n_para)
     loglhs     = Vector{Float64}(undef, 0)
     old_loglhs = Vector{Float64}(undef, 0)
-    logposts   = Vector{Float64}(undef, 0)
+    logpriors  = Vector{Float64}(undef, 0)
     w          = Matrix{Float64}(undef, 0, n_stage)
     W          = Matrix{Float64}(undef, 0, n_stage)
 
@@ -545,12 +543,12 @@ function join_cloud(filename::String, n_pieces::Int)
         particles     = vcat(particles, clouds[i].particles)
         loglhs        = vcat(loglhs, SMC.get_loglh(clouds[i]))
         old_loglhs    = vcat(old_loglhs, SMC.get_old_loglh(clouds[i]))
-        logposts      = vcat(logposts, SMC.get_logpost(clouds[i]))
+        logpriors     = vcat(logpriors, SMC.get_logprior(clouds[i]))
         w             = vcat(w, ws[i])
         W             = vcat(W, Ws[i])
     end
 
-    # Since loglh, logpost, old_loglh are all stored in cloud.particles, this updates them all too!
+    # Since loglh, logprior, old_loglh are all stored in cloud.particles, this updates them all too!
     SMC.update_cloud!(cloud, particles)
 
     cloud.ESS                 = clouds[1].ESS

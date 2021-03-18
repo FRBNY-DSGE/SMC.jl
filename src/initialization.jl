@@ -6,7 +6,7 @@ one_draw(loglikelihood::Function, parameters::ParameterVector{U},
 ```
 
 Finds and returns one valid draw from parameter distribution, along with its
-log likelihood and log posterior.
+log likelihood and log prior.
 
 Set `regime_switching` to true if
 there are regime-switching parameters. Otherwise, not all the values of the
@@ -26,7 +26,7 @@ function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
     success    = false
     draw       = vec(rand(parameters, 1, regime_switching = regime_switching, toggle = toggle))
 
-    draw_loglh = draw_logpost = 0.0
+    draw_loglh = draw_logprior = 0.0
 
     while !success
         try
@@ -38,16 +38,16 @@ function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
                 toggle_regime!(parameters, 1)
             end
 
-            draw_logpost = prior(parameters)
+            draw_logprior = prior(parameters)
 
             if (draw_loglh == -Inf) || (draw_loglh === NaN)
-                draw_loglh = draw_logpost = -Inf
+                draw_loglh = draw_logprior = -Inf
             end
         catch err
             if isa(err, ParamBoundsError) || isa(err, SingularException) ||
                isa(err, LinearAlgebra.LAPACKException) || isa(err, PosDefException) ||
                isa(err, DomainError)
-                draw_loglh = draw_logpost = -Inf
+                draw_loglh = draw_logprior = -Inf
             else
                 throw(err)
             end
@@ -59,7 +59,7 @@ function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
             success = true
         end
     end
-    return vector_reshape(draw, draw_loglh, draw_logpost)
+    return vector_reshape(draw, draw_loglh, draw_logprior)
 end
 
 """
@@ -70,7 +70,7 @@ function initial_draw!(loglikelihood::Function, parameters::ParameterVector{U},
 ```
 
 Draw from a general starting distribution (set by default to be from the prior) to
-initialize the SMC algorithm. Returns a tuple (logpost, loglh) and modifies the
+initialize the SMC algorithm. Returns a tuple (loglh, logprior) and modifies the
 particle objects in the particle cloud in place.
 
 Set `regime_switching` to true if
@@ -99,8 +99,8 @@ function initial_draw!(loglikelihood::Function, parameters::ParameterVector{U},
     @everywhere one_draw_closure() = one_draw(loglikelihood, parameters, data, regime_switching = regime_switching, toggle = toggle)
     # =========================================================================
 
-    # For each particle, finds valid parameter draw and returns loglikelihood & posterior
-    draws, loglh, logpost = if parallel
+    # For each particle, finds valid parameter draw and returns loglikelihood & prior
+    draws, loglh, logprior = if parallel
         @sync @distributed (vector_reduce) for i in 1:n_parts
             one_draw_closure()
         end
@@ -110,7 +110,7 @@ function initial_draw!(loglikelihood::Function, parameters::ParameterVector{U},
 
     update_draws!(c, draws)
     update_loglh!(c, vec(loglh))
-    update_logpost!(c, vec(logpost))
+    update_logprior!(c, vec(logprior))
     update_old_loglh!(c, zeros(n_parts))
 
     # Need to call `set_weights` as opposed to `update_weights`
@@ -124,7 +124,7 @@ draw_likelihood(loglikelihood::Function, parameters::ParameterVector{U},
                 data::Matrix{Float64}, draw::Vector{Float64};
                 toggle::Bool = true) where {U<:Number}
 ```
-Computes likelihood of a particular parameter draw; returns loglh and logpost.
+Computes likelihood of a particular parameter draw; returns loglh and logprior.
 """
 function draw_likelihood(loglikelihood::Function, parameters::ParameterVector{U},
                          data::Matrix{Float64}, draw::Vector{Float64};
@@ -134,8 +134,8 @@ function draw_likelihood(loglikelihood::Function, parameters::ParameterVector{U}
     if toggle
         ModelConstructors.toggle_regime!(parameters, 1)
     end
-    logpost = prior(parameters)
-    return scalar_reshape(loglh, logpost)
+    logprior = prior(parameters)
+    return scalar_reshape(loglh, logprior)
 end
 
 """
@@ -147,7 +147,7 @@ initialize_likelihoods!(loglikelihood::Function, parameters::ParameterVector{U},
 ```
 This function is made for transfering the log-likelihood values saved in the
 Cloud from a previous estimation to each particle's respective old_loglh
-field, and for evaluating/saving the likelihood and posterior at the new data, which
+field, and for evaluating/saving the likelihood and prior at the new data, which
 here is just the argument, data.
 """
 function initialize_likelihoods!(loglikelihood::Function, parameters::ParameterVector{U},
@@ -174,7 +174,7 @@ function initialize_likelihoods!(loglikelihood::Function, parameters::ParameterV
 
     # TODO: handle when the likelihood with new data cannot be evaluated (returns -Inf),
     # even if the likelihood was not -Inf prior to incorporating new data
-    loglh, logpost = if parallel
+    loglh, logprior = if parallel
         @sync @distributed (scalar_reduce) for i in 1:n_parts
             draw_likelihood_closure(draws[i, :])
         end
@@ -182,7 +182,7 @@ function initialize_likelihoods!(loglikelihood::Function, parameters::ParameterV
         scalar_reduce([draw_likelihood_closure(draws[i, :]) for i in 1:n_parts]...)
     end
     update_loglh!(c, loglh)
-    update_logpost!(c, logpost)
+    update_logprior!(c, logprior)
 end
 
 """

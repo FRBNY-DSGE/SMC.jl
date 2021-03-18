@@ -255,7 +255,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
             bridge_cloud = Cloud(n_para, n_to_resample)
             update_cloud!(bridge_cloud, cloud.particles[new_inds, :])
             update_loglh!(bridge_cloud, get_loglh(cloud)[new_inds])
-            update_logpost!(bridge_cloud, get_logpost(cloud)[new_inds])
+            update_logprior!(bridge_cloud, get_logprior(cloud)[new_inds])
             update_old_loglh!(bridge_cloud, get_old_loglh(cloud)[new_inds])
 
             # Make a cloud by drawing from the prior
@@ -267,7 +267,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
                 cloud = Cloud(n_para, n_to_resample + n_from_prior)
                 update_cloud!(cloud, vcat(bridge_cloud.particles, prior_cloud.particles))
                 update_loglh!(cloud, vcat(get_loglh(bridge_cloud), get_loglh(prior_cloud)))
-                update_logpost!(cloud, vcat(get_logpost(bridge_cloud), get_logpost(prior_cloud)))
+                update_logprior!(cloud, vcat(get_logprior(bridge_cloud), get_logprior(prior_cloud)))
                 update_old_loglh!(cloud, vcat(get_old_loglh(bridge_cloud), get_old_loglh(prior_cloud)))
             else
                 cloud = bridge_cloud
@@ -286,7 +286,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     elseif continue_intermediate
         cloud = load(loadpath, "cloud")
     else
-        # Instantiating Cloud object, update draws, loglh, & logpost
+        # Instantiating Cloud object, update draws, loglh, & logprior
         initial_draw!(loglikelihood, parameters, data, cloud; parallel = parallel, regime_switching = regime_switching,
                       toggle = toggle)
         initialize_cloud_settings!(cloud; tempered_update = tempered_update,
