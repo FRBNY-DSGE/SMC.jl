@@ -9,8 +9,12 @@ any given time (and thus the final output will be the final cloud of particles,
  of which only the particle values will be saved).
 
 ### Fields
-- `particles::Matrix{Float64}`: The vector of particles (which contain weight,
-     keys, and value information)
+- `particles::Matrix{Float64}`: The vector of particles. The first `1:(size(particles, 2) - 5)`
+    columns hold the parameter values. The last five columns
+    contain "metadata" on the particles, namely (in order from left to right)
+    (1) the log-likelihood, (2) log-prior, (3) the old log-likelihood from a previous estimation
+    (used for tempered updates, set to zero if not tempering), (4) the accept rate
+    for the particle's mutation steps, and (5) the particle's normalized weight.
 - `tempering_schedule::Vector{Float64}`: The vector of ϕ_ns (tempering factors)
 - `ESS::Vector{Float64}`: The vector of effective sample sizes (resample if ESS
     falls under the threshold)
@@ -591,59 +595,112 @@ function join_cloud(filename::String, n_pieces::Int; save_cloud::Bool = true)
     return cloud
 end
 
-# W = load(replace(replace(input_file_name, "smcsave" => "smc_cloud"), "h5" => "jld2"), "W")
-function add_parameters_to_cloud(old_cloud::Cloud, old_weights_matrix::AbstractMatrix{T},
-                                 para::ParameterVector, old_para_inds::BitVector,
-                                 loglikelihood::Function, old_data::AbstractMatrix{T},
-                                 regime_switching::Bool = false) where {T <: Real}
+"""
+```
+add_parameters_to_cloud(old_cloud_file::String, para::ParameterVector,
+                        old_para_inds::BitVector; regime_switching::Bool = false)
 
-    # It is assumed that get_values(old_para) = get_values(para)[old_para_inds]
+add_parameters_to_cloud(old_cloud::Cloud, para::ParameterVector, old_para_inds::BitVector;
+                        regime_switching::Bool = false) where {T <: Real}
+```
+extends a `Cloud` from a previous estimation to include new parameters.
+This function helps construct a bridge distribution when
+you want to estimate a model that extends a previous model by
+adding additional parameters.
+
+To be concrete, suppose we have two models ``\\mathcal{M}_1``
+and ``\\mathcal{M}_2`` such that the parameters of the first model
+are a subset of the parameters of the second model. For example,
+suppose ``\\theta_1`` are the parameters for the first model,
+and ``\\theta_2 = [\\theta_1, \\tilde{\\theta}]^T``,
+where ``\\tilde{\\theta}`` are the new parameters for ``\\mathcal{M}_2``.
+Assume that
+
+(1) the likelihood function for ``\\mathcal{M}_1` does not depend on ``\tilde{\\theta}``,
+(2) the priors for ``\theta_1`` and ``\tilde{\theta}`` are independent.
+
+Then the posterior for ``\\theta_2`` given ``\\mathcal{M}_1`` is just
+``math
+\\begin{aligned}
+  \\pi(\\theta_2 \\vert Y, \\mathcal{M}_1) = \\pi(\\theta_1 \\vert Y, \\mathcal{M}_1) p(\\tilde{\\theta}).
+\\end{aligned}
+``
+Therefore, we can construct the posterior ``\\pi(\\theta_2 \\vert Y, \\mathcal{M}_1)``
+by concatenating draws from the prior for ``\\tilde{\\theta}`` to the previous estimation of ``\\mathcal{M}_1``.
+This function performs this concatenation and allows for regime-switching.
+
+### Inputs
+- `old_cloud` or `old_cloud_file`: this input should specify the `Cloud` from a previous estimation
+    of the old model. If a different package was used to estimate the model, then the user
+    can construct a new `Cloud` object. The only fields which must be set correctly
+    are the `particles` and `ESS` field. The others can be set to default values (see `?Cloud` and
+    the source code for the construction of the `Cloud` object).
+
+- `para`: the parameter vector of the new model (i.e. ``\\theta_2``).
+    The parameters in `para` that belonged to the old model should have the same
+    settings as the ones used in previous estimation, e.g. the same prior.
+
+- `old_para_inds`: indicates which parameters were used in the old estimation.
+    If `regime_switching = true`, then this vector should specify which values
+    correspond to old parameter values based on the matrix returned by
+    `SMC.get_values(para)`. For example, if `old_para` is the `ParameterVector`
+    used by the old estimation, then `SMC.get_values(old_para) == SMC.get_values(para)[old_para_inds]`
+
+### Keyword Arguments
+- `regime_switching`: this kwarg is needed to be able to draw from the prior correctly
+    for the new parameters.
+"""
+function add_parameters_to_cloud(old_cloud_file::String, para::ParameterVector,
+                                 old_para_inds::BitVector; regime_switching::Bool = false)
+    old_cloud = load(old_cloud_file, "cloud")
+    return add_parameters_to_cloud(old_cloud, para, old_para_inds;
+                                   regime_switching = regime_switching)
+end
+
+function add_parameters_to_cloud(old_cloud::Cloud, para::ParameterVector, old_para_inds::BitVector;
+                                 regime_switching::Bool = false) where {T <: Real}
 
     # Sample from prior
     n_parts   = length(old_cloud)
     para_vals = regime_switching ? Matrix{T}(undef, n_parts, n_parameters_regime_switching(para)) :
         Matrix{T}(undef, n_parts, length(para))
     for i in 1:n_parts
-        para_vals[i, :] = rand(new_para; regime_switching = regime_switching)
+        para_vals[i, :] = rand(para; regime_switching = regime_switching)
     end
 
-    # Resample parameters from old_cloud
-    weights = old_weights_matrix[:, end] # n_parts x n_stages
-    inds    = SMC.resample(weights)
-    old_para_unweighted = get_vals(old_cloud)
-    old_para = Matrix{T}(old_para_unweighted[:, inds]')
+    # Use same particles as the old cloud. Re-sampling is unnecessary
+    # because old_cloud.particles has the needed weights information
+    part_dim2 = size(old_cloud.particles, 2)
+    old_para  = old_cloud.particles[:, 1:ind_para_end(part_dim2)]
 
     # Combine old parameters (drawn from their posterior from the old estimation)
     # and the new parameters (drawn from a prior)
-    for i in 1:n_parts
-        # It is assumed that the order of old_para matches the order of old_para_inds
-        # and that the order of parameters haven't been switched around.
-        # If that is the case, then the user need to write a function
-        # that maps the old parameters to their correct indices.
-        para_vals[i, old_para_inds] = view(old_para, i, :)
-    end
+    # It is assumed that the order of old_para matches the order of old_para_inds
+    # and that the order of parameters haven't been switched around.
+    # If that is the case, then the user need to write a function
+    # that maps the old parameters to their correct indices.
+    para_vals[:, old_para_inds] = old_para
 
-    # Create loglh, logprior columns
-    meta_info = Matrix{T}(n_parts, 5) # additional 5 columns of "meta" information about particles
-    part_dim2 = size(old_cloud.particles, 2)
+    # Create logprior columns
+    meta_info = Matrix{T}(undef, n_parts, 5) # additional 5 columns of "meta" information about particles
     for i in 1:n_parts
         # Update ParameterVector para
         update!(para, view(para_vals, i, :))
-
-        # Compute loglh
-        meta_info[i, 1] = loglikelihood(para, data)
 
         # Compute logprior
         meta_info[i, 2] = prior(para)
     end
 
-    # Compute old loglh (just zeros since we will be creating a "new" Clou)
+    # Copy loglh from old model
+    meta_info[:, 1] = view(old_cloud.particles, :, ind_loglh(part_dim2))
+
+    # Compute old loglh (just zeros since we will be creating a "new" Cloud)
     meta_info[:, 3] .= 0.
 
-    # Add acceptance rate
+    # Add acceptance rate based on the bold cloud
     meta_info[:, 4] = view(old_cloud.particles, :, ind_accept(part_dim2))
 
-    # Add weight
+    # Add weights for each particle based on the old cloud
     meta_info[:, 5] = view(old_cloud.particles, :, ind_weight(part_dim2))
 
     # Form a new Cloud
