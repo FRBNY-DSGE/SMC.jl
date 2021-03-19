@@ -5,7 +5,6 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 ```
 
 ### Arguments:
-
 - `loglikelihood::Function`: Log-likelihood function of model being estimated. Takes `parameters`
     and `data` as arguments.
 - `parameters::ParameterVector{U}`: Model parameter vector, which stores parameter values,
@@ -24,7 +23,6 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 	- `:high`: Status updates for every iteration of SMC is output, which includes
     the mean and standard deviation of each parameter draw after each iteration,
     as well as calculated acceptance rate, ESS, and number of times resampled.
-
 - `parallel::Bool`: Flag for running algorithm in parallel.
 - `n_parts::Int`: Number of particles.
 - `n_blocks::Int`: Number of parameter blocks in mutation step.
@@ -40,12 +38,10 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 - `c::S`: Scaling factor for covariance of the particles. Controls size of steps in mutation step.
 - `α::S`: The mixture proportion for the mutation step's proposal distribution.
 - `target::S`: The initial target acceptance rate for new particles during mutation.
-
 - `use_chand_recursion::Bool`: Flag for using Chandrasekhar Recursions in Kalman filter.
 - `use_fixed_schedule::Bool`: Flag for whether or not to use a fixed tempering (ϕ) schedule.
 - `tempering_target::S`: Coefficient of the sample size metric to be targeted when solving
     for an endogenous ϕ.
-
 - `old_data::Matrix{S}`: data from vintage of last SMC estimation. Running a bridge
     estimation requires `old_data` and `old_cloud`.
 - `old_cloud::Cloud`: associated cloud borne of old data in previous SMC estimation.
@@ -54,7 +50,6 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 - `old_vintage::String`: String for vintage date of old data
 - `smc_iteration::Int`: The iteration index for the number of times SMC has been run on the
      same data vintage. Primarily for numerical accuracy/testing purposes.
-
 - `run_test::Bool`: Flag for when testing accuracy of program
 - `filestring_addl::Vector{String}`: Additional file string extension for loading old cloud.
 - `save_intermediate::Bool`: Flag for whether one wants to save intermediate Cloud objects
