@@ -76,7 +76,7 @@ close(file)
 
 ####################################################################
 @testset "MvNormal Mixture Draw" begin
-    @test maximum(abs.(test_θ_new - saved_θ_new)) < 1e-15 # avoid problems with different Julia versions when testing via GitHub Actions
+    @test maximum(abs.(test_θ_new - saved_θ_new)) <= eps() # avoid problems with different Julia versions when testing via GitHub Actions
 end
 
 
