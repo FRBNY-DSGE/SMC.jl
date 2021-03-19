@@ -3,7 +3,7 @@ include("modelsetup.jl")
 
 if VERSION < v"1.5"
     ver = "111"
-else 
+else
     ver = "150"
 end
 
@@ -76,7 +76,7 @@ close(file)
 
 ####################################################################
 @testset "MvNormal Mixture Draw" begin
-    @test test_θ_new == saved_θ_new
+    @test maximum(abs.(test_θ_new - saved_θ_new)) < 1e-15 # avoid problems with different Julia versions when testing via GitHub Actions
 end
 
 
