@@ -1,3 +1,10 @@
+# SMC.jl 0.1.14 Release Notes
+Miscellaneous:
+- Implement `add_parameters_to_cloud` to help construct
+  a bridge distribution for a new model by using an estimation of a previous
+  model, which uses only a subset of the new model's parameters (under some mild assumptions).
+- Resolved `logpost` and `logprior` confusion in the source code
+
 # SMC.jl 0.1.13 Release Notes
 Miscelleanous:
 - Moved `get_fixed_para_inds` and `get_free_para_inds` to ModelConstructors.jl
