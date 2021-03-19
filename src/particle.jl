@@ -657,7 +657,7 @@ function add_parameters_to_cloud(old_cloud_file::String, para::ParameterVector,
                                    regime_switching = regime_switching)
 end
 
-function add_parameters_to_cloud(old_cloud::Cloud, para::ParameterVector, old_para_inds::BitVector;
+function add_parameters_to_cloud(old_cloud::Cloud, para::ParameterVector{T}, old_para_inds::BitVector;
                                  regime_switching::Bool = false) where {T <: Real}
 
     # Sample from prior
