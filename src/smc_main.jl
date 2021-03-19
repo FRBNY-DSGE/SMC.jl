@@ -19,47 +19,48 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 ### Keyword Arguments:
 - `verbose::Symbol`: Desired frequency of function progress messages printed to standard out.
 	- `:none`: No status updates will be reported.
-	- `:low`: Status updates for SMC initialization and recursion will be included.
+	- `:low`: Status updates for SMC initialization and recursion will be included (default).
 	- `:high`: Status updates for every iteration of SMC is output, which includes
     the mean and standard deviation of each parameter draw after each iteration,
     as well as calculated acceptance rate, ESS, and number of times resampled.
-- `parallel::Bool`: Flag for running algorithm in parallel.
-- `n_parts::Int`: Number of particles.
-- `n_blocks::Int`: Number of parameter blocks in mutation step.
-- `n_mh_steps::Int`: Number of Metropolis Hastings steps to attempt during the mutation step.
-- `λ::S`: The 'bending coefficient' λ in Φ(n) = (n/N(Φ))^λ
-- `n_Φ::Int`: Number of stages in the tempering schedule.
+- `parallel::Bool = false`: Flag for running algorithm in parallel.
+- `n_parts::Int = 5_000`: Number of particles.
+- `n_blocks::Int = 1`: Number of parameter blocks in mutation step.
+- `n_mh_steps::Int = 1`: Number of Metropolis Hastings steps to attempt during the mutation step.
+- `λ::S = 2.1`: The 'bending coefficient' λ in Φ(n) = (n/N(Φ))^λ
+- `n_Φ::Int = 300`: Number of stages in the tempering schedule.
 - `resampling_method::Symbol`: Which resampling method to use.
-    - `:systematic`: Will use sytematic resampling.
+    - `:systematic`: Will use systematic resampling (default).
     - `:multinomial`: Will use multinomial resampling.
     - `:polyalgo`: Samples using a polyalgorithm.
-- `threshold_ratio::S`: Threshold s.t. particles will be resampled when the population
+- `threshold_ratio::S = 0.5`: Threshold s.t. particles will be resampled when the population
     drops below threshold * N.
-- `c::S`: Scaling factor for covariance of the particles. Controls size of steps in mutation step.
-- `α::S`: The mixture proportion for the mutation step's proposal distribution.
-- `target::S`: The initial target acceptance rate for new particles during mutation.
-- `use_chand_recursion::Bool`: Flag for using Chandrasekhar Recursions in Kalman filter.
-- `use_fixed_schedule::Bool`: Flag for whether or not to use a fixed tempering (ϕ) schedule.
-- `tempering_target::S`: Coefficient of the sample size metric to be targeted when solving
+- `c::S = 0.5`: Initial scaling factor for covariance of the particles. Controls size of steps in mutation step.
+    This value will be adaptively set afterward to reach an accept rate of `target` (see kwarg below).
+- `α::S = 1.0`: The mixture proportion for the mutation step's proposal distribution. See `?mvnormal_mixture_draw` for details.
+    Note that a value of 0.9 has commonly been used in applications to DSGE models (see citations below).
+- `target::S = 0.25`: The target acceptance rate for new particles during mutation.
+- `use_fixed_schedule::Bool = true`: Flag for whether or not to use a fixed tempering (ϕ) schedule.
+- `tempering_target::S = 0.97`: Coefficient of the sample size metric to be targeted when solving
     for an endogenous ϕ.
-- `old_data::Matrix{S}`: data from vintage of last SMC estimation. Running a bridge
+- `old_data::Matrix{S} = []`: data from vintage of last SMC estimation. Running a bridge
     estimation requires `old_data` and `old_cloud`.
-- `old_cloud::Cloud`: associated cloud borne of old data in previous SMC estimation.
+- `old_cloud::Cloud = Cloud(0, 0)`: associated cloud borne of old data in previous SMC estimation.
     Running a bridge estimation requires `old_data` and `old_cloud`. If no `old_cloud`
     is provided, then we will attempt to load one using `loadpath`.
-- `old_vintage::String`: String for vintage date of old data
-- `smc_iteration::Int`: The iteration index for the number of times SMC has been run on the
+- `old_vintage::String = ""`: String for vintage date of old data
+- `smc_iteration::Int = 1`: The iteration index for the number of times SMC has been run on the
      same data vintage. Primarily for numerical accuracy/testing purposes.
-- `run_test::Bool`: Flag for when testing accuracy of program
-- `filestring_addl::Vector{String}`: Additional file string extension for loading old cloud.
-- `save_intermediate::Bool`: Flag for whether one wants to save intermediate Cloud objects
+- `run_test::Bool = false`: Flag for when testing accuracy of program
+- `filestring_addl::Vector{String} = []`: Additional file string extension for loading old cloud.
+- `save_intermediate::Bool = false`: Flag for whether one wants to save intermediate Cloud objects
 - `intermediate_stage_increment::Int`: Save Clouds at every increment
    (1 = each stage, 10 = every 10th stage, etc.). Useful if you are using a cluster with time
     limits because if you hit the time limit, then you can just
     start from an intermediate stage rather than start over.
-- `continue_intermediate::Bool`: Flag to indicate whether one is continuing SMC from an
+- `continue_intermediate::Bool = false`: Flag to indicate whether one is continuing SMC from an
     intermediate stage.
-- `intermediate_stage_start::Int`: Intermediate stage at which one wishes to begin the estimation.
+- `intermediate_stage_start::Int = 10`: Intermediate stage at which one wishes to begin the estimation.
 - `tempered_update_prior_weight::Float64 = 0.0`: Weight placed on the current priors of parameters
     to construct a convex combination of draws from current priors and the previous estimation's
     cloud. The convex combination serves as the bridge distribution for a time tempered estimation.
@@ -89,17 +90,21 @@ Sequential Monte Carlo can be used in lieu of Random Walk Metropolis Hastings to
 
 This implementation is based on Edward Herbst and Frank Schorfheide's 2014 paper
     'Sequential Monte Carlo Sampling for DSGE Models' and the code accompanying their
-    book 'Bayesian Estimation of DSGE Models'.
+    book 'Bayesian Estimation of DSGE Models'. Cai et al. (2021)
+    'Online Estimation of DSGE Models' extend the algorithm in Herbst and Schorfheide (2014)
+    to include an adaptive schedule and generalized tempering, which are both
+    features of this package.
+
 
 SMC is broken up into three main steps:
 
 - `Correction`: Reweight the particles from stage n-1 by defining incremental weights,
-    which gradually "temper in" the loglikelihood function p(Y|θ)^(ϕ_n - ϕ_n-1) into the
+    which gradually "temper in" the loglikelihood function ``p(Y \vert \\theta)^(\\phi_n - \\phi_n-1)`` into the
     normalized particle weights.
 - `Selection`: Resample the particles if the distribution of particles begins to
     degenerate, according to a tolerance level for the ESS.
-- `Mutation`: Propagate particles {θ(i), W(n)} via N(MH) steps of a Metropolis
-    Hastings algorithm.
+- `Mutation`: Propagate particles ``{\\theta(i), W(n)}`` via a Metropolis
+    Hastings algorithm (the number of steps are specified by `n_mh_steps`).
 """
 function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matrix{S};
              verbose::Symbol = :low,
