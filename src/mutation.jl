@@ -83,21 +83,9 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
             prior_new = like_new = like_old_data = -Inf
             try
                 update!(parameters, para_new)
-                #=para_new  = [θ.value for θ in parameters]
-                i = 0
-                for para in parameters
-                    if !isempty(para.regimes)
-                        i = i+1
-                        for (reg, val) in para.regimes[:value]
-                            if reg != 1
-                                push!(para_new, ModelConstructors.regime_val(para, reg))
-                            end
-                        end
-                    end
-                end=#
 
                 prior_new = prior(parameters)
-                like_new  = loglikelihood(parameters, data) #, regime_switching = regime_switching)
+                like_new  = loglikelihood(parameters, data)
 
                 if toggle
                     toggle_regime!(parameters, 1)
