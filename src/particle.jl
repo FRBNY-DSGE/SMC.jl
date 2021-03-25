@@ -205,6 +205,20 @@ end
 
 """
 ```
+function get_highest_posterior_particle_value(c::Matrix{Float64})
+function get_highest_posterior_particle_value(c::Cloud)
+```
+Return parameter vector of particle with highest log-posterior.
+"""
+function get_highest_posterior_particle_value(c::Matrix{Float64})
+    return c[argmax(get_logpost(c)), 1:ind_para_end(size(c,2))]
+end
+function get_highest_posterior_particle_value(c::Cloud)
+    return c.particles[argmax(get_logpost(c)), 1:ind_para_end(size(c.particles,2))]
+end
+
+"""
+```
 function update_draws!(c::Cloud, draws::Matrix{Float64})
 ```
 Update parameter draws in cloud.
