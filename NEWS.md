@@ -1,3 +1,8 @@
+# SMC.jl 0.1.15 Release Notes
+New Features:
+- Option to use different likelihood functions with tempered updates
+- Option to make near zero diagonals for proposal densities exactly zero to avoid errors
+
 # SMC.jl 0.1.14 Release Notes
 Miscellaneous:
 - Implement `add_parameters_to_cloud` to help construct
