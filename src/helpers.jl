@@ -106,7 +106,7 @@ get_cov(d::DegenerateMvNormal)::Matrix = d.σ
 ```
 compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T},
                            d_subset::Distribution;
-                           α::T = 1.0, c::T = 1.0) where {T<:AbstractFloat}
+                           α::T = 1.0, c::T = 1.0, catch_near_zeros::Bool = false) where {T<:AbstractFloat}
 ```
 Called in Metropolis-Hastings mutation step. After you have generated proposal draw
 ϑ_b from the mixture distrubtion, computes the density of the proposal distribution
@@ -127,7 +127,9 @@ for computation of acceptance probability.
 """
 function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T},
                                     d_subset::Distribution;
-                                    α::T = 1.0, c::T = 1.0) where {T<:AbstractFloat}
+                                    α::T = 1.0, c::T = 1.0,
+                                    catch_near_zeros::Bool = false,
+                                    tol::Float64 = 1e-6) where {T<:AbstractFloat}
     d_Σ = get_cov(d_subset)
 
     q0 = α * exp(logpdf(DegenerateMvNormal(para_draw,   c^2 * d_Σ), para_subset))
@@ -135,6 +137,11 @@ function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T}
 
     ind_pdf = 1.0
 
+    if catch_near_zeros
+        # If approximately near zero and negative, assume that the entries are actually supposed to be zero
+        near_zero_inds = findall(-tol .<= d_Σ .< 0.)
+        d_Σ[near_zero_inds] .= 0.
+    end
     for i = 1:length(para_subset)
         Σ_ii    = sqrt(d_Σ[i,i])
         zstat   = (para_subset[i] - para_draw[i]) / Σ_ii
