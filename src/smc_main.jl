@@ -42,7 +42,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 - `old_data::Matrix{S} = []`: A matrix containing the time series of observables of previous data
     (with `data` being the new data) for the purposes of a time tempered estimation
     (that is, using the posterior draws from a previous estimation as the initial set
-    of draws for an estimation with new data)
+    of draws for an estimation with new data). This matrix is used to compute the
+    log-likelihood according to the `old_loglikelihood` function when particles change during tempering.
 - `old_cloud::Cloud = Cloud(0, 0)`: associated cloud borne of old data in previous SMC estimation.
     Running a bridge estimation requires `old_data` and `old_cloud`. If no `old_cloud`
     is provided, then we will attempt to load one using `loadpath`.
@@ -255,8 +256,13 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
             # Resample from bridge distribution
             n_to_resample = Int(round((1-tempered_update_prior_weight) * n_parts))
             n_from_prior  = n_parts - n_to_resample
-            new_inds      = resample(get_weights(cloud); n_parts = n_to_resample,
-                                     method = resampling_method, parallel = parallel)
+            if n_to_resample > 0
+                new_inds = resample(get_weights(cloud); n_parts = n_to_resample,
+                                    method = resampling_method, parallel = parallel)
+
+            else
+                new_inds = Int64[] # empty
+            end
 
             # Add in the samples from the old bridge.
             # Note the update_old_loglh! is commented out b/c
