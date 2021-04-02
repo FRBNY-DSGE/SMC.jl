@@ -258,3 +258,48 @@ function generate_all_blocks(blocks_free::Vector{Vector{Int64}}, free_para_inds:
     end
     return blocks_all
 end
+
+"""
+```
+check_nan_ess(cloud::Cloud, stage::Int64, incremental_weights::Vector{T},
+              normalized_weights::Vector{T}, savepath::String, debug_assertion::Bool) where {T <: AbstractFloat}
+```
+checks whether the calculated ESS is a `NaN` and determines what error output we should give in the
+assertion error.
+"""
+function check_nan_ess(cloud::Cloud, stage::Int64, incremental_weights::Vector{T},
+                       normalized_weights::Vector{T}, savepath::String, debug_assertion::Bool) where {T <: AbstractFloat}
+    if isnan(cloud.ESS[stage])
+        inf_loglh = any(x -> isinf(x), incremental_weights)
+        nan_loglh = any(x -> isnan(x), incremental_weights)
+        zero_norm_wts = sum(normalized_weights .^2) <= eps()
+        nan_norm_wts = isnan(sum(normalized_weights .^2))
+        assert_str = "No particles have non-zero weight."
+        if inf_loglh
+            assert_str *= " Some particles have approximately infinite log-likelihoods."
+        end
+        if nan_loglh
+            assert_str *= " Some particles have approximately NaN log-likelihoods."
+        end
+        if zero_norm_wts
+            assert_str *= " The squared sum of the normalized weights is at machine-error."
+        end
+        if nan_norm_wts
+            assert_str *= " The squared sum of the normalized weights is returning a NaN."
+            if nan_norm_wts && any(x -> isnan(x), normalized_weights)
+                assert_str *= " Part of the reason is that one of the normalized weights is a NaN"
+            end
+        end
+        if debug_assertion
+            jldopen(replace(savepath, ".jld2" => "_debug_assertion.jld2"), true, true, true, IOStream) do file
+                write(file, "incremental_weights", incremental_weights)
+                write(file, "normalized_weights", normalized_weights)
+                write(file, "cloud", cloud)
+            end
+        end
+
+        @assert false assert_str
+    end
+
+    nothing
+end

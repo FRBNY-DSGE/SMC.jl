@@ -201,8 +201,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     threshold             = threshold_ratio * n_parts
     #use_fixed_schedule = (tempering_target == 0.0)
 
-    n_para = length(parameters)
     # Now count number of regime switching parameter values (excluding regime 1 values), i.e. if one parameter has 3 regimes, then add 2 to n_para
+    n_para = length(parameters)
     for para in parameters
         if !isempty(para.regimes)
             for (ind, val) in para.regimes[:value]
@@ -240,7 +240,6 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     println(verbose, :low, "\n\n SMC " * (testing ? "testing " : "") * "starts ....\n\n")
 
     if tempered_update
-        # TODO: place tempered_update inside its own function
         # If user does not input Cloud object themselves, looks for cloud in loadpath.
         cloud = cloud_isempty(old_cloud) ? load(loadpath, "cloud") : old_cloud
         old_n_parts = length(cloud)
@@ -417,41 +416,10 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         # Calculate the degeneracy/effective sample size metric
         push!(cloud.ESS, n_parts ^ 2 / sum(normalized_weights .^ 2))
 
-        # If this assertion does not hold then there are likely too few particles
-        if isnan(cloud.ESS[i]) # TODO: move this to helpers to create the error
-            inf_loglh = any(x -> isinf(x), incremental_weights)
-            nan_loglh = any(x -> isnan(x), incremental_weights)
-            zero_norm_wts = sum(normalized_weights .^2) <= eps()
-            nan_norm_wts = isnan(sum(normalized_weights .^2))
-            assert_str = "No particles have non-zero weight."
-            if inf_loglh
-                assert_str *= " Some particles have approximately infinite log-likelihoods."
-            end
-            if nan_loglh
-                assert_str *= " Some particles have approximately NaN log-likelihoods."
-            end
-            if zero_norm_wts
-                assert_str *= " The squared sum of the normalized weights is at machine-error."
-            end
-            if nan_norm_wts
-                assert_str *= " The squared sum of the normalized weights is returning a NaN."
-                if nan_norm_wts && any(x -> isnan(x), normalized_weights)
-                    assert_str *= " Part of the reason is that one of the normalized weights is a NaN"
-                end
-            end
-
-            if debug_assertion
-                jldopen(replace(savepath, ".jld2" => "_debug_assertion.jld2"), true, true, true, IOStream) do file
-                    write(file, "incremental_weights", incremental_weights)
-                    write(file, "normalized_weights", normalized_weights)
-                    write(file, "cloud", cloud)
-                    write(file, "phi_n", ϕ_n)
-                    write(file, "phi_n1", ϕ_n1)
-                end
-            end
-
-            @assert false assert_str
-        end
+        # Check whether ESS is a NaN and throws an assertion error if it is.
+        # In many cases, the problem is that there too few particles.
+        check_nan_ess(cloud, i, incremental_weights,
+                      normalized_weights, savepath, debug_assertion)
 
         # Resample if degeneracy/ESS metric falls below the accepted threshold
         if (cloud.ESS[i] < threshold)
