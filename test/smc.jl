@@ -117,7 +117,6 @@ m_new = deepcopy(m)
 # Estimate with 2nd half of sample
 m_new <= Setting(:data_vintage, "200708")
 m_new <= Setting(:tempered_update_prior_weight, 0.5)
-#m_new <= Setting(:tempered_update, true)
 old_vint = "000000"
 m_new <= Setting(:previous_data_vintage, old_vint)
 loadpath = rawpath(m_old, "estimate", "smc_cloud.jld2")

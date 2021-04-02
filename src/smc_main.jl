@@ -80,6 +80,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     the loglikelihood is computed. The regime-switching version of SMC assumes at various points
     that this resetting occurs. If speed is important, then ensure that the fields of parameters
     take their regime 1 values at the end of the loglikelihood computation and set `toggle = false`.
+- `debug_assertion::Bool = false`: if true, then when an assertion error is thrown during the estimation,
+    output is created in a JLD2 file to help the user debug the problem.
 
 ### Outputs
 
@@ -153,7 +155,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
              intermediate_stage_start::Int = 0,
              tempered_update_prior_weight::S = 0.0,
              regime_switching::Bool = false,
-             toggle::Bool = true) where {S<:AbstractFloat, U<:Number}
+             toggle::Bool = true,
+             debug_assertion::Bool = false) where {S<:AbstractFloat, U<:Number}
 
     ########################################################################################
     ### Settings
@@ -237,6 +240,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     println(verbose, :low, "\n\n SMC " * (testing ? "testing " : "") * "starts ....\n\n")
 
     if tempered_update
+        # TODO: place tempered_update inside its own function
         # If user does not input Cloud object themselves, looks for cloud in loadpath.
         cloud = cloud_isempty(old_cloud) ? load(loadpath, "cloud") : old_cloud
         old_n_parts = length(cloud)
@@ -271,7 +275,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
             update_cloud!(bridge_cloud, cloud.particles[new_inds, :])
             update_loglh!(bridge_cloud, get_loglh(cloud)[new_inds])
             update_logprior!(bridge_cloud, get_logprior(cloud)[new_inds])
-            # update_old_loglh!(bridge_cloud, get_old_loglh(cloud)[new_inds])
+            update_old_loglh!(bridge_cloud, get_old_loglh(cloud)[new_inds])
 
             # Add to the cloud draws from the prior. Note that we are drawing from the current prior,
             # but evaluating the old log-likelihood function on the old data. Thus,
@@ -291,21 +295,35 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
                 update_cloud!(cloud, vcat(bridge_cloud.particles, prior_cloud.particles))
                 update_loglh!(cloud, vcat(get_loglh(bridge_cloud), get_loglh(prior_cloud)))
                 update_logprior!(cloud, vcat(get_logprior(bridge_cloud), get_logprior(prior_cloud)))
-                # update_old_loglh!(cloud, vcat(get_old_loglh(bridge_cloud), get_old_loglh(prior_cloud)))
+                update_old_loglh!(cloud, vcat(get_old_loglh(bridge_cloud), get_old_loglh(prior_cloud)))
             else
                 cloud = bridge_cloud
             end
 
             # Update the old_loglh column in cloud.particles with the values
             # from the current loglh column in cloud.particles.
-            # Then compute log-likelihood of *old* estimation's particles on *new* data and parameters.
+            # Then compute current log-likelihood of *old* estimation's particles on *new* data and parameters.
             initialize_likelihoods!(loglikelihood, parameters, data, cloud; parallel = parallel,
                                     toggle = toggle)
 
-            reset_weights!(cloud)
-            cloud.resamples      += 1
-            resampled_last_period = true
+            # Ensure no particles yielding -Inf loglhs are kept.
+            # These "bad" particles emerge b/c particles from an old estimation
+            # won't necessarily imply good loglhs when evaluated on
+            # new data and parameters.
+            zero_bad_loglh_weights!(cloud)
+            normalized_weights = normalize_weights!(cloud) # need to renormalize to ensure weights sum to n_parts
 
+            # Resample weights to remove the -Inf loglh
+            new_inds = resample(normalized_weights/n_parts; method = resampling_method,
+                                parallel = parallel)
+            cloud.particles = [deepcopy(cloud.particles[k,j]) for k in new_inds,
+                               j=1:size(cloud.particles, 2)]
+            reset_weights!(cloud)
+
+            # Since there was a resampling, set ESS = n_parts
+            push!(cloud.ESS, n_parts)
+
+            # Initialize remaining cloud settings
             initialize_cloud_settings!(cloud; tempered_update = tempered_update,
                                        n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
         else
@@ -343,7 +361,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     else
         w_matrix = zeros(n_parts, 1)
         W_matrix = tempered_update ? (sum(get_weights(cloud)) <= 1.0 ?
-                                      get_weights(cloud)*n_parts : get_weights(cloud)) :
+                                      get_weights(cloud) * n_parts : get_weights(cloud)) :
                                       fill(1,(n_parts, 1))
     end
 
@@ -381,6 +399,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         # Calculate incremental weights (if no old data, get_old_loglh(cloud) = 0)
         incremental_weights = exp.((ϕ_n1 - ϕ_n) * get_old_loglh(cloud) +
                                    (ϕ_n - ϕ_n1) * get_loglh(cloud))
+
         # Update weights
         update_weights!(cloud, incremental_weights)
         mult_weights = get_weights(cloud)
@@ -399,16 +418,38 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         push!(cloud.ESS, n_parts ^ 2 / sum(normalized_weights .^ 2))
 
         # If this assertion does not hold then there are likely too few particles
-        if isnan(cloud.ESS[i])
-            inf_loglh = any(isinf.(incremental_weights))
+        if isnan(cloud.ESS[i]) # TODO: move this to helpers to create the error
+            inf_loglh = any(x -> isinf(x), incremental_weights)
+            nan_loglh = any(x -> isnan(x), incremental_weights)
             zero_norm_wts = sum(normalized_weights .^2) <= eps()
+            nan_norm_wts = isnan(sum(normalized_weights .^2))
             assert_str = "No particles have non-zero weight."
             if inf_loglh
                 assert_str *= " Some particles have approximately infinite log-likelihoods."
             end
-            if zero_norm_wts
-                assert_str *= " The squared sum of the normalized weights is at most machine-error"
+            if nan_loglh
+                assert_str *= " Some particles have approximately NaN log-likelihoods."
             end
+            if zero_norm_wts
+                assert_str *= " The squared sum of the normalized weights is at machine-error."
+            end
+            if nan_norm_wts
+                assert_str *= " The squared sum of the normalized weights is returning a NaN."
+                if nan_norm_wts && any(x -> isnan(x), normalized_weights)
+                    assert_str *= " Part of the reason is that one of the normalized weights is a NaN"
+                end
+            end
+
+            if debug_assertion
+                jldopen(replace(savepath, ".jld2" => "_debug_assertion.jld2"), true, true, true, IOStream) do file
+                    write(file, "incremental_weights", incremental_weights)
+                    write(file, "normalized_weights", normalized_weights)
+                    write(file, "cloud", cloud)
+                    write(file, "phi_n", ϕ_n)
+                    write(file, "phi_n1", ϕ_n1)
+                end
+            end
+
             @assert false assert_str
         end
 

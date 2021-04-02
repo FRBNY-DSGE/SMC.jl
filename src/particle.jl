@@ -42,7 +42,7 @@ end
 
 """
 ```
-function Cloud(n_params::Int, n_parts::Int)
+Cloud(n_params::Int, n_parts::Int)
 ```
 Easier constructor for Cloud, which initializes the weights to be
 equal, and everything else in the particle object to be empty.
@@ -64,7 +64,7 @@ ind_weight(N::Int)    = N
 
 """
 ```
-function get_weights(c::Matrix{Float64})
+get_weights(c::Matrix{Float64})
 ```
 Returns Vector{Float64}(n_parts) of weights of particles in cloud.
 """
@@ -73,7 +73,7 @@ function get_weights(c::Matrix{Float64})
 end
 """
 ```
-function get_weights(c::Cloud)
+get_weights(c::Cloud)
 ```
 Returns Vector{Float64}(n_parts) of weights of particles in cloud.
 """
@@ -83,7 +83,7 @@ end
 
 """
 ```
-function get_vals(c::Cloud; transposed::Bool = true)
+get_vals(c::Cloud; transposed::Bool = true)
 ```
 Returns Matrix{Float64}(n_params, n_parts) of parameter values in particle cloud.
 """
@@ -93,7 +93,7 @@ function get_vals(c::Matrix{Float64}; transpose::Bool = true)
 end
 """
 ```
-function get_vals(c::Matrix{Float64})
+get_vals(c::Matrix{Float64})
 ```
 Returns Matrix{Float64}(n_params, n_parts) of parameter values in particle cloud.
 """
@@ -104,8 +104,8 @@ end
 
 """
 ```
-function get_loglh(c::Matrix{Float64})
-function get_loglh(c::Cloud)
+get_loglh(c::Matrix{Float64})
+get_loglh(c::Cloud)
 ```
 Returns Vector{Float64}(n_parts) of log-likelihood of particles in cloud.
 """
@@ -118,8 +118,8 @@ end
 
 """
 ```
-function cloud_isempty(c::Matrix{Float64})
-function cloud_isempty(c::Cloud)
+cloud_isempty(c::Matrix{Float64})
+cloud_isempty(c::Cloud)
 ```
 Check if cloud has no particles.
 """
@@ -134,8 +134,8 @@ end
 
 """
 ```
-function get_old_loglh(c::Matrix{Float64})
-function get_old_loglh(c::Cloud)
+get_old_loglh(c::Matrix{Float64})
+get_old_loglh(c::Cloud)
 ```
 Returns Vector{Float64}(n_parts) of old log-likelihood of particles in cloud.
 """
@@ -148,8 +148,8 @@ end
 
 """
 ```
-function get_logpost(c::Matrix{Float64})
-function get_logpost(c::Cloud)
+get_logpost(c::Matrix{Float64})
+get_logpost(c::Cloud)
 ```
 Returns Vector{Float64}(n_parts) of log-posterior of particles in cloud.
 """
@@ -163,8 +163,8 @@ end
 
 """
 ```
-function get_logprior(c::Matrix{Float64})
-function get_logprior(c::Cloud)
+get_logprior(c::Matrix{Float64})
+get_logprior(c::Cloud)
 ```
 Returns Vector{Float64}(n_parts) of log-prior of particles in cloud.
 """
@@ -177,8 +177,8 @@ end
 
 """
 ```
-function get_accept(c::Matrix{Float64})
-function get_accept(c::Cloud)
+get_accept(c::Matrix{Float64})
+get_accept(c::Cloud)
 ```
 Returns Vector{Float64}(n_parts) of old log-likelihood of particles in cloud.
 """
@@ -191,8 +191,8 @@ end
 
 """
 ```
-function get_likeliest_particle_value(c::Matrix{Float64})
-function get_likeliest_particle_value(c::Cloud)
+get_likeliest_particle_value(c::Matrix{Float64})
+get_likeliest_particle_value(c::Cloud)
 ```
 Return parameter vector of particle with highest log-likelihood.
 """
@@ -205,8 +205,8 @@ end
 
 """
 ```
-function get_highest_posterior_particle_value(c::Matrix{Float64})
-function get_highest_posterior_particle_value(c::Cloud)
+get_highest_posterior_particle_value(c::Matrix{Float64})
+get_highest_posterior_particle_value(c::Cloud)
 ```
 Return parameter vector of particle with highest log-posterior.
 """
@@ -219,7 +219,7 @@ end
 
 """
 ```
-function update_draws!(c::Cloud, draws::Matrix{Float64})
+update_draws!(c::Cloud, draws::Matrix{Float64})
 ```
 Update parameter draws in cloud.
 """
@@ -242,8 +242,8 @@ end
 
 """
 ```
-function update_weights!(c::Matrix{Float64}, incweight::Vector{Float64})
-function update_weights!(c::Cloud, weights::Vector{Float64})
+update_weights!(c::Matrix{Float64}, incweight::Vector{Float64})
+update_weights!(c::Cloud, weights::Vector{Float64})
 ```
 Update weights in cloud.
 """
@@ -260,7 +260,7 @@ end
 
 """
 ```
-function set_weights!(c::Cloud, weights::Vector{Float64})
+set_weights!(c::Cloud, weights::Vector{Float64})
 ```
 Set weights to specific values. Contrast to update_weights, which multiplies
 existing weights by provided incremental weights.
@@ -276,8 +276,8 @@ end
 
 """
 ```
-function update_loglh!(c::Matrix{Float64}, incweight::Vector{Float64})
-function update_loglh!(c::Cloud, loglh::Vector{Float64})
+update_loglh!(c::Matrix{Float64}, incweight::Vector{Float64})
+update_loglh!(c::Cloud, loglh::Vector{Float64})
 ```
 Update log-likelihood in cloud.
 """
@@ -294,8 +294,8 @@ end
 
 """
 ```
-function update_logprior!(c::Matrix{Float64}, incweight::Vector{Float64})
-function update_logprior!(c::Cloud, logprior::Vector{Float64})
+update_logprior!(c::Matrix{Float64}, incweight::Vector{Float64})
+update_logprior!(c::Cloud, logprior::Vector{Float64})
 ```
 Update log-prior in cloud.
 """
@@ -313,8 +313,8 @@ end
 
 """
 ```
-function update_old_loglh!(c::Matrix{Float64}, incweight::Vector{Float64})
-function update_old_loglh!(c::Cloud, old_loglh::Vector{Float64})
+update_old_loglh!(c::Matrix{Float64}, incweight::Vector{Float64})
+update_old_loglh!(c::Cloud, old_loglh::Vector{Float64})
 ```
 Update log-likelihood in cloud.
 """
@@ -331,8 +331,8 @@ end
 
 """
 ```
-function normalize_weights!(c::Matrix{Float64})
-function normalize_weights!(c::Cloud)
+normalize_weights!(c::Matrix{Float64})
+normalize_weights!(c::Cloud)
 ```
 Normalize weights in cloud to N, the number of particles.
 """
@@ -347,13 +347,12 @@ end
 
 """
 ```
-function reset_weights!(c::Matrix{Float64})
-function reset_weights!(c::Cloud)
+reset_weights!(c::Matrix{Float64})
+reset_weights!(c::Cloud)
 ```
 Uniformly reset weights of all particles to 1/n_parts.
 """
 function reset_weights!(c::Matrix{Float64})
-    n_parts = size(c, 1)
     c[:, ind_weight(size(c,2))] .= 1.0
 end
 function reset_weights!(c::Cloud)
@@ -362,7 +361,23 @@ end
 
 """
 ```
-function update_mutation!(p::Vector{Float64}, para::Vector{Float64},
+zero_bad_loglh_weights!(c::Matrix{Float64})
+zero_bad_loglh_weights!(c::Cloud)
+```
+puts zero weight on particles with -Inf log-likelihoods
+"""
+function zero_bad_loglh_weights!(c::Matrix{Float64})
+    n_cloud_cols = size(c, 2)
+    badloglh = findall(c[:, ind_loglh(n_cloud_cols)] .== -Inf)
+    c[badloglh, ind_weight(n_cloud_cols)] .= 0.
+end
+function zero_bad_loglh_weights!(c::Cloud)
+    zero_bad_loglh_weights!(c.particles)
+end
+
+"""
+```
+update_mutation!(p::Vector{Float64}, para::Vector{Float64},
                           like::Float64, prior::Float64, old_like::Float64,
                           accept::Float64)
 ```
@@ -381,7 +396,7 @@ end
 
 """
 ```
-function update_cloud!(cloud::Cloud, new_particles::Matrix{Float64})
+update_cloud!(cloud::Cloud, new_particles::Matrix{Float64})
 ```
 Updates cloud values with those of new particles in particle array.
 """
@@ -400,7 +415,7 @@ end
 
 """
 ```
-function update_val!(p::Vector{Float64}, val::Vector{Float64})
+update_val!(p::Vector{Float64}, val::Vector{Float64})
 ```
 Update parameter vector of particle.
 """
@@ -411,7 +426,7 @@ end
 
 """
 ```
-function update_weight!(p::Vector{Float64}, weight::Vector{Float64})
+update_weight!(p::Vector{Float64}, weight::Vector{Float64})
 ```
 Update weight of particle.
 """
@@ -421,7 +436,7 @@ end
 
 """
 ```
-function update_acceptance_rate!(c::Cloud)
+update_acceptance_rate!(c::Cloud)
 ```
 Update cloud's acceptance rate with the mean of its particle acceptance rates.
 """
@@ -430,13 +445,13 @@ function update_acceptance_rate!(c::Cloud)
 end
 
 function Base.length(c::Cloud)
-        return size(c.particles, 1)
+    return size(c.particles, 1)
 end
 
 """
 ```
-function weighted_mean(c::Cloud)
-function weighted_mean(c::Matrix{Float64})
+weighted_mean(c::Cloud)
+weighted_mean(c::Matrix{Float64})
 ```
 Compute weighted mean of particle cloud.
 """
@@ -449,8 +464,8 @@ end
 
 """
 ```
-function weighted_quantile(c::Matrix{Float64}, i::Int64)
-function weighted_quantile(c::Cloud, i::Int64)
+weighted_quantile(c::Matrix{Float64}, i::Int64)
+weighted_quantile(c::Cloud, i::Int64)
 ```
 Compute weighted quantiles of particle cloud for input parameter, indexed by i.
 """
@@ -466,8 +481,8 @@ end
 
 """
 ```
-function weighted_std(c::Cloud)
-function weighted_std(c::Matrix{Float64})
+weighted_std(c::Cloud)
+weighted_std(c::Matrix{Float64})
 ```
 Compute weighted standard deviation of particle cloud.
 """
@@ -480,8 +495,8 @@ end
 
 """
 ```
-function weighted_cov(c::Cloud)
-function weighted_cov(c::Matrix{Float64})
+weighted_cov(c::Cloud)
+weighted_cov(c::Matrix{Float64})
 ```
 Compute weighted covariance of particle cloud.
 """
