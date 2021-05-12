@@ -15,7 +15,7 @@ module SMC
     export
         compute_parameter_covariance, get_estimation_output_files,
         compute_moments, find_density_bands, mutation, resample, smc,
-        mvnormal_mixture_draw, nearest_spd, marginal_data_density,
+        mvnormal_mixture_draw, nearest_spd,
         initial_draw!, Cloud, get_cloud, isempty, join_cloud, split_cloud,
         add_parameters_to_cloud
 
