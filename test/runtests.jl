@@ -1,10 +1,7 @@
 using Test
 using ModelConstructors, SMC
-using LinearAlgebra, PDMats, Distributions, SparseArrays
+using LinearAlgebra, PDMats, Distributions
 using Printf, Distributed, Random, HDF5, FileIO, JLD2
-
-import SparseArrays.SparseMatrixCSC
-import ModelConstructors.Setting
 
 my_tests = [
             "helpers",

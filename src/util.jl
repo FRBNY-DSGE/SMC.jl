@@ -180,20 +180,6 @@ function end_stage_print(cloud::Cloud, para_symbols::Vector{Symbol};
 end
 
 """
-Sparse identity matrix - since deprecated in 0.7
-"""
-function speye(n::Integer)
-    return SparseMatrixCSC{Float64}(I, n, n)
-end
-
-"""
-Sparse identity matrix - since deprecated in 0.7
-"""
-function speye(T::Type, n::Integer)
-    return SparseMatrixCSC{T}(I, n, n)
-end
-
-"""
     <(a::Complex, b::Complex)
 
 Compare real values of complex numbers.

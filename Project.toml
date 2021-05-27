@@ -4,7 +4,6 @@ authors = ["William Chen <william.chen@ny.frb.org>", "Shlok Goyal <shlok.goyal@n
 version = "0.1.15"
 
 [deps]
-BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 Calculus = "49dc2e85-a5d0-5ad3-a950-438e2897f1b9"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
@@ -18,12 +17,9 @@ PDMats = "90014a1f-27ba-587c-ab20-58faa44d9150"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Roots = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
-SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
-BenchmarkTools = "^0.4.3, 0.5, 0.6"
 Calculus = "0.4, 0.5"
 Distributions = "0.18, 0.19, 0.20, 0.21, 0.22, 0.23, 0.24"
 FileIO = "1.0.7, 1.1, 1.2, ^1.3"

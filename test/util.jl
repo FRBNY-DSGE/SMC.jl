@@ -1,11 +1,9 @@
-import SparseArrays.SparseMatrixCSC
-
 write_test_output = false
 path = dirname(@__FILE__)
 
 if VERSION < v"1.5"
     ver = "111"
-else 
+else
     ver = "150"
 end
 
@@ -95,17 +93,6 @@ end
     @test v2_r == test_v2_r
     @test v3_r == test_v3_r
 end
-
-###################################################################
-# Test: speye()
-###################################################################
-@testset "speye" begin
-    @test SMC.speye(20) == SparseMatrixCSC{Float64}(I, 20, 20)
-    @test SMC.speye(0)  == SparseMatrixCSC{Float64}(I, 0, 0)
-    @test SMC.speye(Int64, 20) == SparseMatrixCSC{Int64}(I, 20, 20)
-    @test SMC.speye(Complex{Float64}, 20) == SparseMatrixCSC{Complex{Float64}}(I, 20, 20)
-end
-
 
 ###################################################################
 # Test: <, min, max
