@@ -335,7 +335,7 @@ adjust_weights!(c::Matrix{Float64}, loglh::Vector{Float64}, logprior::Vector{Flo
 adjust_weights!(c::Cloud, loglh::Vector{Float64}, logprior::Vector{Float64})
 ```
 Update the weights based on the loglh and logprior.
-Used in a bridge estimation with draws from the prior.
+Not actually used anywhere in the code.
 """
 function adjust_weights!(c::Matrix{Float64}, loglh::Vector{Float64}, logprior::Vector{Float64})
     @assert size(c, 1) == length(loglh) && size(c, 1) == length(logprior) "Dimensional mismatch"
