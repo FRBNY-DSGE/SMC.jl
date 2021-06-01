@@ -82,6 +82,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     take their regime 1 values at the end of the loglikelihood computation and set `toggle = false`.
 - `debug_assertion::Bool = false`: if true, then when an assertion error is thrown during the estimation,
     output is created in a JLD2 file to help the user debug the problem.
+- `log_prob_oldy::Float64 = 0.0`: Log MDD of old y for correct incremental weights when bridging
 
 ### Outputs
 
@@ -156,7 +157,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
              tempered_update_prior_weight::S = 0.0,
              regime_switching::Bool = false,
              toggle::Bool = true,
-             debug_assertion::Bool = false) where {S<:AbstractFloat, U<:Number}
+             debug_assertion::Bool = false,
+             log_prob_oldy::Float64 = 0.0) where {S<:AbstractFloat, U<:Number}
 
     ########################################################################################
     ### Settings
@@ -396,8 +398,16 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         #############################################################################
 
         # Calculate incremental weights (if no old data, get_old_loglh(cloud) = 0)
-        incremental_weights = exp.((ϕ_n1 - ϕ_n) * get_old_loglh(cloud) +
-                                   (ϕ_n - ϕ_n1) * get_loglh(cloud))
+        if tempered_update_prior_weight == 0.0
+            incremental_weights = exp.((ϕ_n1 - ϕ_n) * get_old_loglh(cloud) +
+                                       (ϕ_n - ϕ_n1) * get_loglh(cloud))
+        elseif tempered_update_prior_weight == 1.0
+            incremental_weights = exp.((ϕ_n - ϕ_n1) * get_loglh(cloud))
+        else
+            incremental_weights = exp.((ϕ_n1 - ϕ_n) * log.((exp.(get_old_loglh(cloud) .- log_prob_oldy .+
+                                                       log(1-tempered_update_prior_weight)) .+ tempered_update_prior_weight)) +
+                                       (ϕ_n - ϕ_n1) * get_loglh(cloud))
+        end
 
         # Update weights
         update_weights!(cloud, incremental_weights)
