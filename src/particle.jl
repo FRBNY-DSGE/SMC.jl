@@ -331,6 +331,29 @@ end
 
 """
 ```
+adjust_weights!(c::Matrix{Float64}, loglh::Vector{Float64}, logprior::Vector{Float64})
+adjust_weights!(c::Cloud, loglh::Vector{Float64}, logprior::Vector{Float64})
+```
+Update the weights based on the loglh and logprior.
+Used in a bridge estimation with draws from the prior.
+"""
+function adjust_weights!(c::Matrix{Float64}, loglh::Vector{Float64}, logprior::Vector{Float64})
+    @assert size(c, 1) == length(loglh) && size(c, 1) == length(logprior) "Dimensional mismatch"
+    N = ind_weight(size(c,2))
+    for i=1:length(loglh)
+        c[i, N] = loglh[i] + logprior[i]
+    end
+    c[:,N] = exp.(c[:,N])
+    c[:,N] ./= sum(c[:,N])
+    c[:,N] .*= length(loglh)
+end
+
+function adjust_weights!(c::Cloud, loglh::Vector{Float64}, logprior::Vector{Float64})
+    adjust_weights!(c.particles, loglh, logprior)
+end
+
+"""
+```
 normalize_weights!(c::Matrix{Float64})
 normalize_weights!(c::Cloud)
 ```
