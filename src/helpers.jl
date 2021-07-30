@@ -55,6 +55,10 @@ function solve_adaptive_ϕ(cloud::Cloud, proposed_fixed_schedule::Vector{Float64
     return ϕ_n, resampled_last_period, j, ϕ_prop
 end
 
+get_cov(d::MvNormal)::Matrix = d.Σ.mat
+get_cov(d::DegenerateMvNormal)::Matrix = d.σ
+
+
 """
 ```
 `mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
@@ -84,23 +88,21 @@ the standard distribution and `(1 - α)` of the diagonalized distribution.
 ### Outputs
 - `θ_new::Vector{T}`: The draw from the mixture distribution to be used as the MH proposed step
 """
-function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
+function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution, rng::MersenneTwister;
                                c::T = 1.0, α::T = 1.0) where T<:AbstractFloat
     @assert 0 <= α <= 1
-    d_bar = MvNormal(d_prop.μ, c^2 * d_prop.Σ)
+    d_bar = DegenerateMvNormal(d_prop.μ, c^2 * get_cov(d_prop))
 
     # Create mixture distribution conditional on the previous parameter value, θ_old
-    d_old      = MvNormal(θ_old, c^2 * d_prop.Σ)
-    d_diag_old = MvNormal(θ_old, Diagonal(diag(c^2 * d_prop.Σ)))
-    d_mix_old  = MixtureModel(MvNormal[d_old, d_diag_old, d_bar], [α, (1 - α)/2, (1 - α)/2])
+    d_old      = DegenerateMvNormal(θ_old, c^2 * get_cov(d_prop))
+    d_diag_old = DegenerateMvNormal(θ_old,   Matrix(Diagonal(diag(c^2 * get_cov(d_prop)))))
+    d_mix_old  = MixtureModel(DegenerateMvNormal[d_old, d_diag_old, d_bar], [α, (1 - α)/2, (1 - α)/2])
 
     θ_new = rand(d_mix_old)
 
     return θ_new
 end
 
-get_cov(d::MvNormal)::Matrix = d.Σ.mat
-get_cov(d::DegenerateMvNormal)::Matrix = d.σ
 
 """
 ```
