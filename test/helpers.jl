@@ -3,7 +3,7 @@ include("modelsetup.jl")
 
 if VERSION < v"1.5"
     ver = "111"
-else 
+else
     ver = "150"
 end
 
@@ -62,7 +62,9 @@ file = JLD2.jldopen("reference/mvnormal_inputs.jld2")
     c           = read(file, "c")
 close(file)
 
-test_θ_new = SMC.mvnormal_mixture_draw(para_subset, d_subset; c=c, α=α)
+rng = MersenneTwister(0)
+
+test_θ_new = SMC.mvnormal_mixture_draw(para_subset, d_subset, rng; c=c, α=α)
 
 if writing_output
     JLD2.jldopen(string("reference/mvnormal_output_version=", ver, ".jld2"), true, true, true, IOStream) do file
