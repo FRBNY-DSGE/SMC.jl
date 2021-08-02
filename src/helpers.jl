@@ -98,7 +98,16 @@ function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution, rng::Mer
     d_diag_old = DegenerateMvNormal(θ_old,   Matrix(Diagonal(diag(c^2 * get_cov(d_prop)))))
     d_mix_old  = MixtureModel(DegenerateMvNormal[d_old, d_diag_old, d_bar], [α, (1 - α)/2, (1 - α)/2])
 
-    θ_new = rand(d_mix_old)
+    # to draw from mixture, need to sample u from  Unif(0,1) and sample from distribution i if
+    # u is in (Σ_{i=1}^i p_i, Σ_{i=1}^{i+1} p_i)
+    u = rand(Uniform(0,1))
+    if u < α
+        θ_new = rand(d_old)
+    elseif u < (α + (1-α)/2)
+        θ_new = rand(d_diag_old)
+    else
+        θ_new = rand(d_bar)
+    end
 
     return θ_new
 end
@@ -122,7 +131,7 @@ for computation of acceptance probability.
 ### Optional Inputs
 - `α::T`
 - `c::T`
-
+- `catch_near_zeros::Boolean`
 ### Outputs
 - `q0::T`: q(ϑ_b | θ^i_{n,b,m-1}, θ^i_{n,-b,m}, θ*_b, Σ*_b)
 - `q1::T`: q(θ^i_{n,b,m-1} | ϑ_b, θ^i_{n,b,m-1}, θ^i_{n,-b,m}, θ*_b, Σ*_b)
@@ -133,6 +142,10 @@ function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T}
                                     catch_near_zeros::Bool = false,
                                     tol::Float64 = 1e-6) where {T<:AbstractFloat}
     d_Σ = get_cov(d_subset)
+
+    if catch_near_zeros
+        d_Σ[ (d_Σ .< 0 .* d_Σ .> -0.1) ] .= 0
+    end
 
     q0 = α * exp(logpdf(DegenerateMvNormal(para_draw,   c^2 * d_Σ), para_subset))
     q1 = α * exp(logpdf(DegenerateMvNormal(para_subset, c^2 * d_Σ), para_draw))
