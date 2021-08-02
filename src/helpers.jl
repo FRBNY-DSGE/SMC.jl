@@ -131,7 +131,7 @@ for computation of acceptance probability.
 ### Optional Inputs
 - `α::T`
 - `c::T`
-- `catch_near_zeros::Boolean`
+- `catch_near_zeros::Bool`
 ### Outputs
 - `q0::T`: q(ϑ_b | θ^i_{n,b,m-1}, θ^i_{n,-b,m}, θ*_b, Σ*_b)
 - `q1::T`: q(θ^i_{n,b,m-1} | ϑ_b, θ^i_{n,b,m-1}, θ^i_{n,-b,m}, θ*_b, Σ*_b)
