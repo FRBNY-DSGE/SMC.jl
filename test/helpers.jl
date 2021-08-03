@@ -62,9 +62,9 @@ file = JLD2.jldopen("reference/mvnormal_inputs.jld2")
     c           = read(file, "c")
 close(file)
 
-rng = MersenneTwister(0)
 
-test_θ_new = SMC.mvnormal_mixture_draw(para_subset, d_subset, rng; c=c, α=α)
+
+test_θ_new = SMC.mvnormal_mixture_draw(para_subset, d_subset; c=c, α=α)
 
 if writing_output
     JLD2.jldopen(string("reference/mvnormal_output_version=", ver, ".jld2"), true, true, true, IOStream) do file
@@ -78,7 +78,10 @@ close(file)
 
 ####################################################################
 @testset "MvNormal Mixture Draw" begin
+
     @test maximum(abs.(test_θ_new - saved_θ_new)) <= eps() # avoid problems with different Julia versions when testing via GitHub Actions
+
+
 end
 
 
@@ -92,8 +95,8 @@ d_deg = DegenerateMvNormal(d.μ, d.Σ.mat)
 
 ####################################################################
 @testset "Test: get_cov(d)" begin
-    @test SMC.get_cov(d)     == d.Σ.mat
-    @test SMC.get_cov(d_deg) == d_deg.σ
+    @test SMC.get_cov(d)     ≈ d.Σ.mat
+    @test SMC.get_cov(d_deg) ≈ d_deg.σ
 end
 
 
@@ -206,7 +209,7 @@ saved_blocks      = load(savepath, "blocks")
 
 ####################################################################
 @testset "Mutation block generation" begin
-    @test test_blocks_free == saved_blocks_free
-    @test test_blocks_all  == saved_blocks_all
-    @test test_blocks      == saved_blocks
+    @test test_blocks_free ≈ saved_blocks_free
+    @test test_blocks_all  ≈ saved_blocks_all
+    @test test_blocks      ≈ saved_blocks
 end
