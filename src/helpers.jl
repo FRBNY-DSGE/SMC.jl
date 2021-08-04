@@ -88,7 +88,7 @@ the standard distribution and `(1 - α)` of the diagonalized distribution.
 ### Outputs
 - `θ_new::Vector{T}`: The draw from the mixture distribution to be used as the MH proposed step
 """
-function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution, rng::MersenneTwister;
+function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
                                c::T = 1.0, α::T = 1.0) where T<:AbstractFloat
     @assert 0 <= α <= 1
     d_bar = DegenerateMvNormal(d_prop.μ, c^2 * get_cov(d_prop))
@@ -96,17 +96,17 @@ function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution, rng::Mer
     # Create mixture distribution conditional on the previous parameter value, θ_old
     d_old      = DegenerateMvNormal(θ_old, c^2 * get_cov(d_prop))
     d_diag_old = DegenerateMvNormal(θ_old,   Matrix(Diagonal(diag(c^2 * get_cov(d_prop)))))
-    d_mix_old  = MixtureModel(DegenerateMvNormal[d_old, d_diag_old, d_bar], [α, (1 - α)/2, (1 - α)/2])
+
 
     # to draw from mixture, need to sample u from  Unif(0,1) and sample from distribution i if
     # u is in (Σ_{i=1}^i p_i, Σ_{i=1}^{i+1} p_i)
     u = rand(Uniform(0,1))
-    if u < α
-        θ_new = rand(d_old)
-    elseif u < (α + (1-α)/2)
+    if u < (1 - α)/2
+        θ_new = rand(d_bar)
+    elseif u < ( 2 * (1-α)/2)
         θ_new = rand(d_diag_old)
     else
-        θ_new = rand(d_bar)
+        θ_new = rand(d_old)
     end
 
     return θ_new
@@ -144,7 +144,7 @@ function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T}
     d_Σ = get_cov(d_subset)
 
     if catch_near_zeros
-        d_Σ[ (d_Σ .< 0 .* d_Σ .> -0.1) ] .= 0
+        d_Σ[ (d_Σ .< 0 .* d_Σ .> -0.1) ] .= 10^(-10)
     end
 
     q0 = α * exp(logpdf(DegenerateMvNormal(para_draw,   c^2 * d_Σ), para_subset))
