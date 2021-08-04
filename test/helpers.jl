@@ -62,23 +62,29 @@ file = JLD2.jldopen("reference/mvnormal_inputs.jld2")
     c           = read(file, "c")
 close(file)
 
+n = 10^7
+samples = zeros(13,n)
 
+for i = 1:n
+    samples[:,i]  = SMC.mvnormal_mixture_draw(para_subset, d_subset; c=c, α=α)
+end
 
-test_θ_new = SMC.mvnormal_mixture_draw(para_subset, d_subset; c=c, α=α)
+θ_new_means = mean(samples, dims = 2)
 
 if writing_output
     JLD2.jldopen(string("reference/mvnormal_output_version=", ver, ".jld2"), true, true, true, IOStream) do file
-        write(file, "θ_new", test_θ_new)
+        write(file, "θ_new_means", θ_new_means)
     end
 end
 
-file = JLD2.jldopen(string("reference/mvnormal_output_version=", ver, ".jld2"))
-    saved_θ_new = read(file, "θ_new")
+file = JLD2.jldopen(string("reference/mvnormal_output_version=", ver, "_means.jld2"))
+    θ_old_means = read(file, "θ_old_means")
 close(file)
 
+println(θ_new_means - θ_old_means)
 ####################################################################
 @testset "MvNormal Mixture Draw" begin
-    @test test_θ_new ≈ saved_θ_new
+    @test isapprox(θ_new_means, θ_old_means, rtol = 10^(-3))
 end
 
 
