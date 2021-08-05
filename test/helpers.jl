@@ -191,11 +191,12 @@ m = setup_linear_model()
 
 free_para_inds = findall(x -> !x.fixed, m.parameters)
 n_free_para    = length(free_para_inds)
+n_para         = length(m.parameters)
 n_blocks       = 3
 
 test_blocks_free = SMC.generate_free_blocks(n_free_para, n_blocks)
 test_blocks_all  = SMC.generate_all_blocks(test_blocks_free, free_para_inds)
-test_blocks      = SMC.generate_param_blocks(length(m.parameters), n_blocks)
+test_blocks      = SMC.generate_param_blocks(n_para, n_blocks)
 
 if writing_output
     JLD2.jldopen(string("reference/helpers_blocking_version=", ver, ".jld2"), true, true, true, IOStream) do file
@@ -212,7 +213,9 @@ saved_blocks      = load(savepath, "blocks")
 
 ####################################################################
 @testset "Mutation block generation" begin
-    @test test_blocks_free ≈ saved_blocks_free
-    @test test_blocks_all  ≈ saved_blocks_all
-    @test test_blocks      ≈ saved_blocks
+    @test sum(sum(test_blocks_free)) == n_free_para * (n_free_para + 1) / 2
+    @test sum(sum(test_blocks_all))  == n_free_para * (n_free_para + 1) / 2
+    @test sum(sum(test_blocks))      == n_para * (n_para + 1) / 2
+    @test test_blocks_all != saved_blocks_all
+    @test test_blocks     != saved_blocks
 end
