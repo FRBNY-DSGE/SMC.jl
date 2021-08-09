@@ -97,16 +97,15 @@ function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
     d_old      = DegenerateMvNormal(θ_old, c^2 * get_cov(d_prop))
     d_diag_old = DegenerateMvNormal(θ_old,   Matrix(Diagonal(diag(c^2 * get_cov(d_prop)))))
 
-
     # to draw from mixture, need to sample u from  Unif(0,1) and sample from distribution i if
     # u is in (Σ_{i=1}^i p_i, Σ_{i=1}^{i+1} p_i)
     u = rand(Uniform(0,1))
-    if u < (1 - α)/2
-        θ_new = rand(d_bar)
-    elseif u < ( 2 * (1-α)/2)
+    if u < α
+        θ_new = rand(d_old)
+    elseif u < ( α +  (1-α)/2)
         θ_new = rand(d_diag_old)
     else
-        θ_new = rand(d_old)
+        θ_new = rand(d_bar)
     end
 
     return θ_new
@@ -142,7 +141,7 @@ function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T}
     d_Σ = get_cov(d_subset)
 
     if catch_near_zeros
-        d_Σ[ (d_Σ .< 0 .* d_Σ .> -0.1) ] .= 10^(-10)
+        d_Σ[ (d_Σ .< 0 .* d_Σ .> -0.1) ] .= 10^(-15)
     end
 
     q0 = α * exp(logpdf(DegenerateMvNormal(para_draw,   c^2 * d_Σ), para_subset))
