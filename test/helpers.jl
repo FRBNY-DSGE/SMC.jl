@@ -62,7 +62,7 @@ file = JLD2.jldopen("reference/mvnormal_inputs.jld2")
     c           = read(file, "c")
 close(file)
 
-n = 10^7
+n = 10^6
 samples = zeros(13,n)
 
 for i = 1:n
@@ -81,7 +81,6 @@ file = JLD2.jldopen(string("reference/mvnormal_output_version=", ver, "_means.jl
     θ_old_means = read(file, "θ_old_means")
 close(file)
 
-println(θ_new_means - θ_old_means)
 ####################################################################
 @testset "MvNormal Mixture Draw" begin
     @test isapprox(θ_new_means, θ_old_means, rtol = 10^(-3))
