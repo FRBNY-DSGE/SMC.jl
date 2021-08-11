@@ -55,36 +55,36 @@ end
 ####################################################################
 # Testing MvNormal Mixture Draw Function
 ####################################################################
-file = JLD2.jldopen("reference/mvnormal_inputs.jld2")
-    para_subset = read(file, "para_subset")
-    d_subset    = read(file, "d_subset")
-    α           = read(file, "α")
-    c           = read(file, "c")
-close(file)
+# file = JLD2.jldopen("reference/mvnormal_inputs.jld2")
+#     para_subset = read(file, "para_subset")
+#     d_subset    = read(file, "d_subset")
+#     α           = read(file, "α")
+#     c           = read(file, "c")
+# close(file)
 
-n = 10^6
-samples = zeros(13,n)
+# n = 10^6
+# samples = zeros(13,n)
 
-for i = 1:n
-    samples[:,i]  = SMC.mvnormal_mixture_draw(para_subset, d_subset; c=c, α=α)
-end
+# for i = 1:n
+#     samples[:,i]  = SMC.mvnormal_mixture_draw(para_subset, d_subset; c=c, α=α)
+# end
 
-θ_new_means = mean(samples, dims = 2)
+# θ_new_means = mean(samples, dims = 2)
 
-if writing_output
-    JLD2.jldopen(string("reference/mvnormal_output_version=", ver, ".jld2"), true, true, true, IOStream) do file
-        write(file, "θ_new_means", θ_new_means)
-    end
-end
+# if writing_output
+#     JLD2.jldopen(string("reference/mvnormal_output_version=", ver, ".jld2"), true, true, true, IOStream) do file
+#         write(file, "θ_new_means", θ_new_means)
+#     end
+# end
 
-file = JLD2.jldopen(string("reference/mvnormal_output_version=", ver, "_means.jld2"))
-    θ_old_means = read(file, "θ_old_means")
-close(file)
+# file = JLD2.jldopen(string("reference/mvnormal_output_version=", ver, "_means.jld2"))
+#     θ_old_means = read(file, "θ_old_means")
+# close(file)
 
-####################################################################
-@testset "MvNormal Mixture Draw" begin
-    @test isapprox(θ_new_means, θ_old_means, rtol = 10^(-3))
-end
+# ####################################################################
+# @testset "MvNormal Mixture Draw" begin
+#     @test isapprox(θ_new_means, θ_old_means, rtol = 10^(-3))
+# end
 
 
 ####################################################################

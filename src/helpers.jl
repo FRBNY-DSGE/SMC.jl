@@ -91,12 +91,13 @@ the standard distribution and `(1 - α)` of the diagonalized distribution.
 function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
                                c::T = 1.0, α::T = 1.0) where T<:AbstractFloat
     @assert 0 <= α <= 1
-    d_bar = DegenerateMvNormal(d_prop.μ, c^2 * get_cov(d_prop))
-
+#    d_bar = MvNormal(d_prop.μ, c^2 * get_cov(d_prop)) #; stdev = false)
+    d_bar = DegenerateMvNormal(d_prop.μ, c^2 * get_cov(d_prop); stdev = false)
     # Create mixture distribution conditional on the previous parameter value, θ_old
-    d_old      = DegenerateMvNormal(θ_old, c^2 * get_cov(d_prop))
-    d_diag_old = DegenerateMvNormal(θ_old,   Matrix(Diagonal(diag(c^2 * get_cov(d_prop)))))
-
+#    d_old      = MvNormal(θ_old, c^2 * get_cov(d_prop)) #; stdev = false)
+    d_old      = DegenerateMvNormal(θ_old, c^2 * get_cov(d_prop); stdev = false)
+#    d_diag_old = MvNormal(θ_old,   Matrix(Diagonal(diag(c^2 * get_cov(d_prop)))))#; stdev = false)
+    d_diag_old = DegenerateMvNormal(θ_old,   Matrix(Diagonal(diag(c^2 * get_cov(d_prop)))); stdev = false)
     # to draw from mixture, need to sample u from  Unif(0,1) and sample from distribution i if
     # u is in (Σ_{i=1}^i p_i, Σ_{i=1}^{i+1} p_i)
     u = rand(Uniform(0,1))
@@ -142,12 +143,8 @@ function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T}
                                     tol::Float64 = 1e-6) where {T<:AbstractFloat}
     d_Σ = get_cov(d_subset)
 
-    if catch_near_zeros
-        d_Σ[ (d_Σ .< 0 .* d_Σ .> -0.1) ] .= 10^(-15)
-    end
-
-    q0 = α * exp(logpdf(DegenerateMvNormal(para_draw,   c^2 * d_Σ), para_subset))
-    q1 = α * exp(logpdf(DegenerateMvNormal(para_subset, c^2 * d_Σ), para_draw))
+    q0 = α * exp(logpdf(DegenerateMvNormal(para_draw,   c^2 * d_Σ; stdev= false), para_subset))
+    q1 = α * exp(logpdf(DegenerateMvNormal(para_subset, c^2 * d_Σ; stdev = false), para_draw))
 
     ind_pdf = 1.0
 
@@ -156,6 +153,7 @@ function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T}
         near_zero_inds = findall(-tol .<= d_Σ .< 0.)
         d_Σ[near_zero_inds] .= 0.
     end
+
     for i = 1:length(para_subset)
         Σ_ii    = sqrt(d_Σ[i,i])
         zstat   = (para_subset[i] - para_draw[i]) / Σ_ii
@@ -165,8 +163,8 @@ function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T}
     q0 += (1.0-α)/2.0 * ind_pdf
     q1 += (1.0-α)/2.0 * ind_pdf
 
-    q0 += (1.0-α)/2.0 * exp(logpdf(DegenerateMvNormal(d_subset.μ, c^2 * d_Σ), para_subset))
-    q1 += (1.0-α)/2.0 * exp(logpdf(DegenerateMvNormal(d_subset.μ, c^2 * d_Σ), para_draw))
+    q0 += (1.0-α)/2.0 * exp(logpdf(DegenerateMvNormal(d_subset.μ, c^2 * d_Σ; stdev = false), para_subset))
+    q1 += (1.0-α)/2.0 * exp(logpdf(DegenerateMvNormal(d_subset.μ, c^2 * d_Σ; stdev = false), para_draw))
 
     q0 = log(q0)
     q1 = log(q1)
