@@ -26,7 +26,7 @@ println("Estimating Linear Model... (approx. 3 minutes)")
 SMC.smc(loglik_fn, m.parameters, data, verbose = :none, use_fixed_schedule = true,
         parallel = true, n_Φ = 120, n_mh_steps = 1, resampling_method = :polyalgo,
         data_vintage = "200707", target = 0.25, savepath = savepath,
-        particle_store_path = particle_store_path, α = 1.0, threshold_ratio = .5, smc_iteration = 0)
+        particle_store_path = particle_store_path, α = 0.9, threshold_ratio = .5, smc_iteration = 0)
 
 println("Estimation done!")
 
