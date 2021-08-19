@@ -64,26 +64,26 @@ get_cov(d::DegenerateMvNormal)::Matrix = d.σ
 `mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
                        c::T = 1.0, α::T = 1.0) where T<:AbstractFloat`
 ```
+The procedure to create a draw depends on if d_prop has a singular covariance matrix. If so, then the function generates a draw from the mixture distribution of:
+1. A `DegenerateMvNormal` centered at θ_old with the standard deviation matrix `σ`, scaled by `cc` and with mixture proportion `α`.
+2. A `DegenerateMvNormal` centered at the same mean, but with a standard deviation matrix of the diagonal entries of `σ` scaled by `cc` with mixture proportion `(1 - α)/2`.
+3. A `DegenerateMvNormal`  with the same standard deviation matrix `σ` but centered at the new proposed mean, `θ_prop`, scaled by `cc`, and with mixture proportion `(1 - α)/2`.
 
-Create a `DegenerateMvNormal` distribution object, `d`, from a parameter vector, `p`, and a
-standard deviation matrix (obtained from SVD), `σ`.
-
-Generate a draw from the mixture distribution of:
-1. A `DegenerateMvNormal` centered at θ_old with the standard deviation matrix `σ`, scaled by `cc^2` and with mixture proportion `α`.
-2. A `DegenerateMvNormal` centered at the same mean, but with a standard deviation matrix of the diagonal entries of `σ` scaled by `cc^2` with mixture proportion `(1 - α)/2`.
-3. A `DegenerateMvNormal`  with the same standard deviation matrix `σ` but centered at the new proposed mean, `θ_prop`, scaled by `cc^2`, and with mixture proportion `(1 - α)/2`.
+Otherwise, the function generates a draw from the mixture distribution:
+1. A `MvNormal` centered at θ_old with covariance matrix `Σ`, scaled by `cc^2` and with mixture proportion `α`.
+    2. A `MvNormal` centered at the same mean, but with a covariance matrix of the diagonal entries of `Σ` scaled by `cc^2` with mixture proportion `(1 - α)/2`.
+3. A `DegenerateMvNormal`  with the same covariance matrix `Σ` but centered at the new proposed mean, `θ_prop`, scaled by `cc^2`, and with mixture proportion `(1 - α)/2`.
 
 If no `θ_prop` is given, but an `α` is specified, then the mixture will consist of `α` of
 the standard distribution and `(1 - α)` of the diagonalized distribution.
 
 ### Arguments
 - `θ_old::Vector{T}`: The mean of the desired distribution
-- `σ::Matrix{T}`: The standard deviation matrix of the desired distribution
+- `d_prop::Distribution`: The proposal distribution, must be either MvNormal or DegenerateMvNormal.
 
 ### Keyword Arguments
 - `cc::T`: The standard deviation matrix scaling factor
 - `α::T`: The mixing proportion
-- `θ_prop::Vector{T}`: The proposed parameter vector to be used as part of the mixture distribution, set by default to be the weighted mean of the particles, prior to mutation.
 
 ### Outputs
 - `θ_new::Vector{T}`: The draw from the mixture distribution to be used as the MH proposed step
@@ -91,22 +91,38 @@ the standard distribution and `(1 - α)` of the diagonalized distribution.
 function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
                                c::T = 1.0, α::T = 1.0) where T<:AbstractFloat
     @assert 0 <= α <= 1
-    d_bar = DegenerateMvNormal(d_prop.μ, c^2 * get_cov(d_prop); stdev = false)
-    # Create mixture distribution conditional on the previous parameter value, θ_old
-    d_old      = DegenerateMvNormal(θ_old, c^2 * get_cov(d_prop); stdev = false)
-    d_diag_old = DegenerateMvNormal(θ_old,   Matrix(Diagonal(diag(c^2 * get_cov(d_prop)))); stdev = false)
-    # to draw from mixture, need to sample u from  Unif(0,1) and sample from distribution i if
-    # u is in (Σ_{i=1}^i p_i, Σ_{i=1}^{i+1} p_i)
-    u = rand(Uniform(0,1))
-    if u < α
-        θ_new = rand(d_old)
-    elseif u < ( α +  (1-α)/2)
-        θ_new = rand(d_diag_old)
-    else
-        θ_new = rand(d_bar)
-    end
 
-    return θ_new
+    if (rank(get_cov(d_prop)) != length(d_prop.μ))
+
+        d_bar = DegenerateMvNormal(d_prop.μ, c^2 * get_cov(d_prop); stdev = false)
+        # Create mixture distribution conditional on the previous parameter value, θ_old
+        d_old      = DegenerateMvNormal(θ_old, c^2 * get_cov(d_prop); stdev = false)
+        d_diag_old = DegenerateMvNormal(θ_old,   Matrix(Diagonal(diag(c^2 * get_cov(d_prop)))); stdev = false)
+        # to draw from mixture, need to sample u from  Unif(0,1) and sample from distribution i if
+        # u is in (Σ_{i=1}^i p_i, Σ_{i=1}^{i+1} p_i)
+        println("uh oh")
+        u = rand(Uniform(0,1))
+        if u < α
+            θ_new = rand(d_old)
+        elseif u < ( α +  (1-α)/2)
+            θ_new = rand(d_diag_old)
+        else
+            θ_new = rand(d_bar)
+        end
+
+        return θ_new
+    else
+        d_bar = MvNormal(d_prop.μ, c^2 * get_cov(d_prop))
+        # Create mixture distribution conditional on the previous parameter value, θ_old
+        d_old      = MvNormal(θ_old, c^2 * get_cov(d_prop))
+        d_diag_old = MvNormal(θ_old,   Diagonal(diag(c^2 * get_cov(d_prop))))
+
+        d_mix_old  = MixtureModel(MvNormal[d_old, d_diag_old, d_bar], [α, (1 - α)/2, (1 - α)/2])
+
+        θ_new = rand(d_mix_old)
+
+        return θ_new
+    end
 end
 
 
@@ -140,7 +156,7 @@ function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T}
                                     tol::Float64 = 1e-6) where {T<:AbstractFloat}
     d_Σ = get_cov(d_subset)
 
-    q0 = α * exp(logpdf(DegenerateMvNormal(para_draw,   c^2 * d_Σ; stdev= false), para_subset))
+    q0 = α * exp(logpdf(DegenerateMvNormal(para_draw,   c^2 * d_Σ; stdev = false), para_subset))
     q1 = α * exp(logpdf(DegenerateMvNormal(para_subset, c^2 * d_Σ; stdev = false), para_draw))
 
     ind_pdf = 1.0
