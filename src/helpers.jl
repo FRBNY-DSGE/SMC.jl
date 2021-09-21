@@ -88,20 +88,23 @@ the standard distribution and `(1 - α)` of the diagonalized distribution.
 ### Outputs
 - `θ_new::Vector{T}`: The draw from the mixture distribution to be used as the MH proposed step
 """
-function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
+# function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
+#                                c::T = 1.0, α::T = 1.0, catch_near_zeros::Bool = true,
+#                                tol::Float64 = 10^(-20)) where T<:AbstractFloat
+
+function mvnormal_mixture_draw(θ_old::Vector{T}, d_μ::Vector{T}, d_Σ::Matrix;
                                c::T = 1.0, α::T = 1.0, catch_near_zeros::Bool = true,
-                               tol::Float64 = 10^(-12)) where T<:AbstractFloat
+                               tol::Float64 = 10^(-20)) where T<:AbstractFloat
     @assert 0 <= α <= 1
 
-    if (rank(get_cov(d_prop)) != length(d_prop.μ))
+    if catch_near_zeros
+        near_zero_inds = findall(-tol .<= d_Σ .< tol)
+        d_Σ[near_zero_inds] .= 0.
+    end
 
-        d_Σ = get_cov(d_prop)
-        if catch_near_zeros
-            near_zero_inds = findall(-tol .<= d_Σ .< 0.)
-            d_Σ[near_zero_inds] .= 0.
-        end
+    if (rank(d_Σ) != length(d_μ))
 
-        d_bar = DegenerateMvNormal(d_prop.μ, c^2 * d_Σ; stdev = false)
+        d_bar = DegenerateMvNormal(d_μ, c^2 * d_Σ; stdev = false)
         # Create mixture distribution conditional on the previous parameter value, θ_old
         d_old      = DegenerateMvNormal(θ_old, c^2 * d_Σ; stdev = false)
         d_diag_old = DegenerateMvNormal(θ_old,   Matrix(Diagonal(diag(c^2 * d_Σ))); stdev = false)
@@ -120,13 +123,7 @@ function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
         return θ_new
     else
 
-        d_Σ = get_cov(d_prop)
-        if catch_near_zeros
-            near_zero_inds = findall(-tol .<= d_Σ .< 0.)
-            d_Σ[near_zero_inds] .= 0.
-        end
-
-        d_bar = MvNormal(d_prop.μ, c^2 * d_Σ)
+        d_bar = MvNormal(d_μ, c^2 * d_Σ)
         # Create mixture distribution conditional on the previous parameter value, θ_old
         d_old      = MvNormal(θ_old, c^2 * d_Σ)
         d_diag_old = MvNormal(θ_old,   Diagonal(diag(c^2 * d_Σ)))
@@ -163,12 +160,18 @@ for computation of acceptance probability.
 - `q0::T`: q(ϑ_b | θ^i_{n,b,m-1}, θ^i_{n,-b,m}, θ*_b, Σ*_b)
 - `q1::T`: q(θ^i_{n,b,m-1} | ϑ_b, θ^i_{n,b,m-1}, θ^i_{n,-b,m}, θ*_b, Σ*_b)
 """
+# function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T},
+#                                     d_subset::Distribution;
+#                                     α::T = 1.0, c::T = 1.0,
+#                                     catch_near_zeros::Bool = true,
+#                                     tol::Float64 = 1e-16) where {T<:AbstractFloat}
 function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T},
-                                    d_subset::Distribution;
+                                    d_μ::Vector{T}, d_Σ::Matrix;
                                     α::T = 1.0, c::T = 1.0,
                                     catch_near_zeros::Bool = true,
-                                    tol::Float64 = 1e-6) where {T<:AbstractFloat}
-    d_Σ = get_cov(d_subset)
+                                    tol::Float64 = 1e-20) where {T<:AbstractFloat}
+
+
 
     q0 = α * exp(logpdf(DegenerateMvNormal(para_draw,   c^2 * d_Σ; stdev = false), para_subset))
     q1 = α * exp(logpdf(DegenerateMvNormal(para_subset, c^2 * d_Σ; stdev = false), para_draw))
@@ -190,8 +193,8 @@ function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T}
     q0 += (1.0-α)/2.0 * ind_pdf
     q1 += (1.0-α)/2.0 * ind_pdf
 
-    q0 += (1.0-α)/2.0 * exp(logpdf(DegenerateMvNormal(d_subset.μ, c^2 * d_Σ; stdev = false), para_subset))
-    q1 += (1.0-α)/2.0 * exp(logpdf(DegenerateMvNormal(d_subset.μ, c^2 * d_Σ; stdev = false), para_draw))
+    q0 += (1.0-α)/2.0 * exp(logpdf(DegenerateMvNormal(d_μ, c^2 * d_Σ; stdev = false), para_subset))
+    q1 += (1.0-α)/2.0 * exp(logpdf(DegenerateMvNormal(d_μ, c^2 * d_Σ; stdev = false), para_draw))
 
     q0 = log(q0)
     q1 = log(q1)
