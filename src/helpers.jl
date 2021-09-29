@@ -71,7 +71,7 @@ The procedure to create a draw depends on if d_prop has a singular covariance ma
 
 Otherwise, the function generates a draw from the mixture distribution:
 1. A `MvNormal` centered at θ_old with covariance matrix `Σ`, scaled by `cc^2` and with mixture proportion `α`.
-    2. A `MvNormal` centered at the same mean, but with a covariance matrix of the diagonal entries of `Σ` scaled by `cc^2` with mixture proportion `(1 - α)/2`.
+2. A `MvNormal` centered at the same mean, but with a covariance matrix of the diagonal entries of `Σ` scaled by `cc^2` with mixture proportion `(1 - α)/2`.
 3. A `DegenerateMvNormal`  with the same covariance matrix `Σ` but centered at the new proposed mean, `θ_prop`, scaled by `cc^2`, and with mixture proportion `(1 - α)/2`.
 
 If no `θ_prop` is given, but an `α` is specified, then the mixture will consist of `α` of
@@ -79,18 +79,18 @@ the standard distribution and `(1 - α)` of the diagonalized distribution.
 
 ### Arguments
 - `θ_old::Vector{T}`: The mean of the desired distribution
-- `d_prop::Distribution`: The proposal distribution, must be either MvNormal or DegenerateMvNormal.
+- `d_μ`: The mean of proposal distribution
+- `d_Σ`: The covariance matrix of proposal distribution
 
 ### Keyword Arguments
 - `cc::T`: The standard deviation matrix scaling factor
 - `α::T`: The mixing proportion
+- `catch_near_zeros::Bool`: If set to true, sets small (based on tol) values in d_Σ to zero
+- `tol::Float64`: Tolerance for catch_near_zeros
 
 ### Outputs
 - `θ_new::Vector{T}`: The draw from the mixture distribution to be used as the MH proposed step
 """
-# function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
-#                                c::T = 1.0, α::T = 1.0, catch_near_zeros::Bool = true,
-#                                tol::Float64 = 10^(-20)) where T<:AbstractFloat
 
 function mvnormal_mixture_draw(θ_old::Vector{T}, d_μ::Vector{T}, d_Σ::Matrix;
                                c::T = 1.0, α::T = 1.0, catch_near_zeros::Bool = true,
@@ -140,8 +140,11 @@ end
 """
 ```
 compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T},
-                           d_subset::Distribution;
-                           α::T = 1.0, c::T = 1.0, catch_near_zeros::Bool = false) where {T<:AbstractFloat}
+                           d_μ::Vector{T}, d_Σ::Matrix;
+                           α::T = 1.0, c::T = 1.0
+                           catch_near_zeros::Bool = True,
+                           tol::Float64 = 1e-20) where {T<:AbstractFloat}
+
 ```
 Called in Metropolis-Hastings mutation step. After you have generated proposal draw
 ϑ_b from the mixture distrubtion, computes the density of the proposal distribution
@@ -150,21 +153,19 @@ for computation of acceptance probability.
 ### Inputs
 - `para_draw::Vector{T}`: ϑ_b
 - `para_subset::Vector{T}`: θ^i_{n,b,m-1}
-- `d_subset::Distribution`: MvNormal(θ*_b, Σ*_b)
+- `d_μ`: mean of proposal distribution
+- `d_Σ`: covariance matrix of proposal distribution
 
 ### Optional Inputs
-- `α::T`
-- `c::T`
+- `α::T`: The mixing proportion
+- `c::T`: Covariance matrix scaling factor
 - `catch_near_zeros::Bool`
+- `tol::Float64`
 ### Outputs
 - `q0::T`: q(ϑ_b | θ^i_{n,b,m-1}, θ^i_{n,-b,m}, θ*_b, Σ*_b)
 - `q1::T`: q(θ^i_{n,b,m-1} | ϑ_b, θ^i_{n,b,m-1}, θ^i_{n,-b,m}, θ*_b, Σ*_b)
 """
-# function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T},
-#                                     d_subset::Distribution;
-#                                     α::T = 1.0, c::T = 1.0,
-#                                     catch_near_zeros::Bool = true,
-#                                     tol::Float64 = 1e-16) where {T<:AbstractFloat}
+
 function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T},
                                     d_μ::Vector{T}, d_Σ::Matrix;
                                     α::T = 1.0, c::T = 1.0,
@@ -247,33 +248,17 @@ end
 
 """
 ```
-`generate_free_blocks(n_free_para::Int64, n_blocks::Int64)`
+`generate_free_blocks(free_para_inds::Vector{Int64}, n_blocks::Int64)`
 ```
 
-Return a Vector{Vector{Int64}} where each internal Vector{Int64} contains a subset of the range
-1:n_free_para of randomly permuted indices. This is used to index out random blocks of free
-parameters from the covariance matrix for the mutation step.
+Return a Vector{Vector{Int64}} where each internal Vector{Int64} contains a subset of
+randomly permuted indices from the inputted set of indices free_para. This is used to index out
+random blocks of freeparameters from the covariance matrix for the mutation step.
 """
-# function generate_free_blocks(n_free_para::Int64, n_blocks::Int64)
-#     rand_inds = shuffle(1:n_free_para)
 
-#     subset_length     = cld(n_free_para, n_blocks) # ceiling division
-#     last_block_length = n_free_para - subset_length*(n_blocks - 1)
-
-#     blocks_free = Vector{Vector{Int64}}(undef, n_blocks)
-#     for i in 1:n_blocks
-#         if i < n_blocks
-#             blocks_free[i] = rand_inds[((i-1)*subset_length + 1):(i*subset_length)]
-#         else
-#             # To account for the fact that the last block may be smaller than the others
-#             blocks_free[i] = rand_inds[end-last_block_length+1:end]
-#         end
-#     end
-#     return blocks_free
-# end
-function generate_free_blocks(free_para, n_blocks::Int64)
-    rand_inds = shuffle(free_para)
-    n_free_para = length(free_para)
+function generate_free_blocks(free_para_inds::Vector{Int64}, n_blocks::Int64)
+    rand_inds = shuffle(free_para_inds)
+    n_free_para = length(free_para_inds)
     subset_length     = cld(n_free_para, n_blocks) # ceiling division
     last_block_length = n_free_para - subset_length*(n_blocks - 1)
 
