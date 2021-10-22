@@ -107,7 +107,7 @@ function mvnormal_mixture_draw(θ_old::Vector{T}, d_μ::Vector{T}, d_Σ::Matrix;
         d_bar = DegenerateMvNormal(d_μ, c^2 * d_Σ; stdev = false)
         # Create mixture distribution conditional on the previous parameter value, θ_old
         d_old      = DegenerateMvNormal(θ_old, c^2 * d_Σ; stdev = false)
-        d_diag_old = DegenerateMvNormal(θ_old,   Matrix(Diagonal(diag(c^2 * d_Σ))); stdev = false)
+        d_diag_old = DegenerateMvNormal(θ_old,   Matrix(Diagonal(diag(d_Σ))); stdev = false)
         # to draw from mixture, need to sample u from  Unif(0,1) and sample from distribution i if
         # u is in (Σ_{i=1}^i p_i, Σ_{i=1}^{i+1} p_i)
 
@@ -126,7 +126,7 @@ function mvnormal_mixture_draw(θ_old::Vector{T}, d_μ::Vector{T}, d_Σ::Matrix;
         d_bar = MvNormal(d_μ, c^2 * d_Σ)
         # Create mixture distribution conditional on the previous parameter value, θ_old
         d_old      = MvNormal(θ_old, c^2 * d_Σ)
-        d_diag_old = MvNormal(θ_old,   Diagonal(diag(c^2 * d_Σ)))
+        d_diag_old = MvNormal(θ_old,   Diagonal(diag(d_Σ)))
 
         d_mix_old  = MixtureModel(MvNormal[d_old, d_diag_old, d_bar], [α, (1 - α)/2, (1 - α)/2])
 
