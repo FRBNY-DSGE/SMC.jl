@@ -465,7 +465,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         θ_bar_fr = θ_bar[free_para_inds]
 
         # Generate random parameter blocks
-        blocks_free = generate_free_blocks(n_free_para, n_blocks)
+        blocks_free = generate_free_blocks(free_para_inds, n_blocks)
         blocks_all  = generate_all_blocks(blocks_free, free_para_inds)
 
         new_particles = if parallel
