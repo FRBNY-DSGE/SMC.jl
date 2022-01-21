@@ -91,11 +91,11 @@ the standard distribution and `(1 - α)` of the diagonalized distribution.
 function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
                                c::T = 1.0, α::T = 1.0) where T<:AbstractFloat
     @assert 0 <= α <= 1
-    d_bar = DegenerateMvNormal(d_prop.μ, c^2 * get_cov(d_prop))
+    d_bar = DegenerateMvNormal(d_prop.μ, c^2 * get_cov(d_prop); stdev = false)
 
     # Create mixture distribution conditional on the previous parameter value, θ_old
-    d_old      = DegenerateMvNormal(θ_old, c^2 * get_cov(d_prop))
-    d_diag_old = DegenerateMvNormal(θ_old,   Matrix(Diagonal(diag(c^2 * get_cov(d_prop)))))
+    d_old      = DegenerateMvNormal(θ_old, c^2 * get_cov(d_prop); stdev = false)
+    d_diag_old = DegenerateMvNormal(θ_old,   Matrix(Diagonal(diag(c^2 * get_cov(d_prop)))); stdev = false)
 
     # to draw from mixture, need to sample u from  Unif(0,1) and sample from distribution i if
     # u is in (Σ_{i=1}^i p_i, Σ_{i=1}^{i+1} p_i)
