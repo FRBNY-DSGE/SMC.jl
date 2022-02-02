@@ -358,7 +358,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         j        = load(loadpath, "j")
         i        = cloud.stage_index
         c        = cloud.c
-        ϕ_prop   = proposed_fixed_schedule[j]
+        ϕ_prop   = (((collect(1:n_Φ) .- 1) / (n_Φ-1)) .^ λ)[j]
     else
         w_matrix = zeros(n_parts, 1)
         W_matrix = tempered_update ? (sum(get_weights(cloud)) <= 1.0 ?
