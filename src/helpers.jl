@@ -132,8 +132,8 @@ function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T}
                                     tol::Float64 = 1e-6) where {T<:AbstractFloat}
     d_Σ = get_cov(d_subset)
 
-    q0 = α * exp(logpdf(DegenerateMvNormal(para_draw,   c^2 * d_Σ), para_subset))
-    q1 = α * exp(logpdf(DegenerateMvNormal(para_subset, c^2 * d_Σ), para_draw))
+    q0 = α * exp(logpdf(DegenerateMvNormal(para_draw,   c^2 * d_Σ, stdev = false), para_subset))
+    q1 = α * exp(logpdf(DegenerateMvNormal(para_subset, c^2 * d_Σ, stdev = false), para_draw))
 
     ind_pdf = 1.0
 
@@ -151,8 +151,8 @@ function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T}
     q0 += (1.0-α)/2.0 * ind_pdf
     q1 += (1.0-α)/2.0 * ind_pdf
 
-    q0 += (1.0-α)/2.0 * exp(logpdf(DegenerateMvNormal(d_subset.μ, c^2 * d_Σ), para_subset))
-    q1 += (1.0-α)/2.0 * exp(logpdf(DegenerateMvNormal(d_subset.μ, c^2 * d_Σ), para_draw))
+    q0 += (1.0-α)/2.0 * exp(logpdf(DegenerateMvNormal(d_subset.μ, c^2 * d_Σ, stdev = false), para_subset))
+    q1 += (1.0-α)/2.0 * exp(logpdf(DegenerateMvNormal(d_subset.μ, c^2 * d_Σ, stdev = false), para_draw))
 
     q0 = log(q0)
     q1 = log(q1)
