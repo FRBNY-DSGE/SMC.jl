@@ -93,7 +93,9 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                 update!(parameters, para_new)
 
                 prior_new = prior(parameters)
+                @show prior_new
                 like_new  = loglikelihood(parameters, data)
+                @show like_new
 
                 if toggle
                     toggle_regime!(parameters, 1)
@@ -104,6 +106,7 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                 end
 
                 like_old_data = isempty(old_data) ? 0. : old_loglikelihood(parameters, old_data)
+                @show like_old_data
 
                 if toggle && isempty(old_data)
                     toggle_regime!(parameters, 1)
@@ -114,14 +117,17 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                    isa(err, PosDefException)  || isa(err, SingularException)             ||
                    isa(err, DomainError)
 
+                    @show err
                     prior_new = like_new = like_old_data = -Inf
                 else
                     throw(err)
                 end
             end
 
+            @show like_old_data, like_prev, like_new, like_init, prior_new, prior_init, ϕ_n
             η = exp(ϕ_n * (like_new - like_init) + (1 - ϕ_n) * (like_old_data - like_prev) +
                     (prior_new - prior_init) + (q0 - q1))
+            @show η, q0, q1
 
             if step_prob < η
                 para      = para_new
