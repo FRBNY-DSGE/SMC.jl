@@ -85,93 +85,16 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                                                 d_subset, c = c, α = α)
 
             para_new          = deepcopy(para)
-
-            @show "Does the problem occur in the drawing step?"
-            for i in 1:length(para_new)
-                para_ind, para_reg = ModelConstructors.find_ind_param(parameters, i)
-                if para_reg == 1 || !haskey(parameters[para_ind].regimes, :valuebounds)
-                    if !(parameters[para_ind].valuebounds[1] <= para_new[i] <= parameters[para_ind].valuebounds[2])
-                        @show parameters[para_ind].key, para_reg, "_new_1"
-                    end
-                elseif para_reg > 1 && !(parameters[para_ind].regimes[:valuebounds][para_reg][1] <= para_new[i] <= parameters[para_ind].regimes[:valuebounds][para_reg][2])
-                    @show parameters[para_ind].key, para_reg, "_new_2"
-                end
-
-                comp_val = haskey(parameters[para_ind].regimes, :value) ? parameters[para_ind].regimes[:value][para_reg] : parameters[para_ind].value
-                if (para_reg == 1 || !haskey(parameters[para_ind].regimes, :valuebounds))
-                    if !(parameters[para_ind].valuebounds[1] <= comp_val <= parameters[para_ind].valuebounds[2])
-                        @show parameters[para_ind].key, para_reg, "_compval_new_1"
-                    end
-                elseif para_reg > 1 && !(parameters[para_ind].regimes[:valuebounds][para_reg][1] <= comp_val <= parameters[para_ind].regimes[:valuebounds][para_reg][2])
-                    @show parameters[para_ind].key, para_reg, "_compval_new_2"
-                end
-            end
-
             para_new[block_a] = para_draw
 
             like_init, prior_init = like, logprior
             prior_new = like_new = like_old_data = -Inf
-            #try
-                @show "Update running", step
-                @assert length(para_new) == sum(ModelConstructors.n_param_regs(parameters))
-                for i in 1:length(para_new)
-                    para_ind, para_reg = ModelConstructors.find_ind_param(parameters, i)
-                    if para_reg == 1 || !haskey(parameters[para_ind].regimes, :valuebounds)
-                        if !(parameters[para_ind].valuebounds[1] <= para_new[i] <= parameters[para_ind].valuebounds[2])
-                            @show parameters[para_ind].key, para_reg, "_1"
-                        end
-                    elseif para_reg > 1 && !(parameters[para_ind].regimes[:valuebounds][para_reg][1] <= para_new[i] <= parameters[para_ind].regimes[:valuebounds][para_reg][2])
-                        @show parameters[para_ind].key, para_reg, "_2"
-                    end
-
-                    comp_val = haskey(parameters[para_ind].regimes, :value) ? parameters[para_ind].regimes[:value][para_reg] : parameters[para_ind].value
-                    if (para_reg == 1 || !haskey(parameters[para_ind].regimes, :valuebounds))
-                        if !(parameters[para_ind].valuebounds[1] <= comp_val <= parameters[para_ind].valuebounds[2])
-                            @show parameters[para_ind].key, para_reg, "_compval_1"
-                        end
-                    elseif para_reg > 1 && !(parameters[para_ind].regimes[:valuebounds][para_reg][1] <= comp_val <= parameters[para_ind].regimes[:valuebounds][para_reg][2])
-                        @show parameters[para_ind].key, para_reg, "_compval_2"
-                    end
-                end
             try
-                @show "pre-update"
+                @assert length(para_new) == sum(ModelConstructors.n_param_regs(parameters))
                 update!(parameters, para_new)
-            catch err
-                if isa(err, ParamBoundsError) || isa(err, LinearAlgebra.LAPACKException) ||
-                   isa(err, PosDefException)  || isa(err, SingularException)             ||
-                   isa(err, DomainError)
 
-                    @show err
-                    prior_new = like_new = like_old_data = -Inf
-                else
-                    throw(err)
-                end
-            end
-                @show "Update!"
-                for i in 1:length(para_new)
-                    para_ind, para_reg = ModelConstructors.find_ind_param(parameters, i)
-                    if (para_reg == 1 || !haskey(parameters[para_ind].regimes, :valuebounds))
-                        if !(parameters[para_ind].valuebounds[1] <= para_new[i] <= parameters[para_ind].valuebounds[2])
-                            @show parameters[para_ind].key, para_reg, "_after_1"
-                        end
-                    elseif para_reg > 1 && !(parameters[para_ind].regimes[:valuebounds][para_reg][1] <= para_new[i] <= parameters[para_ind].regimes[:valuebounds][para_reg][2])
-                        @show parameters[para_ind].key, para_reg, "_after_2"
-                    end
-
-                    comp_val = haskey(parameters[para_ind].regimes, :value) ? parameters[para_ind].regimes[:value][para_reg] : parameters[para_ind].value
-                    if (para_reg == 1 || !haskey(parameters[para_ind].regimes, :valuebounds))
-                        if !(parameters[para_ind].valuebounds[1] <= comp_val <= parameters[para_ind].valuebounds[2])
-                            @show parameters[para_ind].key, para_reg, "_after_compval_1"
-                        end
-                    elseif para_reg > 1 && !(parameters[para_ind].regimes[:valuebounds][para_reg][1] <= comp_val <= parameters[para_ind].regimes[:valuebounds][para_reg][2])
-                        @show parameters[para_ind].key, para_reg, "_after_compval_2"
-                    end
-                end
-try
                 prior_new = prior(parameters)
-                @show prior_new
                 like_new  = loglikelihood(parameters, data)
-                @show like_new
 
                 if toggle
                     toggle_regime!(parameters, 1)
@@ -182,7 +105,6 @@ try
                 end
 
                 like_old_data = isempty(old_data) ? 0. : old_loglikelihood(parameters, old_data; new_model_params = true)
-                @show like_old_data
 
                 if toggle && isempty(old_data)
                     toggle_regime!(parameters, 1)
@@ -215,6 +137,7 @@ try
             step_prob = rand() # Draw again for next step
         end
     end
+
     update_mutation!(p, para, like, logprior, like_prev, accept / n_free_para)
     return p
 end
