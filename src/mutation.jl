@@ -90,7 +90,7 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
             like_init, prior_init = like, logprior
             prior_new = like_new = like_old_data = -Inf
             try
-                @assert length(para_new) == sum(ModelConstructors.n_param_regs(parameters))
+                @assert length(para_new) == sum(ModelConstructors.n_param_regs(parameters)) ## Delete for speed after testing
                 update!(parameters, para_new)
 
                 prior_new = prior(parameters)
@@ -122,10 +122,10 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                 end
             end
 
-            @show like_old_data, like_prev, like_new, like_init, prior_new, prior_init, ϕ_n
+            # @show like_old_data, like_prev, like_new, like_init, prior_new, prior_init, ϕ_n
             η = exp(ϕ_n * (like_new - like_init) + (1 - ϕ_n) * (like_old_data - like_prev) +
                     (prior_new - prior_init) + (q0 - q1))
-            @show η, q0, q1
+            # @show η, q0, q1
 
             if step_prob < η
                 para      = para_new
