@@ -9,48 +9,48 @@ end
 
 @everywhere Random.seed!(42)
 
-####################################################################
-# Testing Adaptive Φ Solution
-####################################################################
-file   = JLD2.jldopen("reference/solve_adaptive_phi.jld2", "r")
-cloud  = read(file, "cloud")
-i_smc  = read(file, "i")
-j_smc  = read(file, "j")
-ϕ_prop = read(file, "phi_prop")
-ϕ_n1   = read(file, "phi_n1")
-proposed_fixed_schedule = read(file, "proposed_fixed_schedule")
-tempering_target        = read(file, "tempering_target")
-resampled_last_period   = read(file, "resampled_last_period")
-close(file)
+# ####################################################################
+# # Testing Adaptive Φ Solution
+# ####################################################################
+# file   = JLD2.jldopen("reference/solve_adaptive_phi.jld2", "r")
+# cloud  = read(file, "cloud")
+# i_smc  = read(file, "i")
+# j_smc  = read(file, "j")
+# ϕ_prop = read(file, "phi_prop")
+# ϕ_n1   = read(file, "phi_n1")
+# proposed_fixed_schedule = read(file, "proposed_fixed_schedule")
+# tempering_target        = read(file, "tempering_target")
+# resampled_last_period   = read(file, "resampled_last_period")
+# close(file)
 
-test_ϕ_n, test_resampled_last_period, test_j, test_ϕ_prop = SMC.solve_adaptive_ϕ(cloud,
-                                                                proposed_fixed_schedule,
-                                                                i_smc, j_smc, ϕ_prop, ϕ_n1,
-                                                                tempering_target,
-                                                                resampled_last_period)
-if writing_output
-    jldopen(string("reference/helpers_output_version=", ver, ".jld2"), true, true, true, IOStream) do file
-        write(file, "phi_n", test_ϕ_n)
-        write(file, "resampled_last_period", test_resampled_last_period)
-        write(file, "j", test_j)
-        write(file, "phi_prop", test_ϕ_prop)
-    end
-end
+# test_ϕ_n, test_resampled_last_period, test_j, test_ϕ_prop = SMC.solve_adaptive_ϕ(cloud,
+#                                                                 proposed_fixed_schedule,
+#                                                                 i_smc, j_smc, ϕ_prop, ϕ_n1,
+#                                                                 tempering_target,
+#                                                                 resampled_last_period)
+# if writing_output
+#     jldopen(string("reference/helpers_output_version=", ver, ".jld2"), true, true, true, IOStream) do file
+#         write(file, "phi_n", test_ϕ_n)
+#         write(file, "resampled_last_period", test_resampled_last_period)
+#         write(file, "j", test_j)
+#         write(file, "phi_prop", test_ϕ_prop)
+#     end
+# end
 
-file = JLD2.jldopen(string("reference/helpers_output_version=", ver, ".jld2"), "r")
-saved_ϕ_n = read(file, "phi_n")
-saved_resampled_last_period = read(file, "resampled_last_period")
-saved_j = read(file, "j")
-saved_ϕ_prop = read(file, "phi_prop")
-close(file)
+# file = JLD2.jldopen(string("reference/helpers_output_version=", ver, ".jld2"), "r")
+# saved_ϕ_n = read(file, "phi_n")
+# saved_resampled_last_period = read(file, "resampled_last_period")
+# saved_j = read(file, "j")
+# saved_ϕ_prop = read(file, "phi_prop")
+# close(file)
 
-####################################################################
-@testset "Solve Adaptive Φ" begin
-    @test test_ϕ_n ≈ saved_ϕ_n
-    @test test_resampled_last_period == saved_resampled_last_period
-    @test test_j == saved_j
-    @test test_ϕ_prop == saved_ϕ_prop
-end
+# ####################################################################
+# @testset "Solve Adaptive Φ" begin
+#     @test test_ϕ_n ≈ saved_ϕ_n
+#     @test test_resampled_last_period == saved_resampled_last_period
+#     @test test_j == saved_j
+#     @test test_ϕ_prop == saved_ϕ_prop
+# end
 
 ####################################################################
 # Testing MvNormal Mixture Draw Function
