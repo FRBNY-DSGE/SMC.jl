@@ -62,21 +62,28 @@ file = JLD2.jldopen("reference/mvnormal_inputs.jld2")
     c           = read(file, "c")
 close(file)
 
-test_θ_new = SMC.mvnormal_mixture_draw(para_subset, d_subset; c=c, α=α)
+n = 10^6
+samples = zeros(13,n)
+
+for i = 1:n
+    samples[:,i]  = SMC.mvnormal_mixture_draw(para_subset, d_subset; c=c, α=α)
+end
+
+θ_new_means = mean(samples, dims = 2)
 
 if writing_output
     JLD2.jldopen(string("reference/mvnormal_output_version=", ver, ".jld2"), true, true, true, IOStream) do file
-        write(file, "θ_new", test_θ_new)
+        write(file, "θ_new_means", θ_new_means)
     end
 end
 
-file = JLD2.jldopen(string("reference/mvnormal_output_version=", ver, ".jld2"))
-    saved_θ_new = read(file, "θ_new")
+file = JLD2.jldopen(string("reference/mvnormal_output_version=", ver, "_means.jld2"))
+    θ_old_means = read(file, "θ_old_means")
 close(file)
 
 ####################################################################
 @testset "MvNormal Mixture Draw" begin
-    @test maximum(abs.(test_θ_new - saved_θ_new)) <= eps() # avoid problems with different Julia versions when testing via GitHub Actions
+    @test isapprox(θ_new_means, θ_old_means, rtol = 10^(-3))
 end
 
 
@@ -90,8 +97,8 @@ d_deg = DegenerateMvNormal(d.μ, d.Σ.mat)
 
 ####################################################################
 @testset "Test: get_cov(d)" begin
-    @test SMC.get_cov(d)     == d.Σ.mat
-    @test SMC.get_cov(d_deg) == d_deg.σ
+    @test SMC.get_cov(d)     ≈ d.Σ.mat
+    @test SMC.get_cov(d_deg) ≈ d_deg.σ
 end
 
 
@@ -183,11 +190,12 @@ m = setup_linear_model()
 
 free_para_inds = findall(x -> !x.fixed, m.parameters)
 n_free_para    = length(free_para_inds)
+n_para         = length(m.parameters)
 n_blocks       = 3
 
 test_blocks_free = SMC.generate_free_blocks(n_free_para, n_blocks)
 test_blocks_all  = SMC.generate_all_blocks(test_blocks_free, free_para_inds)
-test_blocks      = SMC.generate_param_blocks(length(m.parameters), n_blocks)
+test_blocks      = SMC.generate_param_blocks(n_para, n_blocks)
 
 if writing_output
     JLD2.jldopen(string("reference/helpers_blocking_version=", ver, ".jld2"), true, true, true, IOStream) do file
@@ -204,7 +212,9 @@ saved_blocks      = load(savepath, "blocks")
 
 ####################################################################
 @testset "Mutation block generation" begin
-    @test test_blocks_free == saved_blocks_free
-    @test test_blocks_all  == saved_blocks_all
-    @test test_blocks      == saved_blocks
+    @test sum(sum(test_blocks_free)) == n_free_para * (n_free_para + 1) / 2
+    @test sum(sum(test_blocks_all))  == n_free_para * (n_free_para + 1) / 2
+    @test sum(sum(test_blocks))      == n_para * (n_para + 1) / 2
+    @test test_blocks_all != saved_blocks_all
+    @test test_blocks     != saved_blocks
 end

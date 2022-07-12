@@ -55,58 +55,96 @@ function solve_adaptive_ϕ(cloud::Cloud, proposed_fixed_schedule::Vector{Float64
     return ϕ_n, resampled_last_period, j, ϕ_prop
 end
 
+get_cov(d::MvNormal)::Matrix = d.Σ.mat
+get_cov(d::DegenerateMvNormal)::Matrix = d.σ
+
+
 """
 ```
 `mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
                        c::T = 1.0, α::T = 1.0) where T<:AbstractFloat`
 ```
+The procedure to create a draw depends on if d_prop has a singular covariance matrix. If so, then the function generates a draw from the mixture distribution of:
+1. A `DegenerateMvNormal` centered at θ_old with the standard deviation matrix `σ`, scaled by `cc` and with mixture proportion `α`.
+2. A `DegenerateMvNormal` centered at the same mean, but with a standard deviation matrix of the diagonal entries of `σ` scaled by `cc` with mixture proportion `(1 - α)/2`.
+3. A `DegenerateMvNormal`  with the same standard deviation matrix `σ` but centered at the new proposed mean, `θ_prop`, scaled by `cc`, and with mixture proportion `(1 - α)/2`.
 
-Create a `DegenerateMvNormal` distribution object, `d`, from a parameter vector, `p`, and a
-standard deviation matrix (obtained from SVD), `σ`.
-
-Generate a draw from the mixture distribution of:
-1. A `DegenerateMvNormal` centered at θ_old with the standard deviation matrix `σ`, scaled by `cc^2` and with mixture proportion `α`.
-2. A `DegenerateMvNormal` centered at the same mean, but with a standard deviation matrix of the diagonal entries of `σ` scaled by `cc^2` with mixture proportion `(1 - α)/2`.
-3. A `DegenerateMvNormal`  with the same standard deviation matrix `σ` but centered at the new proposed mean, `θ_prop`, scaled by `cc^2`, and with mixture proportion `(1 - α)/2`.
+Otherwise, the function generates a draw from the mixture distribution:
+1. A `MvNormal` centered at θ_old with covariance matrix `Σ`, scaled by `cc^2` and with mixture proportion `α`.
+2. A `MvNormal` centered at the same mean, but with a covariance matrix of the diagonal entries of `Σ` scaled by `cc^2` with mixture proportion `(1 - α)/2`.
+3. A `DegenerateMvNormal`  with the same covariance matrix `Σ` but centered at the new proposed mean, `θ_prop`, scaled by `cc^2`, and with mixture proportion `(1 - α)/2`.
 
 If no `θ_prop` is given, but an `α` is specified, then the mixture will consist of `α` of
 the standard distribution and `(1 - α)` of the diagonalized distribution.
 
 ### Arguments
 - `θ_old::Vector{T}`: The mean of the desired distribution
-- `σ::Matrix{T}`: The standard deviation matrix of the desired distribution
+- `d_μ`: The mean of proposal distribution
+- `d_Σ`: The covariance matrix of proposal distribution
 
 ### Keyword Arguments
 - `cc::T`: The standard deviation matrix scaling factor
 - `α::T`: The mixing proportion
-- `θ_prop::Vector{T}`: The proposed parameter vector to be used as part of the mixture distribution, set by default to be the weighted mean of the particles, prior to mutation.
+- `catch_near_zeros::Bool`: If set to true, sets small (based on tol) values in d_Σ to zero
+- `tol::Float64`: Tolerance for catch_near_zeros
 
 ### Outputs
 - `θ_new::Vector{T}`: The draw from the mixture distribution to be used as the MH proposed step
 """
-function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
-                               c::T = 1.0, α::T = 1.0) where T<:AbstractFloat
+
+function mvnormal_mixture_draw(θ_old::Vector{T}, d_μ::Vector{T}, d_Σ::Matrix;
+                               c::T = 1.0, α::T = 1.0, catch_near_zeros::Bool = true,
+                               tol::Float64 = 10^(-20)) where T<:AbstractFloat
     @assert 0 <= α <= 1
-    d_bar = MvNormal(d_prop.μ, c^2 * d_prop.Σ)
 
-    # Create mixture distribution conditional on the previous parameter value, θ_old
-    d_old      = MvNormal(θ_old, c^2 * d_prop.Σ)
-    d_diag_old = MvNormal(θ_old, Diagonal(diag(c^2 * d_prop.Σ)))
-    d_mix_old  = MixtureModel(MvNormal[d_old, d_diag_old, d_bar], [α, (1 - α)/2, (1 - α)/2])
+    if catch_near_zeros
+        near_zero_inds = findall(-tol .<= d_Σ .< tol)
+        d_Σ[near_zero_inds] .= 0.
+    end
 
-    θ_new = rand(d_mix_old)
+    if (rank(d_Σ) != length(d_μ))
 
-    return θ_new
+        d_bar = DegenerateMvNormal(d_μ, c^2 * d_Σ; stdev = false)
+        # Create mixture distribution conditional on the previous parameter value, θ_old
+        d_old      = DegenerateMvNormal(θ_old, c^2 * d_Σ; stdev = false)
+        d_diag_old = DegenerateMvNormal(θ_old,   Matrix(Diagonal(diag(d_Σ))); stdev = false)
+        # to draw from mixture, need to sample u from  Unif(0,1) and sample from distribution i if
+        # u is in (Σ_{i=1}^i p_i, Σ_{i=1}^{i+1} p_i)
+
+        u = rand(Uniform(0,1))
+        if u < α
+            θ_new = rand(d_old)
+        elseif u < ( α +  (1-α)/2)
+            θ_new = rand(d_diag_old)
+        else
+            θ_new = rand(d_bar)
+        end
+
+        return θ_new
+    else
+
+        d_bar = MvNormal(d_μ, c^2 * d_Σ)
+        # Create mixture distribution conditional on the previous parameter value, θ_old
+        d_old      = MvNormal(θ_old, c^2 * d_Σ)
+        d_diag_old = MvNormal(θ_old,   Diagonal(diag(d_Σ)))
+
+        d_mix_old  = MixtureModel(MvNormal[d_old, d_diag_old, d_bar], [α, (1 - α)/2, (1 - α)/2])
+
+        θ_new = rand(d_mix_old)
+
+        return θ_new
+    end
 end
 
-get_cov(d::MvNormal)::Matrix = d.Σ.mat
-get_cov(d::DegenerateMvNormal)::Matrix = d.σ
 
 """
 ```
 compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T},
-                           d_subset::Distribution;
-                           α::T = 1.0, c::T = 1.0, catch_near_zeros::Bool = false) where {T<:AbstractFloat}
+                           d_μ::Vector{T}, d_Σ::Matrix;
+                           α::T = 1.0, c::T = 1.0
+                           catch_near_zeros::Bool = True,
+                           tol::Float64 = 1e-20) where {T<:AbstractFloat}
+
 ```
 Called in Metropolis-Hastings mutation step. After you have generated proposal draw
 ϑ_b from the mixture distrubtion, computes the density of the proposal distribution
@@ -115,25 +153,28 @@ for computation of acceptance probability.
 ### Inputs
 - `para_draw::Vector{T}`: ϑ_b
 - `para_subset::Vector{T}`: θ^i_{n,b,m-1}
-- `d_subset::Distribution`: MvNormal(θ*_b, Σ*_b)
+- `d_μ`: mean of proposal distribution
+- `d_Σ`: covariance matrix of proposal distribution
 
 ### Optional Inputs
-- `α::T`
-- `c::T`
-
+- `α::T`: The mixing proportion
+- `c::T`: Covariance matrix scaling factor
+- `catch_near_zeros::Bool`
+- `tol::Float64`
 ### Outputs
 - `q0::T`: q(ϑ_b | θ^i_{n,b,m-1}, θ^i_{n,-b,m}, θ*_b, Σ*_b)
 - `q1::T`: q(θ^i_{n,b,m-1} | ϑ_b, θ^i_{n,b,m-1}, θ^i_{n,-b,m}, θ*_b, Σ*_b)
 """
-function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T},
-                                    d_subset::Distribution;
-                                    α::T = 1.0, c::T = 1.0,
-                                    catch_near_zeros::Bool = false,
-                                    tol::Float64 = 1e-6) where {T<:AbstractFloat}
-    d_Σ = get_cov(d_subset)
 
-    q0 = α * exp(logpdf(DegenerateMvNormal(para_draw,   c^2 * d_Σ, stdev = false), para_subset))
-    q1 = α * exp(logpdf(DegenerateMvNormal(para_subset, c^2 * d_Σ, stdev = false), para_draw))
+function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T},
+                                    d_μ::Vector{T}, d_Σ::Matrix;
+                                    α::T = 1.0, c::T = 1.0,
+                                    catch_near_zeros::Bool = true,
+                                    tol::Float64 = 1e-20) where {T<:AbstractFloat}
+
+
+    q0 = α * exp(logpdf(DegenerateMvNormal(para_draw,   c^2 * d_Σ; stdev = false), para_subset))
+    q1 = α * exp(logpdf(DegenerateMvNormal(para_subset, c^2 * d_Σ; stdev = false), para_draw))
 
     ind_pdf = 1.0
 
@@ -142,6 +183,7 @@ function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T}
         near_zero_inds = findall(-tol .<= d_Σ .< 0.)
         d_Σ[near_zero_inds] .= 0.
     end
+
     for i = 1:length(para_subset)
         Σ_ii    = sqrt(d_Σ[i,i])
         zstat   = (para_subset[i] - para_draw[i]) / Σ_ii
@@ -151,8 +193,13 @@ function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T}
     q0 += (1.0-α)/2.0 * ind_pdf
     q1 += (1.0-α)/2.0 * ind_pdf
 
+<<<<<<< HEAD
     q0 += (1.0-α)/2.0 * exp(logpdf(DegenerateMvNormal(d_subset.μ, c^2 * d_Σ, stdev = false), para_subset))
     q1 += (1.0-α)/2.0 * exp(logpdf(DegenerateMvNormal(d_subset.μ, c^2 * d_Σ, stdev = false), para_draw))
+=======
+    q0 += (1.0-α)/2.0 * exp(logpdf(DegenerateMvNormal(d_μ, c^2 * d_Σ; stdev = false), para_subset))
+    q1 += (1.0-α)/2.0 * exp(logpdf(DegenerateMvNormal(d_μ, c^2 * d_Σ; stdev = false), para_draw))
+>>>>>>> 129fbdd4e5283fed7b9e56e41a081125198affc7
 
     q0 = log(q0)
     q1 = log(q1)
@@ -205,16 +252,17 @@ end
 
 """
 ```
-`generate_free_blocks(n_free_para::Int64, n_blocks::Int64)`
+`generate_free_blocks(free_para_inds::Vector{Int64}, n_blocks::Int64)`
 ```
 
-Return a Vector{Vector{Int64}} where each internal Vector{Int64} contains a subset of the range
-1:n_free_para of randomly permuted indices. This is used to index out random blocks of free
-parameters from the covariance matrix for the mutation step.
+Return a Vector{Vector{Int64}} where each internal Vector{Int64} contains a subset of
+randomly permuted indices from the inputted set of indices free_para. This is used to index out
+random blocks of freeparameters from the covariance matrix for the mutation step.
 """
-function generate_free_blocks(n_free_para::Int64, n_blocks::Int64)
-    rand_inds = shuffle(1:n_free_para)
 
+function generate_free_blocks(free_para_inds::Vector{Int64}, n_blocks::Int64)
+    rand_inds = shuffle(free_para_inds)
+    n_free_para = length(free_para_inds)
     subset_length     = cld(n_free_para, n_blocks) # ceiling division
     last_block_length = n_free_para - subset_length*(n_blocks - 1)
 
