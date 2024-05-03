@@ -158,7 +158,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
              regime_switching::Bool = false,
              toggle::Bool = true,
              debug_assertion::Bool = false,
-             log_prob_old_data::Float64 = 0.0) where {S<:AbstractFloat, U<:Number}
+             log_prob_old_data::Float64 = 0.0,
+             add_zlb_duration::Tuple{Bool, Int} = (false, 1)) where {S<:AbstractFloat, U<:Number}
 
     ########################################################################################
     ### Settings
