@@ -226,7 +226,9 @@ Update parameter draws in cloud.
 function update_draws!(c::Cloud, draws::Matrix{Float64})
     I, J     = size(draws)
     n_parts  = length(c)
+    println("n_parts, ", n_parts)
     n_params = ind_para_end(size(c.particles, 2))
+    println("n_params: ", n_params)
     if (I, J) == (n_parts, n_params)
         for i = 1:I, j=1:J
             c.particles[i, j] = draws[i, j]
@@ -391,7 +393,9 @@ puts zero weight on particles with -Inf log-likelihoods
 """
 function zero_bad_loglh_weights!(c::Matrix{Float64})
     n_cloud_cols = size(c, 2)
-    badloglh = findall(c[:, ind_loglh(n_cloud_cols)] .== -Inf)
+    #badloglh = findall(c[:, ind_loglh(n_cloud_cols)] .== -Inf)
+    badloglh = findall(c[:, ind_loglh(n_cloud_cols)] .<= -1e34)
+    println("Throwing out ", size(badloglh), " many bad particles out of ", size(c))
     c[badloglh, ind_weight(n_cloud_cols)] .= 0.
 end
 function zero_bad_loglh_weights!(c::Cloud)
@@ -540,7 +544,7 @@ For large clouds, the memory usage by one file may be too large. For example,
 the file may exceed GitHub's 100MB memory limit.
 """
 function split_cloud(filename::String, n_pieces::Int)
-    cloud = load(filename, "cloud")
+    cloud = load(filename,  "cloud")
     w    = load(filename, "w")
     W    = load(filename, "W")
     n_part = size(cloud.particles, 1)

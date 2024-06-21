@@ -71,16 +71,34 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
     logprior  = p[ind_logprior(N)]
     like_prev = p[ind_old_loglh(N)] # Likelihood evaluated at the old data (for time tempering)
     accept    = 0.0
-
     for step in 1:n_mh_steps
         for (block_f, block_a) in zip(blocks_free, blocks_all)
 
             # Index out parameters corresponding to given random block, create distribution
             # centered at weighted mean, with Σ corresponding to the same random block
             para_subset = para[block_a]
+            #@show para_subset
+            if !isposdef(d_Σ[block_f, block_f])
+                @show block_f
+                @show size(d_Σ[block_f, block_f])
+                @show size(LinearAlgebra.eigvals(d_Σ[block_f, block_f]))
+                @show size(LinearAlgebra.eigvecs(d_Σ[block_f, block_f]))
+                @show LinearAlgebra.eigvals(d_Σ[block_f, block_f])
+                @show count(i->(i<0), LinearAlgebra.eigvals(d_Σ[block_f, block_f]))
+                #x = factorize(d_Σ[block_f, block_f])
+                jldopen("linearization.jld2", "w") do file
+                    file["block_f"] = block_f
+                    file["block_a"] = block_a
+                    file["all"] = d_Σ[block_f, block_f]
+                    file["para_subset"] = para_subset
+                end
+
+                #@show d_Σ[block_f, block_f]
+            end
             d_subset    = MvNormal(d_μ[block_f], d_Σ[block_f, block_f])
             para_draw   = mvnormal_mixture_draw(para_subset, d_subset; c = c, α = α)
 
+            #Look into this function -- why are q0 and q1 always the same??
             q0, q1 = compute_proposal_densities(para_draw, para_subset,
                                                 d_subset, c = c, α = α)
 
@@ -91,7 +109,11 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
             prior_new = like_new = like_old_data = -Inf
             try
                 @assert length(para_new) == sum(ModelConstructors.n_param_regs(parameters)) ## Delete for speed after testing
+                #@show size(para_new)
                 update!(parameters, para_new)
+                #This is failing majority of the time, so we are going into the catch. Can we get a count of how many times this happens perhaps? -- Iffy.
+                #Why is it failing?? --
+
 
                 prior_new = prior(parameters)
                 like_new  = loglikelihood(parameters, data)
@@ -105,6 +127,7 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                 end
 
                 like_old_data = isempty(old_data) ? 0. : old_loglikelihood(parameters, old_data; new_model_params = true)
+                #like_old_data = isempty(old_data) ? 0. : old_loglikelihood(parameters, old_data)
 
                 if toggle && isempty(old_data)
                     toggle_regime!(parameters, 1)
@@ -115,17 +138,19 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                    isa(err, PosDefException)  || isa(err, SingularException)             ||
                    isa(err, DomainError)
 
-                    @show err
+                    #@show err
                     prior_new = like_new = like_old_data = -Inf
                 else
                     throw(err)
                 end
             end
 
-            # @show like_old_data, like_prev, like_new, like_init, prior_new, prior_init, ϕ_n
+            #@show like_old_data, like_prev, like_new, like_init, prior_new, prior_init, ϕ_n
+
             η = exp(ϕ_n * (like_new - like_init) + (1 - ϕ_n) * (like_old_data - like_prev) +
                     (prior_new - prior_init) + (q0 - q1))
-            # @show η, q0, q1
+            #@show η, q0, q1
+
 
             if step_prob < η
                 para      = para_new
@@ -133,6 +158,7 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                 logprior  = prior_new
                 like_prev = like_old_data
                 accept   += length(block_a)
+
             end
             step_prob = rand() # Draw again for next step
         end
