@@ -46,6 +46,7 @@ function solve_adaptive_ϕ(cloud::Cloud, proposed_fixed_schedule::Vector{Float64
     # i.e. the adaptive ϕ schedule should not outpace the fixed schedule at the end
     # (when the fixed schedule tends to drop by less than 5% per iteration)
     if ϕ_prop != 1. || optimal_ϕ_function(ϕ_prop) < 0
+
         ϕ_n = fzero(optimal_ϕ_function, [ϕ_n1, ϕ_prop], xtol = 0.)
         push!(cloud.tempering_schedule, ϕ_n)
     else
@@ -132,6 +133,10 @@ function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T}
                                     tol::Float64 = 1e-6) where {T<:AbstractFloat}
     d_Σ = get_cov(d_subset)
 
+    #Notes for myself:
+    #Inner most call: Degenerate (Cov might not be full rank) MVN dist with mean para_draw.
+    #Then, calc log-likelihood of the draw para_subset from this dist
+    #q0(1) is α (1, in our case) * exp(log likelihood of drawing para_subset (para_draw) from this DMVN dist)
     q0 = α * exp(logpdf(DegenerateMvNormal(para_draw,   c^2 * d_Σ, stdev = false), para_subset))
     q1 = α * exp(logpdf(DegenerateMvNormal(para_subset, c^2 * d_Σ, stdev = false), para_draw))
 
@@ -156,6 +161,7 @@ function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T}
 
     q0 = log(q0)
     q1 = log(q1)
+
 
     if (q0 == Inf && q1 == Inf)
         q0 = 0.0
