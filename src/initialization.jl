@@ -27,19 +27,19 @@ function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
     draw       = vec(rand(parameters, 1, regime_switching = regime_switching, toggle = toggle))
 
     draw_loglh = draw_logprior = 0.0
-
     while !success
         try
+
             update!(parameters, draw)
 
             draw_loglh = loglikelihood(parameters, data)
+
 
             if toggle
                 toggle_regime!(parameters, 1)
             end
 
             draw_logprior = prior(parameters)
-
             if (draw_loglh == -Inf) || (draw_loglh === NaN)
                 draw_loglh = draw_logprior = -Inf
             end
@@ -109,7 +109,6 @@ function initial_draw!(loglikelihood::Function, parameters::ParameterVector{U},
     else
         vector_reduce([one_draw_closure() for i in 1:n_parts]...)
     end
-
     update_draws!(c, draws)
     update_loglh!(c, vec(loglh))
     update_logprior!(c, vec(logprior))
@@ -131,6 +130,7 @@ Computes likelihood of a particular parameter draw; returns loglh and logprior.
 function draw_likelihood(loglikelihood::Function, parameters::ParameterVector{U},
                          data::Matrix{Float64}, draw::Vector{Float64};
                          toggle::Bool = true) where {U<:Number}
+
     update!(parameters, draw)
     loglh   = loglikelihood(parameters, data)
     if toggle
@@ -157,7 +157,10 @@ function initialize_likelihoods!(loglikelihood::Function, parameters::ParameterV
                                  parallel::Bool = false,
                                  toggle::Bool = true) where {U<:Number}
     n_parts = length(c)
+
     draws   = get_vals(c; transpose = false)
+
+
 
     # Retire log-likelihood values from the old estimation to the field old_loglh
     update_old_loglh!(c, get_loglh(c))
