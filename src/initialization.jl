@@ -111,7 +111,9 @@ function initial_draw!(loglikelihood::Function, parameters::ParameterVector{U},
     end
     update_draws!(c, draws)
     update_loglh!(c, vec(loglh))
+
     update_logprior!(c, vec(logprior))
+
     update_old_loglh!(c, zeros(n_parts))
 
     # Need to call `set_weights` as opposed to `update_weights`
@@ -130,7 +132,6 @@ Computes likelihood of a particular parameter draw; returns loglh and logprior.
 function draw_likelihood(loglikelihood::Function, parameters::ParameterVector{U},
                          data::Matrix{Float64}, draw::Vector{Float64};
                          toggle::Bool = true) where {U<:Number}
-
     update!(parameters, draw)
     loglh   = loglikelihood(parameters, data)
     if toggle

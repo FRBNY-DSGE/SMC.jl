@@ -233,6 +233,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 
     fixed_para_inds = ModelConstructors.get_fixed_para_inds(parameters; regime_switching = regime_switching, toggle = toggle)
 free_para_inds  = ModelConstructors.get_free_para_inds( parameters; regime_switching = regime_switching, toggle = toggle)
+
 para_symbols    = [θ.key for θ in parameters]
 if regime_switching
     # Concatenate regime symbols for each extra regimes
@@ -266,8 +267,9 @@ println(verbose, :low, "\n\n SMC " * (testing ? "testing " : "") * "starts ....\
             # Initialize settings first, with the ESS properly set since starting from an old estimation
             #initialize_cloud_settings!(cloud; tempered_update = tempered_update,
             #n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
-
+            #println("Above initalize cloud")
             # Initialize remaining cloud settings
+            #println("Initializing cloud")
             initialize_cloud_settings!(cloud; tempered_update = tempered_update,
                                        n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
 
@@ -279,41 +281,18 @@ println(verbose, :low, "\n\n SMC " * (testing ? "testing " : "") * "starts ....\
             # 8/9/24 - stuck here. Trying to update a size 130 vector of parameters with a length 144 set of parameter draws.
             #For starters, the parameter vector should be 184. Secondarily, we need a mechanism of including the draws of new parameters
 
-
+            #println("Initialize likelihood")
             initialize_likelihoods!(loglikelihood, parameters, data, cloud; parallel = parallel,
                                     toggle = toggle)
-
-            #BP
-            # Ensure no particles yielding -Inf loglhs are kept.
-            # These "bad" particles emerge b/c particles from an old estimation
-            # won't necessarily imply good loglhs when evaluated on
-            # new data and parameters.
-            zero_bad_loglh_weights!(cloud)
-            normalized_weights = normalize_weights!(cloud) # need to renormalize to ensure weights sum to n_parts
-
-            #We remove every particle, so we don't get to keep anything as weights. We then don't resample and have 0 particles.
-
-            # Resample weights to remove the -Inf loglh
-            new_inds = resample(normalized_weights/n_parts; method = resampling_method,
-                                parallel = parallel)
-
-            cloud.particles = [deepcopy(cloud.particles[k,j]) for k in new_inds,
-                               j=1:size(cloud.particles, 2)]
-            reset_weights!(cloud)
-
-            # Since there was a resampling, set ESS = n_parts
-            push!(cloud.ESS, n_parts)
-
-
-            # Initialize remaining cloud settings
-            initialize_cloud_settings!(cloud; tempered_update = tempered_update,
-                                       n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
+            #println("After initialize likelihood")
 
 
         elseif (1. >= tempered_update_prior_weight > 0.) || (old_n_parts != n_parts)
             # Resample from bridge distribution
             n_to_resample = Int(round((1-tempered_update_prior_weight) * n_parts))
+
             n_from_prior  = n_parts - n_to_resample
+
             if n_to_resample > 0
                 new_inds = resample(get_weights(cloud); n_parts = n_to_resample,
                                     method = resampling_method, parallel = parallel)
@@ -329,7 +308,7 @@ println(verbose, :low, "\n\n SMC " * (testing ? "testing " : "") * "starts ....\
             update_cloud!(bridge_cloud, cloud.particles[new_inds, :])
             update_loglh!(bridge_cloud, get_loglh(cloud)[new_inds])
             update_logprior!(bridge_cloud, get_logprior(cloud)[new_inds])
-            update_old_loglh!(bridge_cloud, get_old_loglh(cloud)[new_inds])
+            #update_old_loglh!(bridge_cloud, get_old_loglh(cloud)[new_inds])
 
             # Add to the cloud draws from the prior. Note that we are drawing from the current prior,
             # but evaluating the old log-likelihood function on the old data. Thus,
@@ -380,21 +359,24 @@ println(verbose, :low, "\n\n SMC " * (testing ? "testing " : "") * "starts ....\
             # Initialize remaining cloud settings
             initialize_cloud_settings!(cloud; tempered_update = tempered_update,
                                        n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
-        else
+else
             throw(DomainError("The keyword tempered_update_prior_weight must be within the interval [0, 1] but " *
                               "is currently set to $(tempered_update_prior_weight)"))
-        end
-    elseif continue_intermediate
+end
+elseif continue_intermediate
         cloud = load(loadpath, "cloud")
 else
 # Initialization of Particle Array Cloud
+#println("Above new cloud?")
 cloud = Cloud(n_para, n_parts)
-        # Instantiating Cloud object, update draws, loglh, & logprior
+# Instantiating Cloud object, update draws, loglh, & logprior
+#println("Making new cloud object")
         initial_draw!(loglikelihood, parameters, data, cloud; parallel = parallel, regime_switching = regime_switching,
                       toggle = toggle)
+#println("initializing cloud")
         initialize_cloud_settings!(cloud; tempered_update = tempered_update,
                                    n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
-    end
+end
     # Fixed schedule for construction of ϕ_prop
     if use_fixed_schedule
         cloud.tempering_schedule = ((collect(1:n_Φ) .- 1) / (n_Φ-1)) .^ λ
@@ -407,9 +389,11 @@ cloud = Cloud(n_para, n_parts)
         w_matrix = load(loadpath, "w")
         W_matrix = load(loadpath, "W")
         j        = load(loadpath, "j")
+        println(j)
         i        = cloud.stage_index
         c        = cloud.c
         ϕ_prop   = (((collect(1:n_Φ) .- 1) / (n_Φ-1)) .^ λ)[j]
+        println("I have all vars")
     else
         w_matrix = zeros(n_parts, 1)
         W_matrix = tempered_update ? (sum(get_weights(cloud)) <= 1.0 ?
@@ -417,31 +401,7 @@ cloud = Cloud(n_para, n_parts)
                                       fill(1,(n_parts, 1))
     end
 
-#= Re-resampling??? BP
-    println("Selection")
-        # Calculate the degeneracy/effective sample size metric
-        push!(cloud.ESS, n_parts ^ 2 / sum(normalized_weights .^ 2))
 
-        # Check whether ESS is a NaN and throws an assertion error if it is.
-        # In many cases, the problem is that there too few particles.
-        check_nan_ess(cloud, i, incremental_weights,
-                      normalized_weights, savepath, debug_assertion)
-
-    println("resample")
-        # Resample if degeneracy/ESS metric falls below the accepted threshold
-if (cloud.ESS[i] < threshold)
-
-            # Resample according to particle weights, uniformly reset weights to 1/n_parts
-            new_inds = resample(normalized_weights/n_parts; method = resampling_method,
-                                parallel = parallel)
-            cloud.particles = [deepcopy(cloud.particles[k,j]) for k in new_inds,
-                               j=1:size(cloud.particles, 2)]
-            reset_weights!(cloud)
-            cloud.resamples += 1
-            resampled_last_period = true
-            W_matrix[:, i] .= 1
-        end
-=#
     # Printing
     init_stage_print(cloud, para_symbols; verbose = verbose,
                      use_fixed_schedule = use_fixed_schedule)
@@ -453,7 +413,6 @@ if (cloud.ESS[i] < threshold)
 while ϕ_n < 1.
         start_time = time_ns()
     cloud.stage_index = i += 1
-    println("Iter: $(i)")
 
 
         #############################################################################
@@ -522,9 +481,6 @@ while ϕ_n < 1.
         ##############################################################################
         ### Step 3: Mutation
         ##############################################################################
-
-    #Currently failing here -- once we call mutation closure, bad things happen.
-    #Mutation closure is meant to call the mutation of the particles, done in a way that allows for parallelization.
         # Calculate adaptive c-step for use as scaling coefficient in mutation MH step
         c = c * (0.95 + 0.10 * exp(16.0 * (cloud.accept - target)) /
                  (1.0 + exp(16.0 * (cloud.accept - target))))
@@ -532,7 +488,8 @@ while ϕ_n < 1.
 
 
         θ_bar = weighted_mean(cloud)
-        R     = weighted_cov(cloud)
+    R     = weighted_cov(cloud)
+
 
         # Ensures marix is positive semi-definite symmetric
         # (not off due to numerical error) and values haven't changed
@@ -590,13 +547,7 @@ update_acceptance_rate!(cloud)
         if mod(cloud.stage_index, intermediate_stage_increment) == 0 && save_intermediate
             #jldopen(replace(savepath, ".jld2" => "_stage=$(cloud.stage_index).jld2"),
             #true, true, true, IOStream) do file
-            #f_path = "estim_stages103/test_m1002_ss103_22Q2estimrep24Q1_stage=$(cloud.stage_index).jld2"
-            #f_path = "estim_stages_update_tempering/m1002_ss103_22Q2estimrep24Q1_stage=$(cloud.stage_index).jld2"
-            #f_path = "estim_stages_update_tempering2/m1002_ss103_22Q2estimrep24Q1_stage=$(cloud.stage_index).jld2"
-            #f_path = "estim_stages_update_tempering2/m1002_ss103_22Q2estimrep24Q1_stage=$(cloud.stage_index).jld2"
-            #f_path = "estim_stages_update/m1002_ss103_22Q2estimrep24Q1_stage=$(cloud.stage_index).jld2"
-            f_path = replace(savepath, ".jld2" => "_stage=$(cloud.stage_index).jld2")
-            JLD2.jldopen(f_path, true, true, true, IOStream) do file
+            JLD2.jldopen(replace(savepath, ".jld2" => "_stage=$(cloud.stage_index).jld2"), true, true, true, IOStream) do file
                 write(file, "cloud", cloud)
                 write(file, "w", w_matrix)
                 write(file, "W", W_matrix)

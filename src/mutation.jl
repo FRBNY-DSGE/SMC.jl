@@ -79,11 +79,8 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
             # Index out parameters corresponding to given random block, create distribution
             # centered at weighted mean, with Σ corresponding to the same random block
             para_subset = para[block_a]
-
             d_subset    = MvNormal(d_μ[block_f], d_Σ[block_f, block_f])
             para_draw   = mvnormal_mixture_draw(para_subset, d_subset; c = c, α = α)
-
-            #Look into this function -- why are q0 and q1 always the same??
             q0, q1 = compute_proposal_densities(para_draw, para_subset,
                                                 d_subset, c = c, α = α)
 
@@ -93,28 +90,18 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
             prior_new = like_new = like_old_data = -Inf
             try
                 @assert length(para_new) == sum(ModelConstructors.n_param_regs(parameters)) ## Delete for speed after testing
-
                 update!(parameters, para_new)
-
-
                 prior_new = prior(parameters)
-
                 like_new  = loglikelihood(parameters, data)
-
-
                 if toggle
                     toggle_regime!(parameters, 1)
                 end
-
                 if like_new == -Inf
                     prior_new = like_old_data = -Inf
                 end
-
                 #BP
-                #like_old_data = isempty(old_data) ? 0. : old_loglikelihood(parameters, old_data; new_model_params = true)
-                like_old_data = isempty(old_data) ? 0. : old_loglikelihood(parameters, old_data) #This is what is currently erroring!
-                #like_old_data = isempty(old_data) ? 0. : loglikelihood(parameters, old_data) #This is what is currently erroring! -- No need to enforce it on the new likelihood (That I can see right now -- check back on later.)
-
+                like_old_data = isempty(old_data) ? 0. : old_loglikelihood(parameters, old_data; new_model_params = true)
+                #like_old_data = isempty(old_data) ? 0. : old_loglikelihood(parameters, old_data) #This is what is currently erroring!
                 if toggle && isempty(old_data)
                     toggle_regime!(parameters, 1)
                 end
@@ -128,8 +115,6 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                     throw(err)
                 end
             end
-
-
 
             η = exp(ϕ_n * (like_new - like_init) + (1 - ϕ_n) * (like_old_data - like_prev) +
                     (prior_new - prior_init) + (q0 - q1))
