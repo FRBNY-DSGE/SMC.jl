@@ -22,7 +22,8 @@ function solve_adaptive_ϕ(cloud::Cloud, proposed_fixed_schedule::Vector{Float64
     # Setting up the optimal ϕ solving function for endogenizing the tempering schedule
     optimal_ϕ_function(ϕ) = compute_ESS(get_loglh(cloud), get_weights(cloud), ϕ, ϕ_n1,
                                         old_loglh = get_old_loglh(cloud)) - ESS_bar
-
+    println("ESS bar: $(ESS_bar)")
+    println("tempering target: $(tempering_target)")
     # Find ϕ_prop s.t. optimal ϕ_n lies between ϕ_n1 and ϕ_prop --
     # do so by iterating through proposed_fixed_schedule and finding the first
     # ϕ_prop s.t. the ESS falls by more than the targeted amount, ESS_bar
@@ -46,8 +47,17 @@ function solve_adaptive_ϕ(cloud::Cloud, proposed_fixed_schedule::Vector{Float64
     # i.e. the adaptive ϕ schedule should not outpace the fixed schedule at the end
     # (when the fixed schedule tends to drop by less than 5% per iteration)
     if ϕ_prop != 1. || optimal_ϕ_function(ϕ_prop) < 0
-
+        try
+            ϕ_n = fzero(optimal_ϕ_function, [ϕ_n1, ϕ_prop], xtol = 0.)
+        catch
+            println("HERE IS THE ERROR x-interval: ", [ϕ_n1, ϕ_prop])
+            println("HERE IS THE ERROR y-interval", [optimal_ϕ_function(ϕ_n1), optimal_ϕ_function(ϕ_prop)])
+            error("LET'S SEE WHATS UP")
+        end
         ϕ_n = fzero(optimal_ϕ_function, [ϕ_n1, ϕ_prop], xtol = 0.)
+        println("HERE IS THE nonerror x-interval: ", [ϕ_n1, ϕ_prop])
+        println("HERE IS THE nonerror y-interval", [optimal_ϕ_function(ϕ_n1), optimal_ϕ_function(ϕ_prop)])
+
         push!(cloud.tempering_schedule, ϕ_n)
     else
         ϕ_n = 1.
@@ -183,6 +193,21 @@ function compute_ESS(loglh::Vector{T}, current_weights::Vector{T}, ϕ_n::T, ϕ_n
     new_weights  = current_weights .* inc_weights
     norm_weights = N * new_weights / sum(new_weights) # Normalize to N
     ESS          = N^2 / sum(norm_weights .^ 2)       # Transform back for ESS
+    if isnan(ESS)
+        println("N: $(N)")
+        println("ϕ diffs: $(ϕ_n1 - ϕ_n)")
+
+        println("ϕ diffs loglh min: $(minimum((ϕ_n1 - ϕ_n) * old_loglh + (ϕ_n - ϕ_n1) * loglh))")
+        println("ϕ diffs loglh max: $(maximum((ϕ_n1 - ϕ_n) * old_loglh + (ϕ_n - ϕ_n1) * loglh))")
+        println("max old_loglh: $(maximum(old_loglh))")
+        println("min old_loglh: $(minimum(old_loglh))")
+        println("max loglh: $(maximum(loglh))")
+        println("min loglh: $(minimum(loglh))")
+        println("pos counts: $(sum(loglh .> 0))")
+        println("new weights sum: $(sum(new_weights))")
+        println("norm weights sum: $(sum(norm_weights))")
+        #error("wat da heck is going on")
+    end
     return ESS
 end
 
