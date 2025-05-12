@@ -422,6 +422,7 @@ while ϕ_n < 1.
         if use_fixed_schedule
             ϕ_n = cloud.tempering_schedule[i]
         else
+            #println("Proposed phi = $(Φ_prop)")
             ϕ_n, resampled_last_period, j, ϕ_prop = solve_adaptive_ϕ(cloud,
                                                        proposed_fixed_schedule,
                                                        i, j, ϕ_prop, ϕ_n1,
@@ -475,7 +476,9 @@ while ϕ_n < 1.
             reset_weights!(cloud)
             cloud.resamples += 1
             resampled_last_period = true
-            W_matrix[:, i] .= 1
+        W_matrix[:, i] .= 1
+
+        println("Resampled at stage: $(i)")
         end
 
         ##############################################################################

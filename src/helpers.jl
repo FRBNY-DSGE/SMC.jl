@@ -14,22 +14,45 @@ function solve_adaptive_ϕ(cloud::Cloud, proposed_fixed_schedule::Vector{Float64
     if resampled_last_period
         # The ESS_bar is reset to target an evenly weighted particle population
         ESS_bar = tempering_target * length(cloud)
+        println("Resampled!")
+        println("ESS_bar = $(ESS_bar)")
+        println("tempering target = $(tempering_target)")
         resampled_last_period = false
     else
         ESS_bar = tempering_target*cloud.ESS[i-1]
+        println("Not resampled!")
+        println("ESS_bar = $(ESS_bar)")
+        println("tempering target = $(tempering_target)")
+
     end
 
     # Setting up the optimal ϕ solving function for endogenizing the tempering schedule
     optimal_ϕ_function(ϕ) = compute_ESS(get_loglh(cloud), get_weights(cloud), ϕ, ϕ_n1,
                                         old_loglh = get_old_loglh(cloud)) - ESS_bar
-    println("ESS bar: $(ESS_bar)")
-    println("tempering target: $(tempering_target)")
+
+    #println("tempering target: $(tempering_target)")
     # Find ϕ_prop s.t. optimal ϕ_n lies between ϕ_n1 and ϕ_prop --
     # do so by iterating through proposed_fixed_schedule and finding the first
     # ϕ_prop s.t. the ESS falls by more than the targeted amount, ESS_bar
+
     while optimal_ϕ_function(ϕ_prop) >= 0 && j <= n_Φ
         ϕ_prop = proposed_fixed_schedule[j]
         j += 1
+    end
+
+    # NaN fix:
+    if isnan(optimal_ϕ_function(ϕ_prop))
+        try
+            # Find suitable proposed phi
+            ϕ_prop = get_least_upper_bound(get_loglh(cloud), get_weights(cloud), ϕ_n1, ϕ_prop, ESS_bar,
+                      old_loglh = get_old_loglh(cloud))
+
+            # Adjust fixed schedule index for continuity
+            j_ind = findfirst(x -> x > ϕ_prop, proposed_fixed_schedule)
+            j = j_ind
+        catch
+            println("Finding ϕ_prop requires machine precision < 1e-310. get_least_upper_bound() not sufficient.")
+        end
     end
 
     # Note: optimal_ϕ_function(ϕ_n1) > 0, since ESS_{t-1} always positive.
@@ -52,11 +75,8 @@ function solve_adaptive_ϕ(cloud::Cloud, proposed_fixed_schedule::Vector{Float64
         catch
             println("HERE IS THE ERROR x-interval: ", [ϕ_n1, ϕ_prop])
             println("HERE IS THE ERROR y-interval", [optimal_ϕ_function(ϕ_n1), optimal_ϕ_function(ϕ_prop)])
-            error("LET'S SEE WHATS UP")
         end
         ϕ_n = fzero(optimal_ϕ_function, [ϕ_n1, ϕ_prop], xtol = 0.)
-        println("HERE IS THE nonerror x-interval: ", [ϕ_n1, ϕ_prop])
-        println("HERE IS THE nonerror y-interval", [optimal_ϕ_function(ϕ_n1), optimal_ϕ_function(ϕ_prop)])
 
         push!(cloud.tempering_schedule, ϕ_n)
     else
@@ -208,21 +228,19 @@ function compute_ESS(loglh::Vector{T}, current_weights::Vector{T}, ϕ_n::T, ϕ_n
     new_weights  = current_weights .* inc_weights
     norm_weights = N * new_weights / sum(new_weights) # Normalize to N
     ESS          = N^2 / sum(norm_weights .^ 2)       # Transform back for ESS
+
     if isnan(ESS)
+        println("NAN Information:")
         println("N: $(N)")
         println("ϕ diffs: $(ϕ_n1 - ϕ_n)")
-
         println("ϕ diffs loglh min: $(minimum((ϕ_n1 - ϕ_n) * old_loglh + (ϕ_n - ϕ_n1) * loglh))")
         println("ϕ diffs loglh max: $(maximum((ϕ_n1 - ϕ_n) * old_loglh + (ϕ_n - ϕ_n1) * loglh))")
-        println("max old_loglh: $(maximum(old_loglh))")
-        println("min old_loglh: $(minimum(old_loglh))")
         println("max loglh: $(maximum(loglh))")
         println("min loglh: $(minimum(loglh))")
-        println("pos counts: $(sum(loglh .> 0))")
         println("new weights sum: $(sum(new_weights))")
         println("norm weights sum: $(sum(norm_weights))")
-        #error("wat da heck is going on")
     end
+
     return ESS
 end
 
@@ -348,4 +366,35 @@ function check_nan_ess(cloud::Cloud, stage::Int64, incremental_weights::Vector{T
     end
 
     nothing
+end
+
+
+function get_least_upper_bound(loglh::Vector{T}, W::Vector{T}, ϕ_init::T, ϕ_init_prop::T, ESS_bar;
+                               old_loglh::Vector{T} = zeros(length(loglh)),
+                               Φ_lb = ϕ_init,
+                               Φ_ub = ϕ_init_prop,
+                               ESS = NaN,
+                               ESS_prev = 0,
+                               Φ_target = 0,
+                               tol = 1e-10) where {T<:AbstractFloat}
+
+    # Find valid and negative upper bound til tolerance
+    if !isnan(ESS) && ESS_prev - ESS < tol && ESS - ESS_bar < 0
+        return Φ_target
+    end
+
+    # Get mid-point
+    new_ϕ_prop = (Φ_lb + Φ_ub) / 2
+
+    # Evaluate midpoint
+    ESS_new = compute_ESS(loglh, W, new_ϕ_prop, ϕ_init, old_loglh = old_loglh)
+
+    # Recursively define mid-point as either lower bound (not NaN) or upper bound (NaN) of search space
+    if isnan(ESS_new)
+        upper_bound = get_least_upper_bound(loglh, W, ϕ_init, ϕ_init_prop, ESS_bar,
+        old_loglh = old_loglh, Φ_lb = Φ_lb, Φ_ub = new_ϕ_prop, ESS = ESS_new, ESS_prev = ESS, Φ_target = new_ϕ_prop)
+    else
+        upper_bound = get_least_upper_bound(loglh, W, ϕ_init, ϕ_init_prop, ESS_bar,
+        old_loglh = old_loglh, Φ_lb = new_ϕ_prop, Φ_ub = Φ_ub, ESS = ESS_new, ESS_prev = ESS, Φ_target = new_ϕ_prop)
+    end
 end
