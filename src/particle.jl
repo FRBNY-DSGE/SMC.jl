@@ -38,6 +38,7 @@ mutable struct Cloud
     c::Float64
     accept::Float64
     total_sampling_time::Float64
+    covariance::Matrix{Float64}
 end
 
 """
@@ -49,7 +50,7 @@ equal, and everything else in the particle object to be empty.
 """
 function Cloud(n_params::Int, n_parts::Int)
     return Cloud(Matrix{Float64}(undef, n_parts, n_params + 5),
-                 zeros(1), zeros(1), 1, 0, 0, 0., 0.25, 0.)
+                 zeros(1), zeros(1), 1, 0, 0, 0., 0.25, 0., Matrix{Float64}(I, n_params, n_params))
 end
 
 """
@@ -572,6 +573,7 @@ function split_cloud(filename::String, n_pieces::Int)
         clouds[i].n_Φ = cloud.n_Φ
         clouds[i].resamples = cloud.resamples
         clouds[i].tempering_schedule = cloud.tempering_schedule
+        clouds[i].covariance = cloud.covariance
 
         new_filename = replace(filename, ".jld2" => "_part$(i).jld2")
         jldopen(new_filename, true, true, true, IOStream) do file
@@ -638,6 +640,7 @@ function join_cloud(filename::String, n_pieces::Int; save_cloud::Bool = true)
     cloud.n_Φ                 = clouds[1].n_Φ
     cloud.resamples           = clouds[1].resamples
     cloud.tempering_schedule  = clouds[1].tempering_schedule
+    cloud.covariance          = clouds[1].covariance
 
     if save_cloud
         jldopen(filename, true, true, true, IOStream) do file
@@ -770,5 +773,5 @@ function add_parameters_to_cloud(old_cloud::Cloud, para::ParameterVector{T}, old
     meta_info[:, 5] = view(old_cloud.particles, :, ind_weight(part_dim2))
 
     # Form a new Cloud
-    return Cloud(hcat(para_vals, meta_info), zeros(1), old_cloud.ESS, 1, 0, 0, 0., .25, 0.)
+    return Cloud(hcat(para_vals, meta_info), zeros(1), old_cloud.ESS, 1, 0, 0, 0., .25, 0., old_cloud.covariance)
 end
