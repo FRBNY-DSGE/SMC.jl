@@ -484,7 +484,7 @@ while ϕ_n < 1.
         # (not off due to numerical error) and values haven't changed
     R_fr = (R[free_para_inds, free_para_inds] + R[free_para_inds, free_para_inds]') / 2.
 
-
+       cloud.covariance = R_fr
 
         # MvNormal centered at ̄θ with var-cov ̄Σ, subsetting out the fixed parameters
         θ_bar_fr = θ_bar[free_para_inds]
