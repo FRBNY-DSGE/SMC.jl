@@ -61,7 +61,7 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                   old_data::T = T(undef, size(data, 1), 0),
                   old_loglikelihood::Function = loglikelihood,
                   regime_switching::Bool = false,
-                  toggle::Bool = true) where {S<:AbstractFloat,T<:AbstractMatrix, U<:Number}
+                  toggle::Bool = true, cholesky_fix_thresh = cholesky_fix_thresh) where {S<:AbstractFloat,T<:AbstractMatrix, U<:Number}
 
     step_prob   = rand() # Draw initial step probability
 
@@ -99,7 +99,14 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                 if like_new == -Inf
                     prior_new = like_old_data = -Inf
                 end
-                #BP
+                # [ID] To ensure we don't get particles with large positive likelihood, we check against treshold
+                if cholesky_fix_thresh != 0.
+                    if like_new > abs(cholesky_fix_thresh)
+                        like_new = -Inf
+                    end
+                end
+
+                #
                 like_old_data = isempty(old_data) ? 0. : old_loglikelihood(parameters, old_data; new_model_params = true)
                 #like_old_data = isempty(old_data) ? 0. : old_loglikelihood(parameters, old_data) #This is what is currently erroring!
                 if toggle && isempty(old_data)
