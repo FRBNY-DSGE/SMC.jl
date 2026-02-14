@@ -233,3 +233,40 @@ end
 function isempty(c::Cloud)
     isempty(c.particles)
 end
+
+function get_prior_covariance(parameters; regime_switching = false, max_regimes = 5) #arbitrarily large
+    if regime_switching
+        free_priors = []
+        regime_priors = Dict(i => [] for i in 1:max_regimes)
+
+        for p in parameters
+            # Case where parameters have only one regime and unfixed
+            if !haskey(p.regimes, :prior) && !p.fixed
+                push!(regime_priors[1], std(p.prior.value)^2)
+
+            # Case where parameters have more than one regime, and at least one of which is estimated
+            elseif haskey(p.regimes, :prior)
+                n_regimes = length(p.regimes[:value])
+                for reg_ind in 1:n_regimes
+                    if p.regimes[:fixed][reg_ind] == false
+                        push!(regime_priors[reg_ind], std(p.regimes[:prior][reg_ind].value)^2)
+                    end
+                end
+            end
+        end
+
+        # Now want to concatenate in order of regime (all regime 1 free param priors, then regime 2...)
+        for i in 1:max_regimes
+            append!(free_priors, regime_priors[i])
+        end
+
+        prior_cov = diagm(Float64.(free_priors))
+
+    else
+        free_para_inds = ModelConstructors.get_free_para_inds(parameters, regime_switching = false, toggle = true)
+        free_params = parameters[free_para_inds]
+        free_priors = [std(p.prior.value)^2 for p in free_params]
+        prior_cov = diagm(Float64.(free_priors))
+    end
+    return prior_cov
+end

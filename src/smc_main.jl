@@ -235,8 +235,12 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         end
     end
 
-    fixed_para_inds = ModelConstructors.get_fixed_para_inds(parameters; regime_switching = regime_switching, toggle = toggle)
-free_para_inds  = ModelConstructors.get_free_para_inds( parameters; regime_switching = regime_switching, toggle = toggle)
+fixed_para_inds = ModelConstructors.get_fixed_para_inds(parameters; regime_switching = regime_switching, toggle = toggle)
+free_para_inds  = ModelConstructors.get_free_para_inds(parameters; regime_switching = regime_switching, toggle = toggle)
+
+#[ID] Get prior covariance matrix (for free paras)
+R_prior = SMC.get_prior_covariance(parameters, regime_switching = regime_switching)
+
 
 para_symbols    = [θ.key for θ in parameters]
 if regime_switching
@@ -420,6 +424,7 @@ while ϕ_n < 1.
 
     #[ID] Load cholesky fix
     cholesky_fix_thresh = 0.
+    thresh_hit_vec = []
     if i > 2 && use_cholesky_fix_thresh == true
         cholesky_fix_thresh = JLD2.jldopen(replace(savepath, ".jld2" => "_loglh_threshold.jld2"), "r")["loglh_threshold"]
     end
@@ -509,17 +514,21 @@ while ϕ_n < 1.
         # (not off due to numerical error) and values haven't changed
     R_fr = (R[free_para_inds, free_para_inds] + R[free_para_inds, free_para_inds]') / 2.
 
+    # [ID] New implementation: weighted mixture of current covariance (3/4) and prior covariance (1/4)
+
+    R_fr_mix = 0.75 * R_fr + 0.25 * R_prior
+    R_fr_mix = (R_fr_mix + R_fr_mix') / 2.
 
         # Julia 1.12's stricter LAPACK rejects covariances that are only positive *semi*-definite
         # (a zero / tiny-negative eigenvalue from roundoff or a near-degenerate weighted cloud),
         # which crashes every downstream proposal Cholesky (the mutation MvNormal, the c²·Σ mixture
-        # draw, the proposal densities). Project R_fr onto the PD cone by flooring its eigenvalues
+        # draw, the proposal densities). Project R_fr_mix onto the PD cone by flooring its eigenvalues
         # at a small fraction of the largest, so it — and c²·any principal submatrix — factorizes.
-        if !isposdef(R_fr)
-            F      = eigen(Symmetric(R_fr))
-            λfloor = max(maximum(F.values) * 1e-10, eps(eltype(R_fr)))
-            R_fr   = F.vectors * Diagonal(max.(F.values, λfloor)) * F.vectors'
-            R_fr   = (R_fr + R_fr') / 2.
+        if !isposdef(R_fr_mix)
+            F      = eigen(Symmetric(R_fr_mix))
+            λfloor = max(maximum(F.values) * 1e-10, eps(eltype(R_fr_mix)))
+            R_fr_mix   = F.vectors * Diagonal(max.(F.values, λfloor)) * F.vectors'
+            R_fr_mix   = (R_fr_mix + R_fr_mix') / 2.
         end
 
         # MvNormal centered at ̄θ with var-cov ̄Σ, subsetting out the fixed parameters
@@ -531,12 +540,12 @@ while ϕ_n < 1.
 
         new_particles = if parallel
             @distributed (hcat) for k in 1:n_parts
-                mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr, n_free_para,
+                mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
                                  blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
                                  n_mh_steps = n_mh_steps, old_data = old_data, cholesky_fix_thresh = cholesky_fix_thresh)
             end
         else
-            hcat([mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr, n_free_para,
+            hcat([mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
                                    blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c,
                                    α = α, n_mh_steps = n_mh_steps,
                                    old_data = old_data, cholesky_fix_thresh = cholesky_fix_thresh) for k=1:n_parts]...)
@@ -558,14 +567,22 @@ update_acceptance_rate!(cloud)
             break
         end
 
-        #[ID]Add cholesky fix tracker (avg w.r.t starting likelihood): Idea is that likelhood should be largest in magnitude at beginning of estimation
+        #[ID] Add cholesky fix tracker (avg w.r.t starting likelihood): Idea is that likelhood should be largest in magnitude at beginning of estimation
         if i == 2 && use_cholesky_fix_thresh == true
             avg_lh = median(get_loglh(cloud))
+            #thresh_hit = (i, ) #Stage, particle index
             JLD2.jldopen(replace(savepath, ".jld2" => "_loglh_threshold.jld2"), "w") do file
                 write(file, "loglh_threshold", avg_lh)
             end
-
         end
+
+# [ID] Add, for each stage, if there is a particle that hits threshold (ideally, for estimations that hit cholesky problem, this would be 1 at some stage)
+#if i > 2 && use_cholesky_fix_thresh == true
+#    push!(thresh_hit_vec, (thresh_hit, i)) #If you
+#    JLD2.jldopen(replace(savepath, ".jld2" => "_loglh_threshold.jld2"), "w") do file
+#        write(file, "thresh_hit_vec", thresh_hit_vec) #If we hit the threshold and which stage we hit it
+#    end
+#end
 
         if mod(cloud.stage_index, intermediate_stage_increment) == 0 && save_intermediate
             #jldopen(replace(savepath, ".jld2" => "_stage=$(cloud.stage_index).jld2"),
