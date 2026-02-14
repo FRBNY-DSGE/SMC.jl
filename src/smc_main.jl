@@ -158,8 +158,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
              regime_switching::Bool = false,
              toggle::Bool = true,
              debug_assertion::Bool = false,
-             log_prob_old_data::Float64 = 0.0, add_zlb_duration::Tuple{Bool, Int} = (false, 1),
-             use_cholesky_fix_thresh::Bool = false) where {S<:AbstractFloat, U<:Number}
+             log_prob_old_data::Float64 = 0.0, add_zlb_duration::Tuple{Bool, Int} = (false, 1)
+             ) where {S<:AbstractFloat, U<:Number}
 
     ########################################################################################
     ### Settings
@@ -184,11 +184,11 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
                               n_free_para::Int,
                               blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
                               ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
-                              old_data::T = Matrix{S}(undef, size(data, 1), 0), cholesky_fix_thresh = cholesky_fix_thresh) where {S<:Float64, T<:Matrix}
+                              old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64, T<:Matrix}
         return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, n_free_para, blocks_free, blocks_all,
                         ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data,
                         old_loglikelihood = old_loglikelihood, regime_switching = regime_switching,
-                        toggle = toggle, cholesky_fix_thresh = cholesky_fix_thresh)
+                        toggle = toggle)
     end
     # NOTE: positional args MUST match the local closure above and mutation()'s signature
     # (n_free_para, blocks_free, blocks_all). A prior version had blocks_free/blocks_all/
@@ -197,13 +197,11 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
                                           n_free_para::Int,
                                           blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
                                           ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
-                                          old_data::T = Matrix{S}(undef, size(data, 1), 0),
-                                          cholesky_fix_thresh = cholesky_fix_thresh) where {S<:Float64, T<:Matrix}
+                                          old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64, T<:Matrix}
 
         return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, n_free_para, blocks_free, blocks_all,
                         ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data,
-                        old_loglikelihood = old_loglikelihood, regime_switching = regime_switching, toggle = toggle,
-                        cholesky_fix_thresh = cholesky_fix_thresh)
+                        old_loglikelihood = old_loglikelihood, regime_switching = regime_switching, toggle = toggle)
     end
 
 
@@ -422,15 +420,6 @@ while ϕ_n < 1.
         start_time = time_ns()
     cloud.stage_index = i += 1
 
-    #[ID] Load cholesky fix
-    cholesky_fix_thresh = 0.
-    thresh_hit_vec = []
-    if i > 2 && use_cholesky_fix_thresh == true
-        cholesky_fix_thresh = JLD2.jldopen(replace(savepath, ".jld2" => "_loglh_threshold.jld2"), "r")["loglh_threshold"]
-    end
-
-
-
         #############################################################################
         ### Setting ϕ_n (either adaptively or by the fixed schedule)
         #############################################################################
@@ -542,13 +531,13 @@ while ϕ_n < 1.
             @distributed (hcat) for k in 1:n_parts
                 mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
                                  blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
-                                 n_mh_steps = n_mh_steps, old_data = old_data, cholesky_fix_thresh = cholesky_fix_thresh)
+                                 n_mh_steps = n_mh_steps, old_data = old_data)
             end
         else
             hcat([mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
                                    blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c,
                                    α = α, n_mh_steps = n_mh_steps,
-                                   old_data = old_data, cholesky_fix_thresh = cholesky_fix_thresh) for k=1:n_parts]...)
+                                   old_data = old_data) for k=1:n_parts]...)
         end
         update_cloud!(cloud, new_particles)
 update_acceptance_rate!(cloud)
@@ -566,23 +555,6 @@ update_acceptance_rate!(cloud)
         if run_test && (i == 3)
             break
         end
-
-        #[ID] Add cholesky fix tracker (avg w.r.t starting likelihood): Idea is that likelhood should be largest in magnitude at beginning of estimation
-        if i == 2 && use_cholesky_fix_thresh == true
-            avg_lh = median(get_loglh(cloud))
-            #thresh_hit = (i, ) #Stage, particle index
-            JLD2.jldopen(replace(savepath, ".jld2" => "_loglh_threshold.jld2"), "w") do file
-                write(file, "loglh_threshold", avg_lh)
-            end
-        end
-
-# [ID] Add, for each stage, if there is a particle that hits threshold (ideally, for estimations that hit cholesky problem, this would be 1 at some stage)
-#if i > 2 && use_cholesky_fix_thresh == true
-#    push!(thresh_hit_vec, (thresh_hit, i)) #If you
-#    JLD2.jldopen(replace(savepath, ".jld2" => "_loglh_threshold.jld2"), "w") do file
-#        write(file, "thresh_hit_vec", thresh_hit_vec) #If we hit the threshold and which stage we hit it
-#    end
-#end
 
         if mod(cloud.stage_index, intermediate_stage_increment) == 0 && save_intermediate
             #jldopen(replace(savepath, ".jld2" => "_stage=$(cloud.stage_index).jld2"),
