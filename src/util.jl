@@ -234,6 +234,16 @@ function isempty(c::Cloud)
     isempty(c.particles)
 end
 
+function sample_RootInverseGamma(d; n = 1000000, return_mean = false, return_std = false)
+    # Try to obtain draws from RootInverseGamma
+    draws = []
+    for i = 1:n
+        push!(draws, sqrt(d.ν * d.τ^2 / sum(randn(round(Int, d.ν)).^2)))
+    end
+    return draws
+end
+
+#=
 function get_prior_covariance(parameters; regime_switching = false, max_regimes = 5) #arbitrarily large
     if regime_switching
         free_priors = []
@@ -242,6 +252,8 @@ function get_prior_covariance(parameters; regime_switching = false, max_regimes 
         for p in parameters
             # Case where parameters have only one regime and unfixed
             if !haskey(p.regimes, :prior) && !p.fixed
+                if isa(p.prior.value, RootInverseGamma)
+
                 push!(regime_priors[1], std(p.prior.value)^2)
 
             # Case where parameters have more than one regime, and at least one of which is estimated
@@ -269,4 +281,45 @@ function get_prior_covariance(parameters; regime_switching = false, max_regimes 
         prior_cov = diagm(Float64.(free_priors))
     end
     return prior_cov
+end
+=#
+
+# Idea here is that we want to draw from the bounded prior distribution (whose covariance structure is different from the unbounded prior
+
+function get_prior_covariance(parameters; regime_switching = false, n_draws = 1e6)
+
+    # Obtain priors for free variables only
+    free_para_inds = ModelConstructors.get_free_para_inds(parameters; regime_switching = regime_switching)
+
+    # Obtain draws
+    draws = []
+
+    if regime_switching
+        for n = 1:n_draws
+            draw = ModelConstructors.rand_regime_switching(parameters)
+            push!(draws, draw)
+        end
+    else
+        for n = 1:n_draws
+            draw = zeros(length(parameters))
+            for (i, para) in enumerate(parameters)
+                draw[i] = if para.fixed
+                    para.value
+                else
+                    # Resample until all prior draws are within the value bounds
+                    prio = rand(para.prior.value)
+                    while !(para.valuebounds[1] < prio < para.valuebounds[2])
+                        prio = rand(para.prior.value)
+                    end
+                    prio
+                end
+            end
+            push!(draws, draw)
+        end
+    end
+
+    draw_matrix = reduce(vcat, transpose.(draws))
+    free_matrix = draw_matrix[free_para_inds, free_para_inds]
+
+    return cov(free_matrix)
 end

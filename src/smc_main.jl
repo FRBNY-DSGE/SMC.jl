@@ -158,8 +158,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
              regime_switching::Bool = false,
              toggle::Bool = true,
              debug_assertion::Bool = false,
-             log_prob_old_data::Float64 = 0.0, add_zlb_duration::Tuple{Bool, Int} = (false, 1)
-             ) where {S<:AbstractFloat, U<:Number}
+             log_prob_old_data::Float64 = 0.0, add_zlb_duration::Tuple{Bool, Int} = (false, 1),
+             cholesky_fix = :none) where {S<:AbstractFloat, U<:Number}
 
     ########################################################################################
     ### Settings
@@ -237,8 +237,14 @@ fixed_para_inds = ModelConstructors.get_fixed_para_inds(parameters; regime_switc
 free_para_inds  = ModelConstructors.get_free_para_inds(parameters; regime_switching = regime_switching, toggle = toggle)
 
 #[ID] Get prior covariance matrix (for free paras)
-R_prior = SMC.get_prior_covariance(parameters, regime_switching = regime_switching)
-
+if tempered_update
+    # If we do data tempering, our "prior covariance" is just the covariance of the the old cloud
+    prev_cloud = cloud_isempty(old_cloud) ? load(loadpath, "cloud") : old_cloud
+    R_prior = weighted_cov(prev_cloud)[free_para_inds, free_para_inds]
+else
+    # If we don't do data tempering, our "prior covariance" is the covariance of draws from marginal
+    R_prior = SMC.get_prior_covariance(parameters, regime_switching = regime_switching, n_draws = 1e5)
+end
 
 para_symbols    = [θ.key for θ in parameters]
 if regime_switching
@@ -503,10 +509,31 @@ while ϕ_n < 1.
         # (not off due to numerical error) and values haven't changed
     R_fr = (R[free_para_inds, free_para_inds] + R[free_para_inds, free_para_inds]') / 2.
 
-    # [ID] New implementation: weighted mixture of current covariance (3/4) and prior covariance (1/4)
+    # [ID] Try out different solutions to covariance issue
+    R_fr_mix = zeros(size(R_fr, 1), size(R_fr, 1))
+    if cholesky_fix == :fixed_weight_mixture_1
+        # [ID] New implementation: weighted mixture of current covariance (3/4) and prior covariance (1/4)
+        println("Using fixed_weight_mixture (3/4, 1/4)")
+        R_fr_mix = 0.75 * R_fr + 0.25 * R_prior
 
-    R_fr_mix = 0.75 * R_fr + 0.25 * R_prior
-    R_fr_mix = (R_fr_mix + R_fr_mix') / 2.
+    elseif cholesky_fix == :fixed_weight_mixture_2
+        println("Using fixed_weight_mixture (9/10, 1/10)")
+        R_fr_mix = 0.90 * R_fr + 0.10 * R_prior
+
+    elseif cholesky_fix == :fixed_weight_mixture_scaling
+        #[ID] Keep previous mixture but scale according to trace of covariance and prior covariance
+        println("Using fixed_weight_mixture_scaling")
+        s_factor = tr(R_fr)/tr(R_prior)
+        R_fr_mix = 0.75 * R_fr + 0.25 * s_factor *  R_prior
+
+    elseif cholesky_fix == :regularization_1
+        λ = 0.1
+        p = size(R_fr, 1)
+        I_mat = Matrix{Float64}(I, p, p)
+        R_fr_mix = (1 - λ) * R_fr + λ * (tr(R_fr)/p) * I_mat
+    end
+
+R_fr_mix = (R_fr_mix + R_fr_mix') / 2.
 
         # Julia 1.12's stricter LAPACK rejects covariances that are only positive *semi*-definite
         # (a zero / tiny-negative eigenvalue from roundoff or a near-degenerate weighted cloud),
@@ -524,22 +551,23 @@ while ϕ_n < 1.
         θ_bar_fr = θ_bar[free_para_inds]
 
         # Generate random parameter blocks
-        blocks_free = generate_free_blocks(n_free_para, n_blocks)
-        blocks_all  = generate_all_blocks(blocks_free, free_para_inds)
+blocks_free = generate_free_blocks(n_free_para, n_blocks)
+blocks_all  = generate_all_blocks(blocks_free, free_para_inds)
 
-        new_particles = if parallel
-            @distributed (hcat) for k in 1:n_parts
-                mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
-                                 blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
-                                 n_mh_steps = n_mh_steps, old_data = old_data)
-            end
-        else
-            hcat([mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
-                                   blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c,
-                                   α = α, n_mh_steps = n_mh_steps,
-                                   old_data = old_data) for k=1:n_parts]...)
-        end
-        update_cloud!(cloud, new_particles)
+new_particles = if parallel
+    @distributed (hcat) for k in 1:n_parts
+        mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
+                         blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
+                         n_mh_steps = n_mh_steps, old_data = old_data)
+    end
+else
+    hcat([mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
+                           blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c,
+                           α = α, n_mh_steps = n_mh_steps,
+                           old_data = old_data) for k=1:n_parts]...)
+end
+
+update_cloud!(cloud, new_particles)
 update_acceptance_rate!(cloud)
 
 
