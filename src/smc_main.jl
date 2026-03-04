@@ -237,7 +237,7 @@ fixed_para_inds = ModelConstructors.get_fixed_para_inds(parameters; regime_switc
 free_para_inds  = ModelConstructors.get_free_para_inds(parameters; regime_switching = regime_switching, toggle = toggle)
 
 #[ID] Get prior covariance matrix (for free paras)
-if tempered_update
+if tempered_update || cholesky_fix == :fixed_weight_mixture_1_prev_cloud
     # If we do data tempering, our "prior covariance" is just the covariance of the the old cloud
     prev_cloud = cloud_isempty(old_cloud) ? load(loadpath, "cloud") : old_cloud
     R_prior = weighted_cov(prev_cloud)[free_para_inds, free_para_inds]
@@ -511,7 +511,7 @@ while ϕ_n < 1.
 
     # [ID] Try out different solutions to covariance issue
     R_fr_mix = zeros(size(R_fr, 1), size(R_fr, 1))
-    if cholesky_fix == :fixed_weight_mixture_1
+    if cholesky_fix == :fixed_weight_mixture_1 || cholesky_fix == :fixed_weight_mixture_1_prev_cloud
         # [ID] New implementation: weighted mixture of current covariance (3/4) and prior covariance (1/4)
         println("Using fixed_weight_mixture (3/4, 1/4)")
         R_fr_mix = 0.75 * R_fr + 0.25 * R_prior
