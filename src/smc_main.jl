@@ -236,8 +236,13 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 fixed_para_inds = ModelConstructors.get_fixed_para_inds(parameters; regime_switching = regime_switching, toggle = toggle)
 free_para_inds  = ModelConstructors.get_free_para_inds(parameters; regime_switching = regime_switching, toggle = toggle)
 
+old_cloud_cholesky_fixes = [
+    :fixed_weight_mixture_1_prev_cloud,
+    :fixed_weight_mixture_2_prev_cloud,
+    :fixed_weight_mixture_scaling_prev_cloud
+]
 #[ID] Get prior covariance matrix (for free paras)
-if tempered_update || cholesky_fix == :fixed_weight_mixture_1_prev_cloud
+if tempered_update || cholesky_fix ∈ old_cloud_cholesky_fixes
     # If we do data tempering, our "prior covariance" is just the covariance of the the old cloud
     prev_cloud = cloud_isempty(old_cloud) ? load(loadpath, "cloud") : old_cloud
     R_prior = weighted_cov(prev_cloud)[free_para_inds, free_para_inds]
@@ -516,21 +521,32 @@ while ϕ_n < 1.
         println("Using fixed_weight_mixture (3/4, 1/4)")
         R_fr_mix = 0.75 * R_fr + 0.25 * R_prior
 
-    elseif cholesky_fix == :fixed_weight_mixture_2
+    elseif cholesky_fix == :fixed_weight_mixture_2 || cholesky_fix == :fixed_weight_mixture_2_prev_cloud
         println("Using fixed_weight_mixture (9/10, 1/10)")
         R_fr_mix = 0.90 * R_fr + 0.10 * R_prior
 
-    elseif cholesky_fix == :fixed_weight_mixture_scaling
+    elseif cholesky_fix == :fixed_weight_mixture_scaling || cholesky_fix == :fixed_weight_mixture_scaling_prev_cloud
         #[ID] Keep previous mixture but scale according to trace of covariance and prior covariance
-        println("Using fixed_weight_mixture_scaling")
+        println("Using fixed_weight_mixture_scaling (3/4, 1/4, s=tr(Vn/Prior)")
         s_factor = tr(R_fr)/tr(R_prior)
         R_fr_mix = 0.75 * R_fr + 0.25 * s_factor *  R_prior
 
     elseif cholesky_fix == :regularization_1
+        # We regularize with an identity matrix scaled by the trace of proposal cov.
         λ = 0.1
         p = size(R_fr, 1)
         I_mat = Matrix{Float64}(I, p, p)
         R_fr_mix = (1 - λ) * R_fr + λ * (tr(R_fr)/p) * I_mat
+
+    elseif cholesky_fix == :scaled_prior
+        # We use only the prior distribution, but scaled to the same magnitude as the proposal cov
+        println("Using scaled prior")
+        s = tr(R_fr)/tr(R_prior)
+        R_fr_mix = s * R_prior
+
+    else
+        println("Using no covariance fixes")
+        R_fr_mix = R_fr
     end
 
 R_fr_mix = (R_fr_mix + R_fr_mix') / 2.
@@ -550,7 +566,8 @@ R_fr_mix = (R_fr_mix + R_fr_mix') / 2.
         # MvNormal centered at ̄θ with var-cov ̄Σ, subsetting out the fixed parameters
         θ_bar_fr = θ_bar[free_para_inds]
 
-        # Generate random parameter blocks
+# Generate random parameter blocks
+@show n_blocks
 blocks_free = generate_free_blocks(n_free_para, n_blocks)
 blocks_all  = generate_all_blocks(blocks_free, free_para_inds)
 
