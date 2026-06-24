@@ -14,6 +14,10 @@ test_sys_resample    = SMC.resample(weights, method = :systematic)
 test_multi_resample  = SMC.resample(weights, method = :multinomial)
 test_poly_resample   = SMC.resample(weights, method = :polyalgo)
 
+display(@benchmark SMC.resample($weights, method = :systematic))
+display(@benchmark SMC.resample($weights, method = :multinomial))
+display(@benchmark SMC.resample($weights, method = :polyalgo))
+
 saved_filename = string("reference/resample_version=", ver, ".jld2")
 if writing_output 
     jldopen(saved_filename, true, true, true, IOStream) do file

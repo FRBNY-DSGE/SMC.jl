@@ -32,6 +32,13 @@ SMC.smc(rs_loglik_fn, m.parameters, data, verbose = :none,
         threshold_ratio = .5, smc_iteration = 0,
         regime_switching = true, toggle = true)
 
+display(@benchmark SMC.smc($rs_loglik_fn, $m.parameters, $data, verbose = :none,
+        use_fixed_schedule = true, parallel = false, n_Φ = 120, n_mh_steps = 1,
+        resampling_method = :polyalgo, data_vintage = "200707", target = 0.25,
+        savepath = $savepath, particle_store_path = $particle_store_path,
+        α = .9, threshold_ratio = .5, smc_iteration = 0,
+        regime_switching = true, toggle = true) evals=1 samples=1)
+
 println("Estimation done!")
 
 test_file = load(rawpath(m, "estimate", "smc_cloud.jld2"))

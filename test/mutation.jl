@@ -35,6 +35,11 @@ close(file)
 
 Random.seed!(42)
 
+display(@benchmark SMC.mutation($loglik_fn, $m.parameters, $data,
+                                $old_cloud.particles[1, :], $d.μ, Matrix($d.Σ),
+                                $n_params, $blocks_free, $blocks_all, $ϕ_n, $ϕ_n1;
+                                c = $c, α = $α, old_data = $old_data))
+
 new_cloud = Cloud(n_params, n_parts)
 for i in 1:n_parts
     new_cloud.particles[i,:] = SMC.mutation(loglik_fn, m.parameters, data,

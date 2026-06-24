@@ -57,6 +57,9 @@ new_cloud2 = SMC.add_parameters_to_cloud(joinpath("reference", "smc_cloud_fix=tr
                                                   ver * ".jld2"), m_rs.parameters,
                                          old_para_inds; regime_switching = true)
 
+display(@benchmark SMC.add_parameters_to_cloud($saved_cloud, $m_rs.parameters,
+                                               $old_para_inds; regime_switching = true))
+
 @test saved_cloud.particles[:, 1:9] ≈ new_cloud.particles[:, 1:9]
 @test saved_cloud.particles[:, end - 2:end] ≈ new_cloud.particles[:, end - 2:end] # old_loglh, accept, and weight should be the same
 @test saved_cloud.particles[:, end - 4] ≈ new_cloud.particles[:, end - 4] # loglh should be the same

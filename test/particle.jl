@@ -9,6 +9,9 @@ cloud = load(file, "cloud")
 split_cloud(file, 2)
 rejoined_cloud = join_cloud(file, 2)
 
+display(@benchmark split_cloud($file, 2))
+display(@benchmark join_cloud($file, 2))
+
 @testset "Test split and join clouds" begin
     @test cloud.particles           == rejoined_cloud.particles
     @test SMC.get_vals(cloud)       == SMC.get_vals(rejoined_cloud)

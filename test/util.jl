@@ -12,6 +12,10 @@ end
 ###################################################################
 s1 = SMC.scalar_reshape(1, 0)
 s2 = SMC.scalar_reshape([1, 0], [1, 0])
+
+display(@benchmark SMC.scalar_reshape(1, 0))
+display(@benchmark SMC.scalar_reshape([1, 0], [1, 0]))
+
 ###################################################################
 @testset "Scalar reshape" begin
     @test s1 == Array{Float64,1}[[1.0], [0.0]]
@@ -25,6 +29,8 @@ end
 v1 = SMC.vector_reshape(1.0, 2.0)
 v2 = SMC.vector_reshape([1, 0], 1, 0)
 v3 = SMC.vector_reshape([1.0, 0.0], 1.0, 0.0)
+
+display(@benchmark SMC.vector_reshape(1.0, 2.0))
 
 if write_test_output
     JLD2.jldopen(string("reference/vector_reshape_version=", ver, ".jld2"), true, true, true, IOStream) do file
@@ -51,6 +57,8 @@ end
 s1_r = SMC.scalar_reduce([s1]...)
 s2_r = SMC.scalar_reduce([s2 for i in 1:5]...)
 
+display(@benchmark SMC.scalar_reduce($s1...))
+
 if write_test_output
     JLD2.jldopen(string("reference/scalar_reduce_version=", ver, ".jld2"), true, true, true, IOStream) do file
         file["s1_r"] = s1_r
@@ -74,6 +82,8 @@ end
 v1_r = SMC.vector_reduce([v1]...)
 v2_r = SMC.vector_reduce([v2 for i in 1:5]...)
 v3_r = SMC.vector_reduce([v3 for i in 1:5]...)
+
+display(@benchmark SMC.vector_reduce($v1...))
 
 if write_test_output
     JLD2.jldopen(string("reference/vector_reduce_version=", ver, ".jld2"), true, true, true, IOStream) do file

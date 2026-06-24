@@ -28,6 +28,9 @@ init_cloud = SMC.Cloud(length(m.parameters), get_setting(m,:n_particles))
 @everywhere Random.seed!(42)
 SMC.initial_draw!(loglik_fn, m.parameters, data, init_cloud)
 
+display(@benchmark SMC.one_draw($loglik_fn, $m.parameters, $data))
+display(@benchmark SMC.draw_likelihood($loglik_fn, $m.parameters, $data, vec($draw[1])))
+
 if write_test_output
     JLD2.jldopen(string("reference/initial_draw_out_version=", ver, ".jld2"), "w") do file
         write(file, "cloud", init_cloud)
