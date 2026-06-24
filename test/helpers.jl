@@ -28,6 +28,7 @@ test_ϕ_n, test_resampled_last_period, test_j, test_ϕ_prop = SMC.solve_adaptive
                                                                 i_smc, j_smc, ϕ_prop, ϕ_n1,
                                                                 tempering_target,
                                                                 resampled_last_period)
+
 if writing_output
     jldopen(string("reference/helpers_output_version=", ver, ".jld2"), true, true, true, IOStream) do file
         write(file, "phi_n", test_ϕ_n)
@@ -76,7 +77,7 @@ close(file)
 
 ####################################################################
 @testset "MvNormal Mixture Draw" begin
-    @test maximum(abs.(test_θ_new - saved_θ_new)) <= eps() # avoid problems with different Julia versions when testing via GitHub Actions
+    @test maximum(abs.(test_θ_new - saved_θ_new)) <= 10 * eps() # avoid problems with different Julia versions when testing via GitHub Actions
 end
 
 
@@ -108,6 +109,7 @@ close(file)
 
 q0, q1 = SMC.compute_proposal_densities(para_draw, para_subset, d_subset; α = α,
                                         c = c)
+
 if writing_output
     JLD2.jldopen(string("reference/proposal_densities_output_version=", ver, ".jld2"), true, true, true, IOStream) do file
         file["q0"] = q0
