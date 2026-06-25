@@ -1,5 +1,8 @@
 name: 'build-1.1'
-on: [push, pull_request]
+# Disabled as an automatic check. The dependency set (modern JLD2/HDF5, in-development
+# ModelConstructors) no longer resolves on Julia 1.1, so this job cannot pass. Kept for
+# manual, on-demand runs only (Actions tab -> "build-1.1" -> "Run workflow").
+on: workflow_dispatch
 
 jobs:
   test:
