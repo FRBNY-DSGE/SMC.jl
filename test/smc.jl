@@ -1,3 +1,4 @@
+run_benchmarks = false
 using ModelConstructors, HDF5, Random, JLD2, FileIO, SMC, Test
 include("modelsetup.jl")
 
@@ -17,7 +18,7 @@ m <= Setting(:saveroot, save)
 savepath = rawpath(m, "estimate", "smc_cloud.jld2")
 particle_store_path = rawpath(m, "estimate", "smcsave.h5")
 
-data = h5read("reference/test_data.h5", "data")
+data = h5read("$(@__DIR__)/reference/test_data.h5", "data")
 
 @everywhere Random.seed!(42)
 
@@ -28,7 +29,7 @@ SMC.smc(loglik_fn, m.parameters, data, verbose = :none, use_fixed_schedule = tru
         data_vintage = "200707", target = 0.25, savepath = savepath,
         particle_store_path = particle_store_path, α = .9, threshold_ratio = .5, smc_iteration = 0)
 
-display(@benchmark SMC.smc($loglik_fn, $m.parameters, $data, verbose = :none,
+run_benchmarks && display(@benchmark SMC.smc($loglik_fn, $m.parameters, $data, verbose = :none,
         use_fixed_schedule = true, parallel = true, n_Φ = 120, n_mh_steps = 1,
         resampling_method = :polyalgo, data_vintage = "200707", target = 0.25,
         savepath = $savepath, particle_store_path = $particle_store_path,
@@ -42,14 +43,14 @@ test_w      = test_file["w"]
 test_W      = test_file["W"]
 
 if writing_output
-    jldopen(string("reference/smc_cloud_fix=true_version=", ver, ".jld2"), true, true, true, IOStream) do file
+    jldopen(string("$(@__DIR__)/reference/smc_cloud_fix=true_version=", ver, ".jld2"), true, true, true, IOStream) do file
         write(file, "cloud", test_cloud)
         write(file, "w", test_w)
         write(file, "W", test_W)
     end
 end
 
-saved_file  = load(string("reference/smc_cloud_fix=true_version=", ver, ".jld2"))
+saved_file  = load(string("$(@__DIR__)/reference/smc_cloud_fix=true_version=", ver, ".jld2"))
 saved_cloud = saved_file["cloud"]
 saved_w     = saved_file["w"]
 saved_W     = saved_file["W"]
@@ -104,7 +105,7 @@ m = setup_linear_model()
 save = normpath(joinpath(dirname(@__FILE__),"save"))
 m <= Setting(:saveroot, save)
 
-data = h5read("reference/test_data.h5", "data")
+data = h5read("$(@__DIR__)/reference/test_data.h5", "data")
 
 @everywhere Random.seed!(42)
 

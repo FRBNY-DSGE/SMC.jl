@@ -1,16 +1,17 @@
+run_benchmarks = false
 if VERSION < v"1.5"
     ver = "111"
 else
     ver = "150"
 end
 
-file = string("reference/smc_cloud_fix=true_version=", ver, ".jld2")
+file = string("$(@__DIR__)/reference/smc_cloud_fix=true_version=", ver, ".jld2")
 cloud = load(file, "cloud")
 split_cloud(file, 2)
 rejoined_cloud = join_cloud(file, 2)
 
-display(@benchmark split_cloud($file, 2))
-display(@benchmark join_cloud($file, 2))
+run_benchmarks && display(@benchmark split_cloud($file, 2))
+run_benchmarks && display(@benchmark join_cloud($file, 2))
 
 @testset "Test split and join clouds" begin
     @test cloud.particles           == rejoined_cloud.particles
@@ -28,5 +29,5 @@ display(@benchmark join_cloud($file, 2))
     @test cloud.tempering_schedule  == rejoined_cloud.tempering_schedule
 end
 
-rm("reference/smc_cloud_fix=true_version=$(ver)_part1.jld2")
-rm("reference/smc_cloud_fix=true_version=$(ver)_part2.jld2")
+rm("$(@__DIR__)/reference/smc_cloud_fix=true_version=$(ver)_part1.jld2")
+rm("$(@__DIR__)/reference/smc_cloud_fix=true_version=$(ver)_part2.jld2")

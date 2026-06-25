@@ -1,3 +1,4 @@
+run_benchmarks = false
 using ModelConstructors, HDF5, Random, JLD2, FileIO, SMC, Test
 include("modelsetup.jl")
 
@@ -18,7 +19,7 @@ m <= Setting(:saveroot, save)
 savepath = rawpath(m, "estimate", "smc_cloud.jld2")
 particle_store_path = rawpath(m, "estimate", "smcsave.h5")
 
-data = h5read("reference/test_data.h5", "rsdata")
+data = h5read("$(@__DIR__)/reference/test_data.h5", "rsdata")
 
 @everywhere Random.seed!(42)
 
@@ -32,7 +33,7 @@ SMC.smc(rs_loglik_fn, m.parameters, data, verbose = :none,
         threshold_ratio = .5, smc_iteration = 0,
         regime_switching = true, toggle = true)
 
-display(@benchmark SMC.smc($rs_loglik_fn, $m.parameters, $data, verbose = :none,
+run_benchmarks && display(@benchmark SMC.smc($rs_loglik_fn, $m.parameters, $data, verbose = :none,
         use_fixed_schedule = true, parallel = false, n_Φ = 120, n_mh_steps = 1,
         resampling_method = :polyalgo, data_vintage = "200707", target = 0.25,
         savepath = $savepath, particle_store_path = $particle_store_path,
@@ -57,14 +58,14 @@ true_para = [1., 1., 1., # α1, β1, σ1 (regime 1)
              4., 5.]     # β3 regimes = 2-3
 
 if writing_output
-    jldopen(string("reference/smc_cloud_fix=true_rs=true_version=", ver, ".jld2"), true, true, true, IOStream) do file
+    jldopen(string("$(@__DIR__)/reference/smc_cloud_fix=true_rs=true_version=", ver, ".jld2"), true, true, true, IOStream) do file
         write(file, "cloud", test_cloud)
         write(file, "w", test_w)
         write(file, "W", test_W)
     end
 end
 
-saved_file  = JLD2.jldopen(string("reference/smc_cloud_fix=true_rs=true_version=", ver, ".jld2"), "r")
+saved_file  = JLD2.jldopen(string("$(@__DIR__)/reference/smc_cloud_fix=true_rs=true_version=", ver, ".jld2"), "r")
 saved_cloud = saved_file["cloud"]
 saved_w     = saved_file["w"]
 saved_W     = saved_file["W"]

@@ -1,3 +1,4 @@
+run_benchmarks = false
 writing_output = false
 @everywhere Random.seed!(42)
 
@@ -14,11 +15,11 @@ test_sys_resample    = SMC.resample(weights, method = :systematic)
 test_multi_resample  = SMC.resample(weights, method = :multinomial)
 test_poly_resample   = SMC.resample(weights, method = :polyalgo)
 
-display(@benchmark SMC.resample($weights, method = :systematic))
-display(@benchmark SMC.resample($weights, method = :multinomial))
-display(@benchmark SMC.resample($weights, method = :polyalgo))
+run_benchmarks && display(@benchmark SMC.resample($weights, method = :systematic))
+run_benchmarks && display(@benchmark SMC.resample($weights, method = :multinomial))
+run_benchmarks && display(@benchmark SMC.resample($weights, method = :polyalgo))
 
-saved_filename = string("reference/resample_version=", ver, ".jld2")
+saved_filename = string("$(@__DIR__)/reference/resample_version=", ver, ".jld2")
 if writing_output 
     jldopen(saved_filename, true, true, true, IOStream) do file
         write(file, "sys", test_sys_resample)

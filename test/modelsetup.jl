@@ -98,7 +98,7 @@ if regenerate_data
 
     # Save Data
 
-    h5open("reference/test_data.h5", "w") do file
+    h5open("$(@__DIR__)/reference/test_data.h5", "w") do file
         write(file, "data", data)
         write(file, "rsdata", rsdata)
         write(file, "X", X)
@@ -111,8 +111,8 @@ else # Need to define reg1, reg2, and reg3 for regime-switching log likelihood f
 end
 
 # Read Predictors from data
-X = h5read("reference/test_data.h5", "X")
-Xrs = h5read("reference/test_data.h5", "Xrs")
+X = h5read("$(@__DIR__)/reference/test_data.h5", "X")
+Xrs = h5read("$(@__DIR__)/reference/test_data.h5", "Xrs")
 
 # Log Likelihood Function
 N = 3
