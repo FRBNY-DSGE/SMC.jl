@@ -94,6 +94,8 @@ function initial_draw!(loglikelihood::Function, parameters::ParameterVector{U},
     sendto(workers(), loglikelihood = loglikelihood)
     sendto(workers(), parameters = parameters)
     sendto(workers(), data       = data)
+    sendto(workers(), regime_switching = regime_switching)
+    sendto(workers(), toggle = toggle)
 
     one_draw_closure() = one_draw(loglikelihood, parameters, data, regime_switching = regime_switching, toggle = toggle)
     @everywhere one_draw_closure() = one_draw(loglikelihood, parameters, data, regime_switching = regime_switching, toggle = toggle)
@@ -164,6 +166,7 @@ function initialize_likelihoods!(loglikelihood::Function, parameters::ParameterV
     sendto(workers(), parameters = parameters)
     sendto(workers(), loglikelihood = loglikelihood) # TODO: Check if this is necessary
     sendto(workers(), data = data)
+    sendto(workers(), toggle = toggle)
 
     draw_likelihood_closure(draw::Vector{Float64}) = draw_likelihood(loglikelihood, parameters,
                                                                      data, draw, toggle = toggle)

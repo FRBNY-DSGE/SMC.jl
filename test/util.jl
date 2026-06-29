@@ -1,20 +1,16 @@
 write_test_output = false
+if !@isdefined(run_benchmarks); run_benchmarks = true; end
 path = dirname(@__FILE__)
 
-if VERSION < v"1.5"
-    ver = "111"
-else
-    ver = "150"
-end
+# These reshape/reduce helpers are deterministic (no RNG), so their references are
+# version-independent — the existing "150"/"111" files are valid on any stack.
+ver = VERSION < v"1.5" ? "111" : "150"
 
 ###################################################################
 # Test: scalar_reshape()
 ###################################################################
 s1 = SMC.scalar_reshape(1, 0)
 s2 = SMC.scalar_reshape([1, 0], [1, 0])
-
-display(@benchmark SMC.scalar_reshape(1, 0))
-display(@benchmark SMC.scalar_reshape([1, 0], [1, 0]))
 
 ###################################################################
 @testset "Scalar reshape" begin
@@ -29,8 +25,6 @@ end
 v1 = SMC.vector_reshape(1.0, 2.0)
 v2 = SMC.vector_reshape([1, 0], 1, 0)
 v3 = SMC.vector_reshape([1.0, 0.0], 1.0, 0.0)
-
-display(@benchmark SMC.vector_reshape(1.0, 2.0))
 
 if write_test_output
     JLD2.jldopen(string("reference/vector_reshape_version=", ver, ".jld2"), true, true, true, IOStream) do file
@@ -57,8 +51,6 @@ end
 s1_r = SMC.scalar_reduce([s1]...)
 s2_r = SMC.scalar_reduce([s2 for i in 1:5]...)
 
-display(@benchmark SMC.scalar_reduce($s1...))
-
 if write_test_output
     JLD2.jldopen(string("reference/scalar_reduce_version=", ver, ".jld2"), true, true, true, IOStream) do file
         file["s1_r"] = s1_r
@@ -82,8 +74,6 @@ end
 v1_r = SMC.vector_reduce([v1]...)
 v2_r = SMC.vector_reduce([v2 for i in 1:5]...)
 v3_r = SMC.vector_reduce([v3 for i in 1:5]...)
-
-display(@benchmark SMC.vector_reduce($v1...))
 
 if write_test_output
     JLD2.jldopen(string("reference/vector_reduce_version=", ver, ".jld2"), true, true, true, IOStream) do file
@@ -122,4 +112,26 @@ end
     @test max(Complex(0.99, 0.5), 1) == 1
     @test max(1, Complex(20, 0.5)) == 20
     @test max(Complex(0.99, 0.5), Complex(20, 0.5)) == 20
+end
+
+###################################################################
+# Benchmarks (deterministic helpers; s1/v1 are defined above at top level)
+###################################################################
+if run_benchmarks
+    b_sreshape_s = @benchmark SMC.scalar_reshape(1, 0)
+    b_sreshape_v = @benchmark SMC.scalar_reshape([1, 0], [1, 0])
+    b_vreshape   = @benchmark SMC.vector_reshape(1.0, 2.0)
+    b_sreduce    = @benchmark SMC.scalar_reduce($s1)
+    b_vreduce    = @benchmark SMC.vector_reduce($v1)
+
+    println("\n===== util.jl benchmark results =====")
+    for (label, b) in (("scalar_reshape (scalar)", b_sreshape_s),
+                       ("scalar_reshape (vector)", b_sreshape_v),
+                       ("vector_reshape",          b_vreshape),
+                       ("scalar_reduce",           b_sreduce),
+                       ("vector_reduce",           b_vreduce))
+        println(rpad(label, 24), " time: ",
+                rpad(BenchmarkTools.prettytime(median(b).time), 12),
+                "memory: ", BenchmarkTools.prettymemory(median(b).memory))
+    end
 end

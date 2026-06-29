@@ -3,11 +3,17 @@ include("modelsetup.jl")
 
 path = dirname(@__FILE__)
 writing_output = false
+if !@isdefined(run_benchmarks); run_benchmarks = false; end
 
+# Julia 1.7+ switched the default RNG to a per-Task Xoshiro256++, so the seeded SMC run
+# differs from the "150" data — regenerate with writing_output on. This run is
+# parallel = false (sequential), so it is reproducible run-to-run under the task-local RNG.
 if VERSION < v"1.5"
     ver = "111"
-else
+elseif VERSION < v"1.7"
     ver = "150"
+else
+    ver = "1126"
 end
 
 m = setup_linear_model(; regime_switching = true)
@@ -20,7 +26,7 @@ particle_store_path = rawpath(m, "estimate", "smcsave.h5")
 
 data = h5read("reference/test_data.h5", "rsdata")
 
-@everywhere Random.seed!(42)
+Random.seed!(42)   # plain (not @everywhere): single-process tests need the task-local RNG pinned
 
 println("Estimating Linear Model... (approx. 8 minutes)")
 
@@ -31,13 +37,6 @@ SMC.smc(rs_loglik_fn, m.parameters, data, verbose = :none,
         particle_store_path = particle_store_path, α = .9,
         threshold_ratio = .5, smc_iteration = 0,
         regime_switching = true, toggle = true)
-
-display(@benchmark SMC.smc($rs_loglik_fn, $m.parameters, $data, verbose = :none,
-        use_fixed_schedule = true, parallel = false, n_Φ = 120, n_mh_steps = 1,
-        resampling_method = :polyalgo, data_vintage = "200707", target = 0.25,
-        savepath = $savepath, particle_store_path = $particle_store_path,
-        α = .9, threshold_ratio = .5, smc_iteration = 0,
-        regime_switching = true, toggle = true) evals=1 samples=1)
 
 println("Estimation done!")
 
@@ -108,3 +107,14 @@ end
 # Clean output files up
 rm(rawpath(m, "estimate", "smc_cloud.jld2"))
 rm(rawpath(m, "estimate", "smcsave.h5"))
+
+# Benchmark last so re-running smc (which overwrites savepath) can't clobber the cloud the
+# assertions above load from savepath.
+if true
+    @btime SMC.smc($rs_loglik_fn, $m.parameters, $data, verbose = :none,
+        use_fixed_schedule = true, parallel = false, n_Φ = 120, n_mh_steps = 1,
+        resampling_method = :polyalgo, data_vintage = "200707", target = 0.25,
+        savepath = $savepath, particle_store_path = $particle_store_path,
+        α = .9, threshold_ratio = .5, smc_iteration = 0,
+        regime_switching = true, toggle = true) evals=1 samples=1
+end

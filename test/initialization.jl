@@ -1,4 +1,5 @@
 write_test_output = false
+if !@isdefined(run_benchmarks); run_benchmarks = false; end
 
 path = dirname(@__FILE__)
 
@@ -137,5 +138,7 @@ end
 # Benchmarks (run last so they don't perturb the RNG state that the
 # reproducibility tests above depend on)
 ###################################################################
-display(@benchmark SMC.one_draw($loglik_fn, $m.parameters, $data))
-display(@benchmark SMC.draw_likelihood($loglik_fn, $m.parameters, $data, vec($draw[1])))
+if run_benchmarks
+    @btime SMC.one_draw($loglik_fn, $m.parameters, $data)
+    @btime SMC.draw_likelihood($loglik_fn, $m.parameters, $data, vec($draw[1]))
+end

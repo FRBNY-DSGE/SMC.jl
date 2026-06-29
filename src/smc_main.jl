@@ -166,8 +166,18 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 
     # Construct closure of mutation function so as to avoid issues with serialization
     # across workers with different Julia system images
+    # Ship everything the worker-local closure reads as a Main global. The @distributed
+    # body below lexically binds the *local* `mutation_closure` (which captures these by
+    # value and is serialized to workers), so these sends are only exercised if the global
+    # `@everywhere` definition is ever dispatched — but keep them complete so that path is
+    # correct too (previously only parameters/data were sent, so loglikelihood /
+    # old_loglikelihood / regime_switching / toggle would be UndefVar on workers).
     sendto(workers(), parameters = parameters)
     sendto(workers(), data = data)
+    sendto(workers(), loglikelihood = loglikelihood)
+    sendto(workers(), old_loglikelihood = old_loglikelihood)
+    sendto(workers(), regime_switching = regime_switching)
+    sendto(workers(), toggle = toggle)
 
     function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                               n_free_para::Int,
@@ -179,11 +189,15 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
                         old_loglikelihood = old_loglikelihood, regime_switching = regime_switching,
                         toggle = toggle)
     end
+    # NOTE: positional args MUST match the local closure above and mutation()'s signature
+    # (n_free_para, blocks_free, blocks_all). A prior version had blocks_free/blocks_all/
+    # n_free_para swapped here, which would MethodError if this global were ever dispatched.
     @everywhere function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
-                                          blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}}, n_free_para::Int,
+                                          n_free_para::Int,
+                                          blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
                                           ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
                                           old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64, T<:Matrix}
-        return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, blocks_free, blocks_all, n_free_para,
+        return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, n_free_para, blocks_free, blocks_all,
                         ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data,
                         old_loglikelihood = old_loglikelihood, regime_switching = regime_switching, toggle = toggle)
     end
