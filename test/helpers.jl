@@ -3,8 +3,10 @@ include("modelsetup.jl")
 
 if VERSION < v"1.5"
     ver = "111"
-else
+elseif VERSION < v"1.7"
     ver = "150"
+else
+    ver = "170"
 end
 
 @everywhere Random.seed!(42)
@@ -30,11 +32,12 @@ test_ϕ_n, test_resampled_last_period, test_j, test_ϕ_prop = SMC.solve_adaptive
                                                                 resampled_last_period)
 
 if writing_output
-    jldopen(string("reference/helpers_output_version=", ver, ".jld2"), true, true, true, IOStream) do file
-        write(file, "phi_n", test_ϕ_n)
-        write(file, "resampled_last_period", test_resampled_last_period)
-        write(file, "j", test_j)
-        write(file, "phi_prop", test_ϕ_prop)
+    let f = string("reference/helpers_output_version=", ver, ".jld2")
+        isfile(f) && rm(f)
+        JLD2.jldsave(f; phi_n = test_ϕ_n,
+            resampled_last_period = test_resampled_last_period,
+            j = test_j,
+            phi_prop = test_ϕ_prop)
     end
 end
 
@@ -63,16 +66,18 @@ file = JLD2.jldopen("reference/mvnormal_inputs.jld2")
     c           = read(file, "c")
 close(file)
 
+Random.seed!(42)
 test_θ_new = SMC.mvnormal_mixture_draw(para_subset, d_subset; c=c, α=α)
 
 if writing_output
-    JLD2.jldopen(string("reference/mvnormal_output_version=", ver, ".jld2"), true, true, true, IOStream) do file
-        write(file, "θ_new", test_θ_new)
+    let f = string("reference/mvnormal_output_version=", ver, ".jld2")
+        isfile(f) && rm(f)
+        JLD2.jldsave(f; theta_new = test_θ_new)
     end
 end
 
 file = JLD2.jldopen(string("reference/mvnormal_output_version=", ver, ".jld2"))
-    saved_θ_new = read(file, "θ_new")
+    saved_θ_new = read(file, "theta_new")
 close(file)
 
 ####################################################################
@@ -111,9 +116,9 @@ q0, q1 = SMC.compute_proposal_densities(para_draw, para_subset, d_subset; α = �
                                         c = c)
 
 if writing_output
-    JLD2.jldopen(string("reference/proposal_densities_output_version=", ver, ".jld2"), true, true, true, IOStream) do file
-        file["q0"] = q0
-        file["q1"] = q1
+    let f = string("reference/proposal_densities_output_version=", ver, ".jld2")
+        isfile(f) && rm(f)
+        JLD2.jldsave(f; q0 = q0, q1 = q1)
     end
 end
 
@@ -132,19 +137,6 @@ end
 ####################################################################
 # Testing ESS Computation
 ####################################################################
-file = JLD2.jldopen(string("reference/ess_inputs_version=", ver, ".jld2"))
-    loglh           = read(file, "loglh")
-    current_weights = read(file, "current_weights")
-    ϕ_n             = read(file, "ϕ_n")
-    ϕ_n1            = read(file, "ϕ_n1")
-close(file)
-
-file = JLD2.jldopen(string("reference/ess_output_version=", ver, ".jld2"))
-    saved_ESS = read(file, "ess")
-close(file)
-
-test_ESS = SMC.compute_ESS(loglh, current_weights, ϕ_n, ϕ_n1)
-
 if writing_output
     JLD2.jldopen("reference/smc_sw_cloud_fix=true_blocks=3.jld2", "r") do file
         cloud = file["cloud"]
@@ -158,18 +150,35 @@ if writing_output
     ϕ_n       = 9.25022e-6
     ϕ_n1      = 2.15769e-6
 
-    JLD2.jldopen(string("reference/ess_inputs_version=", ver, ".jld2"), true, true, true, IOStream) do file
-        write(file, "loglh", loglh)
-        write(file, "current_weights", current_weights)
-        write(file, "ϕ_n", ϕ_n)
-        write(file, "ϕ_n1", ϕ_n1)
-        write(file, "old_loglh", old_loglh)
+    test_ESS = SMC.compute_ESS(loglh, current_weights, ϕ_n, ϕ_n1)
+
+    let f = string("reference/ess_inputs_version=", ver, ".jld2")
+        isfile(f) && rm(f)
+        JLD2.jldsave(f; loglh = loglh,
+            current_weights = current_weights,
+            ϕ_n = ϕ_n,
+            ϕ_n1 = ϕ_n1,
+            old_loglh = old_loglh)
     end
 
-    JLD2.jldopen(string("reference/ess_output_version=", ver, ".jld2"), true, true, true, IOStream) do file
-        write(file, "ess", test_ESS)
+    let f = string("reference/ess_output_version=", ver, ".jld2")
+        isfile(f) && rm(f)
+        JLD2.jldsave(f; ess = test_ESS)
     end
 end
+
+file = JLD2.jldopen(string("reference/ess_inputs_version=", ver, ".jld2"))
+    loglh           = read(file, "loglh")
+    current_weights = read(file, "current_weights")
+    ϕ_n             = read(file, "ϕ_n")
+    ϕ_n1            = read(file, "ϕ_n1")
+close(file)
+
+file = JLD2.jldopen(string("reference/ess_output_version=", ver, ".jld2"))
+    saved_ESS = read(file, "ess")
+close(file)
+
+test_ESS = SMC.compute_ESS(loglh, current_weights, ϕ_n, ϕ_n1)
 
 ####################################################################
 @testset "Compute ESS" begin
@@ -192,10 +201,11 @@ test_blocks_all  = SMC.generate_all_blocks(test_blocks_free, free_para_inds)
 test_blocks      = SMC.generate_param_blocks(length(m.parameters), n_blocks)
 
 if writing_output
-    JLD2.jldopen(string("reference/helpers_blocking_version=", ver, ".jld2"), true, true, true, IOStream) do file
-        file["blocks_free"] = test_blocks_free
-        file["blocks_all"]  = test_blocks_all
-        file["blocks"]      = test_blocks
+    let f = string("reference/helpers_blocking_version=", ver, ".jld2")
+        isfile(f) && rm(f)
+        JLD2.jldsave(f; blocks_free = test_blocks_free,
+            blocks_all  = test_blocks_all,
+            blocks      = test_blocks)
     end
 end
 

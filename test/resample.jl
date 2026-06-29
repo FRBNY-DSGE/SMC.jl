@@ -12,6 +12,7 @@ else
     ver = "1126"
 end
 
+Random.seed!(42)
 weights = rand(400)
 weights = weights ./ sum(weights)
 
@@ -24,12 +25,12 @@ display(@benchmark SMC.resample($weights, method = :multinomial))
 display(@benchmark SMC.resample($weights, method = :polyalgo))
 
 saved_filename = string("reference/resample_version=", ver, ".jld2")
-if writing_output 
-    jldopen(saved_filename, true, true, true, IOStream) do file
-        write(file, "sys", test_sys_resample)
-        write(file, "multi", test_multi_resample)
-        write(file, "poly", test_poly_resample)
-    end
+if writing_output
+    isfile(saved_filename) && rm(saved_filename)
+    JLD2.jldsave(saved_filename;
+        sys   = test_sys_resample,
+        multi = test_multi_resample,
+        poly  = test_poly_resample)
 end
 
 saved_sys_resample   = load(saved_filename, "sys")
