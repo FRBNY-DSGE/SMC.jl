@@ -1,10 +1,15 @@
 writing_output = false
-@everywhere Random.seed!(42)
+Random.seed!(42)
 
 if VERSION < v"1.5"
     ver = "111"
-else 
+elseif VERSION < v"1.7"
     ver = "150"
+else
+    # Julia 1.7 switched the default RNG from a single process-wide
+    # MersenneTwister to a per-Task Xoshiro256++ (TaskLocalRNG), so seeded
+    # draws no longer match the "150" reference data.
+    ver = "1126"
 end
 
 weights = rand(400)
