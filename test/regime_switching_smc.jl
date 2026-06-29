@@ -110,7 +110,7 @@ rm(rawpath(m, "estimate", "smcsave.h5"))
 
 # Benchmark last so re-running smc (which overwrites savepath) can't clobber the cloud the
 # assertions above load from savepath.
-if true
+if run_benchmarks
     @btime SMC.smc($rs_loglik_fn, $m.parameters, $data, verbose = :none,
         use_fixed_schedule = true, parallel = false, n_Φ = 120, n_mh_steps = 1,
         resampling_method = :polyalgo, data_vintage = "200707", target = 0.25,

@@ -1,5 +1,5 @@
 write_test_output = false
-if !@isdefined(run_benchmarks); run_benchmarks = true; end
+if !@isdefined(run_benchmarks); run_benchmarks = false; end
 path = dirname(@__FILE__)
 
 # These reshape/reduce helpers are deterministic (no RNG), so their references are
