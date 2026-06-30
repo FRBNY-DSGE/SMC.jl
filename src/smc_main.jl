@@ -475,6 +475,18 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         # (not off due to numerical error) and values haven't changed
         R_fr = (R[free_para_inds, free_para_inds] + R[free_para_inds, free_para_inds]') / 2.
 
+        # Julia 1.12's stricter LAPACK rejects covariances that are only positive *semi*-definite
+        # (a zero / tiny-negative eigenvalue from roundoff or a near-degenerate weighted cloud),
+        # which crashes every downstream proposal Cholesky (the mutation MvNormal, the c²·Σ mixture
+        # draw, the proposal densities). Project R_fr onto the PD cone by flooring its eigenvalues
+        # at a small fraction of the largest, so it — and c²·any principal submatrix — factorizes.
+        if !isposdef(R_fr)
+            F      = eigen(Symmetric(R_fr))
+            λfloor = max(maximum(F.values) * 1e-10, eps(eltype(R_fr)))
+            R_fr   = F.vectors * Diagonal(max.(F.values, λfloor)) * F.vectors'
+            R_fr   = (R_fr + R_fr') / 2.
+        end
+
         # MvNormal centered at ̄θ with var-cov ̄Σ, subsetting out the fixed parameters
         θ_bar_fr = θ_bar[free_para_inds]
 
