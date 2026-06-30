@@ -1,13 +1,29 @@
 using ModelConstructors, HDF5, Random, JLD2, FileIO, SMC, Test
+using Distributed, LinearAlgebra
 include("modelsetup.jl")
+
+# Multi-threaded BLAS can sum in a different order from run to run, producing
+# tiny floating-point differences in weighted_cov(). Over many stages of sharp
+# Metropolis-Hastings accept/reject thresholds, that can snowball into a
+# different (but still individually valid) trajectory. Pin to one thread on
+# every process (parallel=true dispatches the mutation step to workers via
+# @distributed, and set_num_threads only affects the calling process) so
+# this test's bit-exact fixture comparison is reproducible.
+@everywhere LinearAlgebra.BLAS.set_num_threads(1)
 
 path = dirname(@__FILE__)
 writing_output = false
+run_benchmarks = false
 
 if VERSION < v"1.5"
     ver = "111"
-else
+elseif VERSION < v"1.7"
     ver = "150"
+else
+    # Julia 1.7 switched the default RNG from a single process-wide
+    # MersenneTwister to a per-Task Xoshiro256++ (TaskLocalRNG), so seeded
+    # draws no longer match the "150" reference data.
+    ver = "1126"
 end
 
 m = setup_linear_model(; regime_switching = true)
@@ -20,7 +36,7 @@ particle_store_path = rawpath(m, "estimate", "smcsave.h5")
 
 data = h5read("reference/test_data.h5", "rsdata")
 
-@everywhere Random.seed!(42)
+Random.seed!(42)
 
 println("Estimating Linear Model... (approx. 8 minutes)")
 
@@ -32,12 +48,14 @@ SMC.smc(rs_loglik_fn, m.parameters, data, verbose = :none,
         threshold_ratio = .5, smc_iteration = 0,
         regime_switching = true, toggle = true)
 
-display(@benchmark SMC.smc($rs_loglik_fn, $m.parameters, $data, verbose = :none,
-        use_fixed_schedule = true, parallel = false, n_Φ = 120, n_mh_steps = 1,
-        resampling_method = :polyalgo, data_vintage = "200707", target = 0.25,
-        savepath = $savepath, particle_store_path = $particle_store_path,
-        α = .9, threshold_ratio = .5, smc_iteration = 0,
-        regime_switching = true, toggle = true) evals=1 samples=1)
+if run_benchmarks
+    display(@benchmark SMC.smc($rs_loglik_fn, $m.parameters, $data, verbose = :none,
+            use_fixed_schedule = true, parallel = false, n_Φ = 120, n_mh_steps = 1,
+            resampling_method = :polyalgo, data_vintage = "200707", target = 0.25,
+            savepath = $savepath, particle_store_path = $particle_store_path,
+            α = .9, threshold_ratio = .5, smc_iteration = 0,
+            regime_switching = true, toggle = true) evals=1 samples=1)
+end
 
 println("Estimation done!")
 

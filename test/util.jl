@@ -57,7 +57,7 @@ end
 s1_r = SMC.scalar_reduce([s1]...)
 s2_r = SMC.scalar_reduce([s2 for i in 1:5]...)
 
-display(@benchmark SMC.scalar_reduce($s1...))
+display(@benchmark SMC.scalar_reduce($s1))
 
 if write_test_output
     JLD2.jldopen(string("reference/scalar_reduce_version=", ver, ".jld2"), true, true, true, IOStream) do file
@@ -83,7 +83,7 @@ v1_r = SMC.vector_reduce([v1]...)
 v2_r = SMC.vector_reduce([v2 for i in 1:5]...)
 v3_r = SMC.vector_reduce([v3 for i in 1:5]...)
 
-display(@benchmark SMC.vector_reduce($v1...))
+display(@benchmark SMC.vector_reduce($v1))
 
 if write_test_output
     JLD2.jldopen(string("reference/vector_reduce_version=", ver, ".jld2"), true, true, true, IOStream) do file

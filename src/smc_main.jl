@@ -469,7 +469,15 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         blocks_all  = generate_all_blocks(blocks_free, free_para_inds)
 
         new_particles = if parallel
+            # Julia (>=1.7) gives each Task its own RNG, seeded from OS entropy
+            # rather than inherited from the caller. @distributed dispatches
+            # each loop body in a freshly-spawned Task, so without an explicit
+            # per-particle reseed here, the mutation draws below would be
+            # driven by uncontrolled entropy on every stage, making the
+            # algorithm's output non-reproducible under a fixed Random.seed!.
+            particle_seeds = rand(UInt64, n_parts)
             @distributed (hcat) for k in 1:n_parts
+                Random.seed!(particle_seeds[k])
                 mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr, n_free_para,
                                  blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
                                  n_mh_steps = n_mh_steps, old_data = old_data)
