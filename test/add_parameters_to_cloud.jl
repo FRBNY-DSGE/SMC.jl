@@ -1,3 +1,4 @@
+run_benchmarks = false
 using ModelConstructors, HDF5, Random, JLD2, FileIO, SMC, Test
 include("modelsetup.jl")
 
@@ -17,8 +18,8 @@ m_rs <= Setting(:saveroot, save)
 savepath = rawpath(m, "estimate", "smc_cloud.jld2")
 particle_store_path = rawpath(m, "estimate", "smcsave.h5")
 
-data    = h5read("reference/test_data.h5", "data")
-data_rs = h5read("reference/test_data.h5", "rsdata")
+data    = h5read("$(@__DIR__)/reference/test_data.h5", "data")
+data_rs = h5read("$(@__DIR__)/reference/test_data.h5", "rsdata")
 
 Random.seed!(1793)
 
@@ -33,12 +34,12 @@ true_para = [1., 1., 1., # α1, β1, σ1 (regime 1)
              3., 3.,     # α3 regimes = 2-3
              4., 5.]     # β3 regimes = 2-3
 
-saved_file  = JLD2.jldopen(string("reference/smc_cloud_fix=true_version=", ver, ".jld2"), "r")
+saved_file  = JLD2.jldopen(string("$(@__DIR__)/reference/smc_cloud_fix=true_version=", ver, ".jld2"), "r")
 saved_cloud = saved_file["cloud"]
 saved_w     = saved_file["w"]
 saved_W     = saved_file["W"]
 
-saved_file_rs  = JLD2.jldopen(string("reference/smc_cloud_fix=true_rs=true_version=", ver, ".jld2"), "r")
+saved_file_rs  = JLD2.jldopen(string("$(@__DIR__)/reference/smc_cloud_fix=true_rs=true_version=", ver, ".jld2"), "r")
 saved_cloud_rs = saved_file_rs["cloud"]
 saved_w_rs     = saved_file_rs["w"]
 saved_W_rs     = saved_file_rs["W"]
@@ -57,7 +58,7 @@ new_cloud2 = SMC.add_parameters_to_cloud(joinpath("reference", "smc_cloud_fix=tr
                                                   ver * ".jld2"), m_rs.parameters,
                                          old_para_inds; regime_switching = true)
 
-display(@benchmark SMC.add_parameters_to_cloud($saved_cloud, $m_rs.parameters,
+run_benchmarks && display(@benchmark SMC.add_parameters_to_cloud($saved_cloud, $m_rs.parameters,
                                                $old_para_inds; regime_switching = true))
 
 @test saved_cloud.particles[:, 1:9] ≈ new_cloud.particles[:, 1:9]

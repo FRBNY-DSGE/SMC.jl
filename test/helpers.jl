@@ -21,7 +21,7 @@ Random.seed!(42)   # plain (not @everywhere): single-process tests need the task
 ####################################################################
 # Testing Adaptive Φ Solution
 ####################################################################
-file   = JLD2.jldopen("reference/solve_adaptive_phi.jld2", "r")
+file   = JLD2.jldopen("$(@__DIR__)/reference/solve_adaptive_phi.jld2", "r")
 cloud  = read(file, "cloud")
 i_smc  = read(file, "i")
 j_smc  = read(file, "j")
@@ -39,7 +39,7 @@ test_ϕ_n, test_resampled_last_period, test_j, test_ϕ_prop = SMC.solve_adaptive
                                                                 resampled_last_period)
 
 if writing_output
-    jldopen(string("reference/helpers_output_version=", dver, ".jld2"), true, true, true, IOStream) do file
+    jldopen(string("$(@__DIR__)/reference/helpers_output_version=", dver, ".jld2"), true, true, true, IOStream) do file
         write(file, "phi_n", test_ϕ_n)
         write(file, "resampled_last_period", test_resampled_last_period)
         write(file, "j", test_j)
@@ -47,7 +47,7 @@ if writing_output
     end
 end
 
-file = JLD2.jldopen(string("reference/helpers_output_version=", dver, ".jld2"), "r")
+file = JLD2.jldopen(string("$(@__DIR__)/reference/helpers_output_version=", dver, ".jld2"), "r")
 saved_ϕ_n = read(file, "phi_n")
 saved_resampled_last_period = read(file, "resampled_last_period")
 saved_j = read(file, "j")
@@ -65,7 +65,7 @@ end
 ####################################################################
 # Testing MvNormal Mixture Draw Function
 ####################################################################
-file = JLD2.jldopen("reference/mvnormal_inputs.jld2")
+file = JLD2.jldopen("$(@__DIR__)/reference/mvnormal_inputs.jld2")
     para_subset = read(file, "para_subset")
     d_subset    = as_mvnormal(read(file, "d_subset"))
     α           = read(file, "α")
@@ -75,12 +75,12 @@ close(file)
 test_θ_new = SMC.mvnormal_mixture_draw(para_subset, d_subset; c=c, α=α)
 
 if writing_output
-    JLD2.jldopen(string("reference/mvnormal_output_version=", ver, ".jld2"), true, true, true, IOStream) do file
+    JLD2.jldopen(string("$(@__DIR__)/reference/mvnormal_output_version=", ver, ".jld2"), true, true, true, IOStream) do file
         write(file, "θ_new", test_θ_new)
     end
 end
 
-file = JLD2.jldopen(string("reference/mvnormal_output_version=", ver, ".jld2"))
+file = JLD2.jldopen(string("$(@__DIR__)/reference/mvnormal_output_version=", ver, ".jld2"))
     saved_θ_new = read(file, "θ_new")
 close(file)
 
@@ -93,7 +93,7 @@ end
 ####################################################################
 # Test: get_cov()
 ####################################################################
-d = JLD2.jldopen("reference/mutation_inputs.jld2", "r") do file
+d = JLD2.jldopen("$(@__DIR__)/reference/mutation_inputs.jld2", "r") do file
     file["d"]
 end
 d = as_mvnormal(d)
@@ -109,7 +109,7 @@ end
 ####################################################################
 # Test: compute_proposal_densities()
 ####################################################################
-file = JLD2.jldopen("reference/proposal_densities_in.jld2")
+file = JLD2.jldopen("$(@__DIR__)/reference/proposal_densities_in.jld2")
     para_draw   = read(file, "para_draw")
     para_subset = read(file, "para_subset")
     d_subset    = as_mvnormal(read(file, "d_subset"))
@@ -121,13 +121,13 @@ q0, q1 = SMC.compute_proposal_densities(para_draw, para_subset, d_subset; α = �
                                         c = c)
 
 if writing_output
-    JLD2.jldopen(string("reference/proposal_densities_output_version=", dver, ".jld2"), true, true, true, IOStream) do file
+    JLD2.jldopen(string("$(@__DIR__)/reference/proposal_densities_output_version=", dver, ".jld2"), true, true, true, IOStream) do file
         file["q0"] = q0
         file["q1"] = q1
     end
 end
 
-file = JLD2.jldopen(string("reference/proposal_densities_output_version=", dver, ".jld2"))
+file = JLD2.jldopen(string("$(@__DIR__)/reference/proposal_densities_output_version=", dver, ".jld2"))
     saved_q0 = read(file, "q0")
     saved_q1 = read(file, "q1")
 close(file)
@@ -142,14 +142,14 @@ end
 ####################################################################
 # Testing ESS Computation
 ####################################################################
-file = JLD2.jldopen(string("reference/ess_inputs_version=", dver, ".jld2"))
+file = JLD2.jldopen(string("$(@__DIR__)/reference/ess_inputs_version=", dver, ".jld2"))
     loglh           = read(file, "loglh")
     current_weights = read(file, "current_weights")
     ϕ_n             = read(file, "ϕ_n")
     ϕ_n1            = read(file, "ϕ_n1")
 close(file)
 
-file = JLD2.jldopen(string("reference/ess_output_version=", dver, ".jld2"))
+file = JLD2.jldopen(string("$(@__DIR__)/reference/ess_output_version=", dver, ".jld2"))
     saved_ESS = read(file, "ess")
 close(file)
 
@@ -160,8 +160,8 @@ test_ESS = SMC.compute_ESS(loglh, current_weights, ϕ_n, ϕ_n1)
 # saved cloud, and depends on a `blocks=3` fixture that isn't in the repo — guard on its
 # presence so flipping writing_output to regenerate the RNG-dependent refs above doesn't
 # crash here.
-if writing_output && isfile("reference/smc_sw_cloud_fix=true_blocks=3.jld2")
-    JLD2.jldopen("reference/smc_sw_cloud_fix=true_blocks=3.jld2", "r") do file
+if writing_output && isfile("$(@__DIR__)/reference/smc_sw_cloud_fix=true_blocks=3.jld2")
+    JLD2.jldopen("$(@__DIR__)/reference/smc_sw_cloud_fix=true_blocks=3.jld2", "r") do file
         cloud = file["cloud"]
         current_weights = file["w"][:,3]
     end
@@ -173,7 +173,7 @@ if writing_output && isfile("reference/smc_sw_cloud_fix=true_blocks=3.jld2")
     ϕ_n       = 9.25022e-6
     ϕ_n1      = 2.15769e-6
 
-    JLD2.jldopen(string("reference/ess_inputs_version=", dver, ".jld2"), true, true, true, IOStream) do file
+    JLD2.jldopen(string("$(@__DIR__)/reference/ess_inputs_version=", dver, ".jld2"), true, true, true, IOStream) do file
         write(file, "loglh", loglh)
         write(file, "current_weights", current_weights)
         write(file, "ϕ_n", ϕ_n)
@@ -181,7 +181,7 @@ if writing_output && isfile("reference/smc_sw_cloud_fix=true_blocks=3.jld2")
         write(file, "old_loglh", old_loglh)
     end
 
-    JLD2.jldopen(string("reference/ess_output_version=", dver, ".jld2"), true, true, true, IOStream) do file
+    JLD2.jldopen(string("$(@__DIR__)/reference/ess_output_version=", dver, ".jld2"), true, true, true, IOStream) do file
         write(file, "ess", test_ESS)
     end
 end
@@ -207,14 +207,14 @@ test_blocks_all  = SMC.generate_all_blocks(test_blocks_free, free_para_inds)
 test_blocks      = SMC.generate_param_blocks(length(m.parameters), n_blocks)
 
 if writing_output
-    JLD2.jldopen(string("reference/helpers_blocking_version=", ver, ".jld2"), true, true, true, IOStream) do file
+    JLD2.jldopen(string("$(@__DIR__)/reference/helpers_blocking_version=", ver, ".jld2"), true, true, true, IOStream) do file
         file["blocks_free"] = test_blocks_free
         file["blocks_all"]  = test_blocks_all
         file["blocks"]      = test_blocks
     end
 end
 
-savepath = string("reference/helpers_blocking_version=", ver, ".jld2")
+savepath = string("$(@__DIR__)/reference/helpers_blocking_version=", ver, ".jld2")
 saved_blocks_free = load(savepath, "blocks_free")
 saved_blocks_all  = load(savepath, "blocks_all")
 saved_blocks      = load(savepath, "blocks")
