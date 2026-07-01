@@ -87,11 +87,26 @@ the standard distribution and `(1 - α)` of the diagonalized distribution.
 function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
                                c::T = 1.0, α::T = 1.0) where T<:AbstractFloat
     @assert 0 <= α <= 1
-    d_bar = MvNormal(d_prop.μ, c^2 * d_prop.Σ)
+    # Use get_cov (defined below) rather than the raw `.Σ` field: for a DegenerateMvNormal the
+    # covariance lives in `.σ` (and its 4-arg constructor leaves `.Σ` unset), so `.Σ` here is
+    # dimension-inconsistent with `.μ` (this is what broke DSGE's MH). get_cov handles both:
+    # MvNormal → Σ.mat, DegenerateMvNormal → σ.
+    Σ = get_cov(d_prop)
+    # PD guard: MvNormal's PDMat does a strict Cholesky, but a DegenerateMvNormal proposal
+    # (DSGE's MH feeds the hessian-inverse) can be only PSD / marginally non-PD on 1.12's
+    # stricter LAPACK. Floor the eigenvalues once. isposdef → no-op for the SMC path (Σ from
+    # the already-floored R_fr), so this is behavior-preserving there. Mirrors the R_fr fix.
+    if !isposdef(Σ)
+        F      = eigen(Symmetric(Σ))
+        λfloor = max(maximum(F.values) * 1e-10, eps(eltype(Σ)))
+        Σ      = F.vectors * Diagonal(max.(F.values, λfloor)) * F.vectors'
+        Σ      = (Σ + Σ') / 2.
+    end
+    d_bar = MvNormal(d_prop.μ, c^2 * Σ)
 
     # Create mixture distribution conditional on the previous parameter value, θ_old
-    d_old      = MvNormal(θ_old, c^2 * d_prop.Σ)
-    d_diag_old = MvNormal(θ_old, Diagonal(diag(c^2 * d_prop.Σ)))
+    d_old      = MvNormal(θ_old, c^2 * Σ)
+    d_diag_old = MvNormal(θ_old, Diagonal(diag(c^2 * Σ)))
     d_mix_old  = MixtureModel(MvNormal[d_old, d_diag_old, d_bar], [α, (1 - α)/2, (1 - α)/2])
 
     θ_new = rand(d_mix_old)
