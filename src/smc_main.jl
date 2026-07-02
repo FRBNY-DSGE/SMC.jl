@@ -166,8 +166,18 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 
     # Construct closure of mutation function so as to avoid issues with serialization
     # across workers with different Julia system images
+    # Ship everything the worker-local closure reads as a Main global. The @distributed
+    # body below lexically binds the *local* `mutation_closure` (which captures these by
+    # value and is serialized to workers), so these sends are only exercised if the global
+    # `@everywhere` definition is ever dispatched — but keep them complete so that path is
+    # correct too (previously only parameters/data were sent, so loglikelihood /
+    # old_loglikelihood / regime_switching / toggle would be UndefVar on workers).
     sendto(workers(), parameters = parameters)
     sendto(workers(), data = data)
+    sendto(workers(), loglikelihood = loglikelihood)
+    sendto(workers(), old_loglikelihood = old_loglikelihood)
+    sendto(workers(), regime_switching = regime_switching)
+    sendto(workers(), toggle = toggle)
 
     function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                               n_free_para::Int,
@@ -179,11 +189,15 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
                         old_loglikelihood = old_loglikelihood, regime_switching = regime_switching,
                         toggle = toggle)
     end
+    # NOTE: positional args MUST match the local closure above and mutation()'s signature
+    # (n_free_para, blocks_free, blocks_all). A prior version had blocks_free/blocks_all/
+    # n_free_para swapped here, which would MethodError if this global were ever dispatched.
     @everywhere function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
-                                          blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}}, n_free_para::Int,
+                                          n_free_para::Int,
+                                          blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
                                           ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
                                           old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64, T<:Matrix}
-        return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, blocks_free, blocks_all, n_free_para,
+        return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, n_free_para, blocks_free, blocks_all,
                         ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data,
                         old_loglikelihood = old_loglikelihood, regime_switching = regime_switching, toggle = toggle)
     end
@@ -460,6 +474,18 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         # Ensures marix is positive semi-definite symmetric
         # (not off due to numerical error) and values haven't changed
         R_fr = (R[free_para_inds, free_para_inds] + R[free_para_inds, free_para_inds]') / 2.
+
+        # Julia 1.12's stricter LAPACK rejects covariances that are only positive *semi*-definite
+        # (a zero / tiny-negative eigenvalue from roundoff or a near-degenerate weighted cloud),
+        # which crashes every downstream proposal Cholesky (the mutation MvNormal, the c²·Σ mixture
+        # draw, the proposal densities). Project R_fr onto the PD cone by flooring its eigenvalues
+        # at a small fraction of the largest, so it — and c²·any principal submatrix — factorizes.
+        if !isposdef(R_fr)
+            F      = eigen(Symmetric(R_fr))
+            λfloor = max(maximum(F.values) * 1e-10, eps(eltype(R_fr)))
+            R_fr   = F.vectors * Diagonal(max.(F.values, λfloor)) * F.vectors'
+            R_fr   = (R_fr + R_fr') / 2.
+        end
 
         # MvNormal centered at ̄θ with var-cov ̄Σ, subsetting out the fixed parameters
         θ_bar_fr = θ_bar[free_para_inds]

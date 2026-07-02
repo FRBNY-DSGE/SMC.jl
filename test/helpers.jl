@@ -1,13 +1,22 @@
 writing_output = false
 include("modelsetup.jl")
 
+# RNG-dependent references (mvnormal_mixture_draw's rand, the block generators' shuffle)
+# are keyed by Julia version: 1.7+ switched the default RNG to a per-Task Xoshiro256++,
+# so seeded draws no longer match the "150" data. Regenerate against this stack by
+# setting writing_output = true and running under the target Julia.
 if VERSION < v"1.5"
     ver = "111"
-else
+elseif VERSION < v"1.7"
     ver = "150"
+else
+    ver = "1126"
 end
+# Deterministic references (solve_adaptive_ϕ, proposal densities, ESS) are RNG-independent,
+# so the existing "150"/"111" files stay valid on any stack — no 1126 tier needed.
+dver = VERSION < v"1.5" ? "111" : "150"
 
-@everywhere Random.seed!(42)
+Random.seed!(42)   # plain (not @everywhere): single-process tests need the task-local RNG pinned
 
 ####################################################################
 # Testing Adaptive Φ Solution
@@ -30,7 +39,7 @@ test_ϕ_n, test_resampled_last_period, test_j, test_ϕ_prop = SMC.solve_adaptive
                                                                 resampled_last_period)
 
 if writing_output
-    jldopen(string("$(@__DIR__)/reference/helpers_output_version=", ver, ".jld2"), true, true, true, IOStream) do file
+    jldopen(string("$(@__DIR__)/reference/helpers_output_version=", dver, ".jld2"), true, true, true, IOStream) do file
         write(file, "phi_n", test_ϕ_n)
         write(file, "resampled_last_period", test_resampled_last_period)
         write(file, "j", test_j)
@@ -38,7 +47,7 @@ if writing_output
     end
 end
 
-file = JLD2.jldopen(string("$(@__DIR__)/reference/helpers_output_version=", ver, ".jld2"), "r")
+file = JLD2.jldopen(string("$(@__DIR__)/reference/helpers_output_version=", dver, ".jld2"), "r")
 saved_ϕ_n = read(file, "phi_n")
 saved_resampled_last_period = read(file, "resampled_last_period")
 saved_j = read(file, "j")
@@ -58,7 +67,7 @@ end
 ####################################################################
 file = JLD2.jldopen("$(@__DIR__)/reference/mvnormal_inputs.jld2")
     para_subset = read(file, "para_subset")
-    d_subset    = read(file, "d_subset")
+    d_subset    = as_mvnormal(read(file, "d_subset"))
     α           = read(file, "α")
     c           = read(file, "c")
 close(file)
@@ -87,6 +96,7 @@ end
 d = JLD2.jldopen("$(@__DIR__)/reference/mutation_inputs.jld2", "r") do file
     file["d"]
 end
+d = as_mvnormal(d)
 d_deg = DegenerateMvNormal(d.μ, d.Σ.mat)
 
 ####################################################################
@@ -102,7 +112,7 @@ end
 file = JLD2.jldopen("$(@__DIR__)/reference/proposal_densities_in.jld2")
     para_draw   = read(file, "para_draw")
     para_subset = read(file, "para_subset")
-    d_subset    = read(file, "d_subset")
+    d_subset    = as_mvnormal(read(file, "d_subset"))
     α           = read(file, "α")
     c           = read(file, "c")
 close(file)
@@ -111,13 +121,13 @@ q0, q1 = SMC.compute_proposal_densities(para_draw, para_subset, d_subset; α = �
                                         c = c)
 
 if writing_output
-    JLD2.jldopen(string("$(@__DIR__)/reference/proposal_densities_output_version=", ver, ".jld2"), true, true, true, IOStream) do file
+    JLD2.jldopen(string("$(@__DIR__)/reference/proposal_densities_output_version=", dver, ".jld2"), true, true, true, IOStream) do file
         file["q0"] = q0
         file["q1"] = q1
     end
 end
 
-file = JLD2.jldopen(string("$(@__DIR__)/reference/proposal_densities_output_version=", ver, ".jld2"))
+file = JLD2.jldopen(string("$(@__DIR__)/reference/proposal_densities_output_version=", dver, ".jld2"))
     saved_q0 = read(file, "q0")
     saved_q1 = read(file, "q1")
 close(file)
@@ -132,20 +142,25 @@ end
 ####################################################################
 # Testing ESS Computation
 ####################################################################
-file = JLD2.jldopen(string("$(@__DIR__)/reference/ess_inputs_version=", ver, ".jld2"))
+file = JLD2.jldopen(string("$(@__DIR__)/reference/ess_inputs_version=", dver, ".jld2"))
     loglh           = read(file, "loglh")
     current_weights = read(file, "current_weights")
     ϕ_n             = read(file, "ϕ_n")
     ϕ_n1            = read(file, "ϕ_n1")
 close(file)
 
-file = JLD2.jldopen(string("$(@__DIR__)/reference/ess_output_version=", ver, ".jld2"))
+file = JLD2.jldopen(string("$(@__DIR__)/reference/ess_output_version=", dver, ".jld2"))
     saved_ESS = read(file, "ess")
 close(file)
 
 test_ESS = SMC.compute_ESS(loglh, current_weights, ϕ_n, ϕ_n1)
 
-if writing_output
+# The ESS inputs/output are deterministic, so the existing dver references are valid on
+# any stack and normally need no regeneration. This block only re-derives them from a
+# saved cloud, and depends on a `blocks=3` fixture that isn't in the repo — guard on its
+# presence so flipping writing_output to regenerate the RNG-dependent refs above doesn't
+# crash here.
+if writing_output && isfile("$(@__DIR__)/reference/smc_sw_cloud_fix=true_blocks=3.jld2")
     JLD2.jldopen("$(@__DIR__)/reference/smc_sw_cloud_fix=true_blocks=3.jld2", "r") do file
         cloud = file["cloud"]
         current_weights = file["w"][:,3]
@@ -158,7 +173,7 @@ if writing_output
     ϕ_n       = 9.25022e-6
     ϕ_n1      = 2.15769e-6
 
-    JLD2.jldopen(string("$(@__DIR__)/reference/ess_inputs_version=", ver, ".jld2"), true, true, true, IOStream) do file
+    JLD2.jldopen(string("$(@__DIR__)/reference/ess_inputs_version=", dver, ".jld2"), true, true, true, IOStream) do file
         write(file, "loglh", loglh)
         write(file, "current_weights", current_weights)
         write(file, "ϕ_n", ϕ_n)
@@ -166,7 +181,7 @@ if writing_output
         write(file, "old_loglh", old_loglh)
     end
 
-    JLD2.jldopen(string("$(@__DIR__)/reference/ess_output_version=", ver, ".jld2"), true, true, true, IOStream) do file
+    JLD2.jldopen(string("$(@__DIR__)/reference/ess_output_version=", dver, ".jld2"), true, true, true, IOStream) do file
         write(file, "ess", test_ESS)
     end
 end

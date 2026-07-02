@@ -1,14 +1,19 @@
-run_benchmarks = false
 using ModelConstructors, HDF5, Random, JLD2, FileIO, SMC, Test
 include("modelsetup.jl")
 
 path = dirname(@__FILE__)
 writing_output = false
+if !@isdefined(run_benchmarks); run_benchmarks = false; end
 
+# Julia 1.7+ switched the default RNG to a per-Task Xoshiro256++, so the seeded SMC run
+# differs from the "150" data — regenerate with writing_output on. This run is
+# parallel = false (sequential), so it is reproducible run-to-run under the task-local RNG.
 if VERSION < v"1.5"
     ver = "111"
-else
+elseif VERSION < v"1.7"
     ver = "150"
+else
+    ver = "1126"
 end
 
 m = setup_linear_model(; regime_switching = true)
@@ -19,9 +24,9 @@ m <= Setting(:saveroot, save)
 savepath = rawpath(m, "estimate", "smc_cloud.jld2")
 particle_store_path = rawpath(m, "estimate", "smcsave.h5")
 
-data = h5read("$(@__DIR__)/reference/test_data.h5", "rsdata")
+data = h5read("reference/test_data.h5", "rsdata")
 
-@everywhere Random.seed!(42)
+Random.seed!(42)   # plain (not @everywhere): single-process tests need the task-local RNG pinned
 
 println("Estimating Linear Model... (approx. 8 minutes)")
 
@@ -32,13 +37,6 @@ SMC.smc(rs_loglik_fn, m.parameters, data, verbose = :none,
         particle_store_path = particle_store_path, α = .9,
         threshold_ratio = .5, smc_iteration = 0,
         regime_switching = true, toggle = true)
-
-run_benchmarks && display(@benchmark SMC.smc($rs_loglik_fn, $m.parameters, $data, verbose = :none,
-        use_fixed_schedule = true, parallel = false, n_Φ = 120, n_mh_steps = 1,
-        resampling_method = :polyalgo, data_vintage = "200707", target = 0.25,
-        savepath = $savepath, particle_store_path = $particle_store_path,
-        α = .9, threshold_ratio = .5, smc_iteration = 0,
-        regime_switching = true, toggle = true) evals=1 samples=1)
 
 println("Estimation done!")
 
@@ -58,14 +56,14 @@ true_para = [1., 1., 1., # α1, β1, σ1 (regime 1)
              4., 5.]     # β3 regimes = 2-3
 
 if writing_output
-    jldopen(string("$(@__DIR__)/reference/smc_cloud_fix=true_rs=true_version=", ver, ".jld2"), true, true, true, IOStream) do file
+    jldopen(string("reference/smc_cloud_fix=true_rs=true_version=", ver, ".jld2"), true, true, true, IOStream) do file
         write(file, "cloud", test_cloud)
         write(file, "w", test_w)
         write(file, "W", test_W)
     end
 end
 
-saved_file  = JLD2.jldopen(string("$(@__DIR__)/reference/smc_cloud_fix=true_rs=true_version=", ver, ".jld2"), "r")
+saved_file  = JLD2.jldopen(string("reference/smc_cloud_fix=true_rs=true_version=", ver, ".jld2"), "r")
 saved_cloud = saved_file["cloud"]
 saved_w     = saved_file["w"]
 saved_W     = saved_file["W"]
@@ -109,3 +107,14 @@ end
 # Clean output files up
 rm(rawpath(m, "estimate", "smc_cloud.jld2"))
 rm(rawpath(m, "estimate", "smcsave.h5"))
+
+# Benchmark last so re-running smc (which overwrites savepath) can't clobber the cloud the
+# assertions above load from savepath.
+if run_benchmarks
+    @btime SMC.smc($rs_loglik_fn, $m.parameters, $data, verbose = :none,
+        use_fixed_schedule = true, parallel = false, n_Φ = 120, n_mh_steps = 1,
+        resampling_method = :polyalgo, data_vintage = "200707", target = 0.25,
+        savepath = $savepath, particle_store_path = $particle_store_path,
+        α = .9, threshold_ratio = .5, smc_iteration = 0,
+        regime_switching = true, toggle = true) evals=1 samples=1
+end

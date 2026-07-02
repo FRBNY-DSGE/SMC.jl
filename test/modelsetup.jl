@@ -1,4 +1,23 @@
-using ModelConstructors, HDF5
+using ModelConstructors, HDF5, Distributions, LinearAlgebra
+
+# JLD2 may deserialize a saved MvNormal/PDMat as an opaque JLD2.ReconstructedMutable when
+# the installed Distributions/PDMats type layout differs from when the fixture was written
+# (the Pkg.test sandbox commonly resolves newer versions than the env that saved it).
+# Rebuild a real MvNormal from the loaded fields so dispatch (mvnormal_mixture_draw,
+# compute_proposal_densities, get_cov) and indexing work regardless of dep versions.
+function as_mvnormal(F)
+    F isa Distributions.MvNormal && return F
+    μ    = collect(getproperty(F, :μ))
+    Σobj = getproperty(F, :Σ)
+    Σ = if Σobj isa AbstractMatrix
+        Matrix(Σobj)                              # already a (PD)Matrix
+    elseif hasproperty(Σobj, :mat)
+        Matrix(getproperty(Σobj, :mat))           # PDMat.mat field
+    else
+        Matrix(getproperty(Σobj, :chol))          # fall back to the Cholesky factor
+    end
+    return MvNormal(μ, Σ)
+end
 
 regenerate_data = false
 

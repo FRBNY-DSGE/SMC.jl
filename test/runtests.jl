@@ -4,6 +4,17 @@ using LinearAlgebra, PDMats, Distributions
 using Printf, Distributed, Random, HDF5, FileIO, JLD2
 using BenchmarkTools
 
+# The test files reference data/output with paths relative to this directory (e.g.
+# "reference/test_data.h5"). cd here so they resolve no matter where Julia was launched
+# from (Pkg.test, include from the package root, the REPL, …).
+cd(@__DIR__)
+
+# Benchmarks are for manual runs only — the files share this scope, so without a definition
+# here the first file to default run_benchmarks = true would leak it on to every later file
+# (running expensive/under-set-up @benchmark/@btime blocks in CI). Pin it off for the suite;
+# standalone `include("<file>.jl")` runs still honor each file's own default.
+run_benchmarks = false
+
 my_tests = [
             "helpers",
             "initialization",

@@ -1,17 +1,26 @@
-run_benchmarks = false
-if VERSION < v"1.5"
-    ver = "111"
-else
-    ver = "150"
-end
+if !@isdefined(run_benchmarks); run_benchmarks = false; end
 
-file = string("$(@__DIR__)/reference/smc_cloud_fix=true_version=", ver, ".jld2")
+# split/join is a deterministic serialization round-trip — RNG-independent — so it reads
+# the existing "150" cloud regardless of the Julia version that generated it.
+ver = VERSION < v"1.5" ? "111" : "150"
+
+file = string("reference/smc_cloud_fix=true_version=", ver, ".jld2")
 cloud = load(file, "cloud")
 split_cloud(file, 2)
 rejoined_cloud = join_cloud(file, 2)
 
-run_benchmarks && display(@benchmark split_cloud($file, 2))
-run_benchmarks && display(@benchmark join_cloud($file, 2))
+if run_benchmarks
+    # Benchmarked here (before the rm cleanup below) so the _part* files split_cloud
+    # writes are still present for join_cloud to read.
+    b_split = @benchmark split_cloud($file, 2)
+    b_join  = @benchmark join_cloud($file, 2)
+    println("\n===== particle.jl benchmark results =====")
+    for (label, b) in (("split_cloud", b_split), ("join_cloud", b_join))
+        println(rpad(label, 14), " time: ",
+                rpad(BenchmarkTools.prettytime(median(b).time), 12),
+                "memory: ", BenchmarkTools.prettymemory(median(b).memory))
+    end
+end
 
 @testset "Test split and join clouds" begin
     @test cloud.particles           == rejoined_cloud.particles
@@ -29,5 +38,5 @@ run_benchmarks && display(@benchmark join_cloud($file, 2))
     @test cloud.tempering_schedule  == rejoined_cloud.tempering_schedule
 end
 
-rm("$(@__DIR__)/reference/smc_cloud_fix=true_version=$(ver)_part1.jld2")
-rm("$(@__DIR__)/reference/smc_cloud_fix=true_version=$(ver)_part2.jld2")
+rm("reference/smc_cloud_fix=true_version=$(ver)_part1.jld2")
+rm("reference/smc_cloud_fix=true_version=$(ver)_part2.jld2")
