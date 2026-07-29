@@ -318,8 +318,8 @@ function get_prior_covariance(parameters; regime_switching = false, n_draws = 1e
         end
     end
 
-    draw_matrix = reduce(vcat, transpose.(draws))
-    free_matrix = draw_matrix[free_para_inds, free_para_inds]
+    draw_matrix = reduce(vcat, transpose.(draws))          # (n_draws × n_params)
+    free_matrix = draw_matrix[:, free_para_inds]           # keep all draws (rows); select free params (cols)
 
     return cov(free_matrix)
 end
