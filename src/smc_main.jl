@@ -158,7 +158,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
              regime_switching::Bool = false,
              toggle::Bool = true,
              debug_assertion::Bool = false,
-             log_prob_old_data::Float64 = 0.0) where {S<:AbstractFloat, U<:Number}
+             log_prob_old_data::Float64 = 0.0, add_zlb_duration::Tuple{Bool, Int} = (false, 1),
+             cholesky_fix = :none) where {S<:AbstractFloat, U<:Number}
 
     ########################################################################################
     ### Settings
@@ -166,8 +167,18 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 
     # Construct closure of mutation function so as to avoid issues with serialization
     # across workers with different Julia system images
+    # Ship everything the worker-local closure reads as a Main global. The @distributed
+    # body below lexically binds the *local* `mutation_closure` (which captures these by
+    # value and is serialized to workers), so these sends are only exercised if the global
+    # `@everywhere` definition is ever dispatched — but keep them complete so that path is
+    # correct too (previously only parameters/data were sent, so loglikelihood /
+    # old_loglikelihood / regime_switching / toggle would be UndefVar on workers).
     sendto(workers(), parameters = parameters)
     sendto(workers(), data = data)
+    sendto(workers(), loglikelihood = loglikelihood)
+    sendto(workers(), old_loglikelihood = old_loglikelihood)
+    sendto(workers(), regime_switching = regime_switching)
+    sendto(workers(), toggle = toggle)
 
     function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                               n_free_para::Int,
@@ -179,14 +190,20 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
                         old_loglikelihood = old_loglikelihood, regime_switching = regime_switching,
                         toggle = toggle)
     end
+    # NOTE: positional args MUST match the local closure above and mutation()'s signature
+    # (n_free_para, blocks_free, blocks_all). A prior version had blocks_free/blocks_all/
+    # n_free_para swapped here, which would MethodError if this global were ever dispatched.
     @everywhere function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
-                                          blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}}, n_free_para::Int,
+                                          n_free_para::Int,
+                                          blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
                                           ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
                                           old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64, T<:Matrix}
-        return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, blocks_free, blocks_all, n_free_para,
+
+        return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, n_free_para, blocks_free, blocks_all,
                         ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data,
                         old_loglikelihood = old_loglikelihood, regime_switching = regime_switching, toggle = toggle)
     end
+
 
     # Check that if there's a tempered update, old and current vintages are different
     tempered_update = !isempty(old_data) # Time tempering
@@ -204,6 +221,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     #use_fixed_schedule = (tempering_target == 0.0)
 
     # Now count number of regime switching parameter values (excluding regime 1 values), i.e. if one parameter has 3 regimes, then add 2 to n_para
+
     n_para = length(parameters)
     for para in parameters
         if !isempty(para.regimes)
@@ -215,52 +233,96 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         end
     end
 
-    fixed_para_inds = ModelConstructors.get_fixed_para_inds(parameters; regime_switching = regime_switching, toggle = toggle)
-    free_para_inds  = ModelConstructors.get_free_para_inds( parameters; regime_switching = regime_switching, toggle = toggle)
-    para_symbols    = [θ.key for θ in parameters]
-    if regime_switching
-        # Concatenate regime symbols for each extra regimes
-        reg_switch_symbols = Vector{Symbol}(undef, n_para - length(parameters))
-        ind = 0
-        for θ in parameters
-            if !isempty(θ.regimes)
-                for i in 2:length(θ.regimes[:value])
-                    ind += 1
-                    reg_switch_symbols[ind] = Symbol(θ.key, "_reg$(i)")
-                end
+fixed_para_inds = ModelConstructors.get_fixed_para_inds(parameters; regime_switching = regime_switching, toggle = toggle)
+free_para_inds  = ModelConstructors.get_free_para_inds(parameters; regime_switching = regime_switching, toggle = toggle)
+
+old_cloud_cholesky_fixes = [
+    :fixed_weight_mixture_1_prev_cloud,
+    :fixed_weight_mixture_2_prev_cloud,
+    :fixed_weight_mixture_scaling_prev_cloud
+]
+#[ID] Get prior covariance matrix (for free paras)
+if tempered_update || cholesky_fix ∈ old_cloud_cholesky_fixes
+    # If we do data tempering, our "prior covariance" is just the covariance of the the old cloud
+    prev_cloud = cloud_isempty(old_cloud) ? load(loadpath, "cloud") : old_cloud
+    R_prior = weighted_cov(prev_cloud)[free_para_inds, free_para_inds]
+else
+    # If we don't do data tempering, our "prior covariance" is the covariance of draws from marginal
+    R_prior = SMC.get_prior_covariance(parameters, regime_switching = regime_switching, n_draws = 1e5)
+end
+
+para_symbols    = [θ.key for θ in parameters]
+if regime_switching
+    # Concatenate regime symbols for each extra regimes
+    reg_switch_symbols = Vector{Symbol}(undef, n_para - length(parameters))
+    ind = 0
+    for θ in parameters
+        if !isempty(θ.regimes)
+            for i in 2:length(θ.regimes[:value])
+                ind += 1
+                reg_switch_symbols[ind] = Symbol(θ.key, "_reg$(i)")
             end
         end
-        push!(para_symbols, reg_switch_symbols...)
     end
+    push!(para_symbols, reg_switch_symbols...)
+end
 
-    n_free_para = length(free_para_inds)
-    @assert n_free_para > 0 "All model parameters are fixed!"
+n_free_para = length(free_para_inds)
+n_fixed_para = length(fixed_para_inds)
+@assert n_free_para > 0 "All model parameters are fixed!"
 
     #################################################################################
     ### Initialize Algorithm: Draws from prior
     #################################################################################
-    println(verbose, :low, "\n\n SMC " * (testing ? "testing " : "") * "starts ....\n\n")
-
-    if tempered_update
+println(verbose, :low, "\n\n SMC " * (testing ? "testing " : "") * "starts ....\n\n")
+    # RESUME FIRST. This branch used to sit below `if tempered_update`, which made
+    # it unreachable for a bridge run (tempered_update is true whenever old_data is
+    # passed) -- so resuming a bridge step silently fell into the bridge
+    # initialization below, which calls initialize_cloud_settings! and
+    # initialize_likelihoods! and thereby resets stage_index/c and recomputes every
+    # likelihood, i.e. it restarted the step instead of continuing it.
+    #
+    # A stage file already holds the fully initialized bridged cloud: draws, loglh,
+    # OLD loglh, weights, ESS history, stage_index and c. So on resume none of that
+    # initialization should run again, for a bridge step or otherwise -- we just
+    # load the cloud and let the w/W/j restore below pick up the rest.
+    if continue_intermediate
+        cloud = load(loadpath, "cloud")
+    elseif tempered_update
         # If user does not input Cloud object themselves, looks for cloud in loadpath.
         cloud = cloud_isempty(old_cloud) ? load(loadpath, "cloud") : old_cloud
         old_n_parts = length(cloud)
 
         if (tempered_update_prior_weight == 0.0) && (old_n_parts == n_parts)
             # Initialize settings first, with the ESS properly set since starting from an old estimation
+            #initialize_cloud_settings!(cloud; tempered_update = tempered_update,
+            #n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
+            #println("Above initalize cloud")
+            # Initialize remaining cloud settings
+            #println("Initializing cloud")
             initialize_cloud_settings!(cloud; tempered_update = tempered_update,
                                        n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
 
             # Update the old_loglh column in cloud.particles with the values
             # from the current loglh column in cloud.particles.
             # Then compute log-likelihood of *old* estimation's particles on *new* data and parameters.
+
+
+            # 8/9/24 - stuck here. Trying to update a size 130 vector of parameters with a length 144 set of parameter draws.
+            #For starters, the parameter vector should be 184. Secondarily, we need a mechanism of including the draws of new parameters
+
+            #println("Initialize likelihood")
             initialize_likelihoods!(loglikelihood, parameters, data, cloud; parallel = parallel,
                                     toggle = toggle)
+            #println("After initialize likelihood")
+
 
         elseif (1. >= tempered_update_prior_weight > 0.) || (old_n_parts != n_parts)
             # Resample from bridge distribution
             n_to_resample = Int(round((1-tempered_update_prior_weight) * n_parts))
+
             n_from_prior  = n_parts - n_to_resample
+
             if n_to_resample > 0
                 new_inds = resample(get_weights(cloud); n_parts = n_to_resample,
                                     method = resampling_method, parallel = parallel)
@@ -276,7 +338,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
             update_cloud!(bridge_cloud, cloud.particles[new_inds, :])
             update_loglh!(bridge_cloud, get_loglh(cloud)[new_inds])
             update_logprior!(bridge_cloud, get_logprior(cloud)[new_inds])
-            update_old_loglh!(bridge_cloud, get_old_loglh(cloud)[new_inds])
+            #update_old_loglh!(bridge_cloud, get_old_loglh(cloud)[new_inds])
 
             # Add to the cloud draws from the prior. Note that we are drawing from the current prior,
             # but evaluating the old log-likelihood function on the old data. Thus,
@@ -300,10 +362,10 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
             else
                 cloud = bridge_cloud
             end
-
             # Update the old_loglh column in cloud.particles with the values
             # from the current loglh column in cloud.particles.
             # Then compute current log-likelihood of *old* estimation's particles on *new* data and parameters.
+
             initialize_likelihoods!(loglikelihood, parameters, data, cloud; parallel = parallel,
                                     toggle = toggle)
 
@@ -327,23 +389,22 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
             # Initialize remaining cloud settings
             initialize_cloud_settings!(cloud; tempered_update = tempered_update,
                                        n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
-        else
+else
             throw(DomainError("The keyword tempered_update_prior_weight must be within the interval [0, 1] but " *
                               "is currently set to $(tempered_update_prior_weight)"))
-        end
-    elseif continue_intermediate
-        cloud = load(loadpath, "cloud")
-    else
-        # Initialization of Particle Array Cloud
-        cloud = Cloud(n_para, n_parts)
-
-        # Instantiating Cloud object, update draws, loglh, & logprior
+end
+else
+# Initialization of Particle Array Cloud
+#println("Above new cloud?")
+cloud = Cloud(n_para, n_parts)
+# Instantiating Cloud object, update draws, loglh, & logprior
+#println("Making new cloud object")
         initial_draw!(loglikelihood, parameters, data, cloud; parallel = parallel, regime_switching = regime_switching,
                       toggle = toggle)
+#println("initializing cloud")
         initialize_cloud_settings!(cloud; tempered_update = tempered_update,
                                    n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
-    end
-
+end
     # Fixed schedule for construction of ϕ_prop
     if use_fixed_schedule
         cloud.tempering_schedule = ((collect(1:n_Φ) .- 1) / (n_Φ-1)) .^ λ
@@ -356,15 +417,18 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         w_matrix = load(loadpath, "w")
         W_matrix = load(loadpath, "W")
         j        = load(loadpath, "j")
+        println(j)
         i        = cloud.stage_index
         c        = cloud.c
         ϕ_prop   = (((collect(1:n_Φ) .- 1) / (n_Φ-1)) .^ λ)[j]
+        println("I have all vars")
     else
         w_matrix = zeros(n_parts, 1)
         W_matrix = tempered_update ? (sum(get_weights(cloud)) <= 1.0 ?
                                       get_weights(cloud) * n_parts : get_weights(cloud)) :
                                       fill(1,(n_parts, 1))
     end
+
 
     # Printing
     init_stage_print(cloud, para_symbols; verbose = verbose,
@@ -374,18 +438,18 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     #################################################################################
     ### Recursion
     #################################################################################
-    while ϕ_n < 1.
+while ϕ_n < 1.
         start_time = time_ns()
-        cloud.stage_index = i += 1
+    cloud.stage_index = i += 1
 
         #############################################################################
         ### Setting ϕ_n (either adaptively or by the fixed schedule)
         #############################################################################
-        ϕ_n1 = cloud.tempering_schedule[i-1]
-
+    ϕ_n1 = cloud.tempering_schedule[i-1]
         if use_fixed_schedule
             ϕ_n = cloud.tempering_schedule[i]
         else
+            #println("Proposed phi = $(Φ_prop)")
             ϕ_n, resampled_last_period, j, ϕ_prop = solve_adaptive_ϕ(cloud,
                                                        proposed_fixed_schedule,
                                                        i, j, ϕ_prop, ϕ_n1,
@@ -396,8 +460,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         #############################################################################
         ### Step 1: Correction
         #############################################################################
-
-        # Calculate incremental weights (if no old data, get_old_loglh(cloud) = 0)
+    # Calculate incremental weights (if no old data, get_old_loglh(cloud) = 0)
         if tempered_update_prior_weight == 0.0
             incremental_weights = exp.((ϕ_n1 - ϕ_n) * get_old_loglh(cloud) +
                                        (ϕ_n - ϕ_n1) * get_loglh(cloud))
@@ -409,7 +472,7 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
                                        (ϕ_n - ϕ_n1) * get_loglh(cloud))
         end
 
-        # Update weights
+    # Update weights
         update_weights!(cloud, incremental_weights)
         mult_weights = get_weights(cloud)
 
@@ -422,7 +485,6 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         ##############################################################################
         ### Step 2: Selection
         ##############################################################################
-
         # Calculate the degeneracy/effective sample size metric
         push!(cloud.ESS, n_parts ^ 2 / sum(normalized_weights .^ 2))
 
@@ -430,9 +492,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         # In many cases, the problem is that there too few particles.
         check_nan_ess(cloud, i, incremental_weights,
                       normalized_weights, savepath, debug_assertion)
-
         # Resample if degeneracy/ESS metric falls below the accepted threshold
-        if (cloud.ESS[i] < threshold)
+    if (cloud.ESS[i] < threshold)
 
             # Resample according to particle weights, uniformly reset weights to 1/n_parts
             new_inds = resample(normalized_weights/n_parts; method = resampling_method,
@@ -442,46 +503,101 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
             reset_weights!(cloud)
             cloud.resamples += 1
             resampled_last_period = true
-            W_matrix[:, i] .= 1
+        W_matrix[:, i] .= 1
+
+        println("Resampled at stage: $(i)")
         end
 
         ##############################################################################
         ### Step 3: Mutation
         ##############################################################################
-
         # Calculate adaptive c-step for use as scaling coefficient in mutation MH step
         c = c * (0.95 + 0.10 * exp(16.0 * (cloud.accept - target)) /
                  (1.0 + exp(16.0 * (cloud.accept - target))))
-        cloud.c = c
+    cloud.c = c
+
 
         θ_bar = weighted_mean(cloud)
-        R     = weighted_cov(cloud)
+    R     = weighted_cov(cloud)
+
 
         # Ensures marix is positive semi-definite symmetric
         # (not off due to numerical error) and values haven't changed
-        R_fr = (R[free_para_inds, free_para_inds] + R[free_para_inds, free_para_inds]') / 2.
+    R_fr = (R[free_para_inds, free_para_inds] + R[free_para_inds, free_para_inds]') / 2.
+
+    # [ID] Try out different solutions to covariance issue
+    R_fr_mix = zeros(size(R_fr, 1), size(R_fr, 1))
+    if cholesky_fix == :fixed_weight_mixture_1 || cholesky_fix == :fixed_weight_mixture_1_prev_cloud
+        # [ID] New implementation: weighted mixture of current covariance (3/4) and prior covariance (1/4)
+        println("Using fixed_weight_mixture (3/4, 1/4)")
+        R_fr_mix = 0.75 * R_fr + 0.25 * R_prior
+
+    elseif cholesky_fix == :fixed_weight_mixture_2 || cholesky_fix == :fixed_weight_mixture_2_prev_cloud
+        println("Using fixed_weight_mixture (9/10, 1/10)")
+        R_fr_mix = 0.90 * R_fr + 0.10 * R_prior
+
+    elseif cholesky_fix == :fixed_weight_mixture_scaling || cholesky_fix == :fixed_weight_mixture_scaling_prev_cloud
+        #[ID] Keep previous mixture but scale according to trace of covariance and prior covariance
+        println("Using fixed_weight_mixture_scaling (3/4, 1/4, s=tr(Vn/Prior)")
+        s_factor = tr(R_fr)/tr(R_prior)
+        R_fr_mix = 0.75 * R_fr + 0.25 * s_factor *  R_prior
+
+    elseif cholesky_fix == :regularization_1
+        # We regularize with an identity matrix scaled by the trace of proposal cov.
+        λ = 0.1
+        p = size(R_fr, 1)
+        I_mat = Matrix{Float64}(I, p, p)
+        R_fr_mix = (1 - λ) * R_fr + λ * (tr(R_fr)/p) * I_mat
+
+    elseif cholesky_fix == :scaled_prior
+        # We use only the prior distribution, but scaled to the same magnitude as the proposal cov
+        println("Using scaled prior")
+        s = tr(R_fr)/tr(R_prior)
+        R_fr_mix = s * R_prior
+
+    else
+        println("Using no covariance fixes")
+        R_fr_mix = R_fr
+    end
+
+R_fr_mix = (R_fr_mix + R_fr_mix') / 2.
+
+        # Julia 1.12's stricter LAPACK rejects covariances that are only positive *semi*-definite
+        # (a zero / tiny-negative eigenvalue from roundoff or a near-degenerate weighted cloud),
+        # which crashes every downstream proposal Cholesky (the mutation MvNormal, the c²·Σ mixture
+        # draw, the proposal densities). Project R_fr_mix onto the PD cone by flooring its eigenvalues
+        # at a small fraction of the largest, so it — and c²·any principal submatrix — factorizes.
+        if !isposdef(R_fr_mix)
+            F      = eigen(Symmetric(R_fr_mix))
+            λfloor = max(maximum(F.values) * 1e-10, eps(eltype(R_fr_mix)))
+            R_fr_mix   = F.vectors * Diagonal(max.(F.values, λfloor)) * F.vectors'
+            R_fr_mix   = (R_fr_mix + R_fr_mix') / 2.
+        end
 
         # MvNormal centered at ̄θ with var-cov ̄Σ, subsetting out the fixed parameters
         θ_bar_fr = θ_bar[free_para_inds]
 
-        # Generate random parameter blocks
-        blocks_free = generate_free_blocks(n_free_para, n_blocks)
-        blocks_all  = generate_all_blocks(blocks_free, free_para_inds)
+# Generate random parameter blocks
+@show n_blocks
+blocks_free = generate_free_blocks(n_free_para, n_blocks)
+blocks_all  = generate_all_blocks(blocks_free, free_para_inds)
 
-        new_particles = if parallel
-            @distributed (hcat) for k in 1:n_parts
-                mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr, n_free_para,
-                                 blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
-                                 n_mh_steps = n_mh_steps, old_data = old_data)
-            end
-        else
-            hcat([mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr, n_free_para,
-                                   blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c,
-                                   α = α, n_mh_steps = n_mh_steps,
-                                   old_data = old_data) for k=1:n_parts]...)
-        end
-        update_cloud!(cloud, new_particles)
-        update_acceptance_rate!(cloud)
+new_particles = if parallel
+    @distributed (hcat) for k in 1:n_parts
+        mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
+                         blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
+                         n_mh_steps = n_mh_steps, old_data = old_data)
+    end
+else
+    hcat([mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
+                           blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c,
+                           α = α, n_mh_steps = n_mh_steps,
+                           old_data = old_data) for k=1:n_parts]...)
+end
+
+update_cloud!(cloud, new_particles)
+update_acceptance_rate!(cloud)
+
 
         ##############################################################################
         ### Timekeeping and Output Generation
@@ -497,13 +613,15 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
         end
 
         if mod(cloud.stage_index, intermediate_stage_increment) == 0 && save_intermediate
-            jldopen(replace(savepath, ".jld2" => "_stage=$(cloud.stage_index).jld2"),
-                    true, true, true, IOStream) do file
+            #jldopen(replace(savepath, ".jld2" => "_stage=$(cloud.stage_index).jld2"),
+            #true, true, true, IOStream) do file
+            JLD2.jldopen(replace(savepath, ".jld2" => "_stage=$(cloud.stage_index).jld2"), true, true, true, IOStream) do file
                 write(file, "cloud", cloud)
                 write(file, "w", w_matrix)
                 write(file, "W", W_matrix)
                 write(file, "j", j)
             end
+
         end
     end
 

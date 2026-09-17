@@ -33,9 +33,10 @@ function resample(weights::Vector{Float64}; n_parts::Int64 = length(weights),
             indx = @sync @distributed (vcat) for i in 1:n_parts
                 findfirst(x -> offset[i] < x, cumulative_weights)
             end
+            #println("In multinomial resample for parellel, max indx is: ", maximum(indx))
         else
             indx = Vector{Int64}(undef, n_parts)
-
+            #println("In multinominal (serial) resample")
             for i in 1:n_parts
                 indx[i] = findfirst(x -> offset[i] < x, cumulative_weights)
             end

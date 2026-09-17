@@ -1,4 +1,23 @@
-using ModelConstructors, HDF5
+using ModelConstructors, HDF5, Distributions, LinearAlgebra
+
+# JLD2 may deserialize a saved MvNormal/PDMat as an opaque JLD2.ReconstructedMutable when
+# the installed Distributions/PDMats type layout differs from when the fixture was written
+# (the Pkg.test sandbox commonly resolves newer versions than the env that saved it).
+# Rebuild a real MvNormal from the loaded fields so dispatch (mvnormal_mixture_draw,
+# compute_proposal_densities, get_cov) and indexing work regardless of dep versions.
+function as_mvnormal(F)
+    F isa Distributions.MvNormal && return F
+    μ    = collect(getproperty(F, :μ))
+    Σobj = getproperty(F, :Σ)
+    Σ = if Σobj isa AbstractMatrix
+        Matrix(Σobj)                              # already a (PD)Matrix
+    elseif hasproperty(Σobj, :mat)
+        Matrix(getproperty(Σobj, :mat))           # PDMat.mat field
+    else
+        Matrix(getproperty(Σobj, :chol))          # fall back to the Cholesky factor
+    end
+    return MvNormal(μ, Σ)
+end
 
 regenerate_data = false
 
@@ -98,7 +117,7 @@ if regenerate_data
 
     # Save Data
 
-    h5open("reference/test_data.h5", "w") do file
+    h5open("$(@__DIR__)/reference/test_data.h5", "w") do file
         write(file, "data", data)
         write(file, "rsdata", rsdata)
         write(file, "X", X)
@@ -111,8 +130,8 @@ else # Need to define reg1, reg2, and reg3 for regime-switching log likelihood f
 end
 
 # Read Predictors from data
-X = h5read("reference/test_data.h5", "X")
-Xrs = h5read("reference/test_data.h5", "Xrs")
+X = h5read("$(@__DIR__)/reference/test_data.h5", "X")
+Xrs = h5read("$(@__DIR__)/reference/test_data.h5", "Xrs")
 
 # Log Likelihood Function
 N = 3

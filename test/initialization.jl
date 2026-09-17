@@ -1,11 +1,17 @@
 write_test_output = false
+if !@isdefined(run_benchmarks); run_benchmarks = false; end
 
 path = dirname(@__FILE__)
 
 if VERSION < v"1.5"
     ver = "111"
-else
+elseif VERSION < v"1.7"
     ver = "150"
+else
+    # Julia 1.7 switched the default RNG from a single process-wide
+    # MersenneTwister to a per-Task Xoshiro256++ (TaskLocalRNG), so seeded
+    # draws no longer match the "150" reference data.
+    ver = "1126"
 end
 
 ###################################################################
@@ -25,7 +31,7 @@ m <= Setting(:saveroot, save)
 ####################################################################
 init_cloud = SMC.Cloud(length(m.parameters), get_setting(m,:n_particles))
 
-@everywhere Random.seed!(42)
+Random.seed!(42)
 SMC.initial_draw!(loglik_fn, m.parameters, data, init_cloud)
 
 if write_test_output
@@ -126,4 +132,13 @@ end
     @test init_cloud.c           == test_init_cloud.c
     @test init_cloud.total_sampling_time == test_init_cloud.total_sampling_time
     @test init_cloud.tempering_schedule  == test_init_cloud.tempering_schedule
+end
+
+###################################################################
+# Benchmarks (run last so they don't perturb the RNG state that the
+# reproducibility tests above depend on)
+###################################################################
+if run_benchmarks
+    @btime SMC.one_draw($loglik_fn, $m.parameters, $data)
+    @btime SMC.draw_likelihood($loglik_fn, $m.parameters, $data, vec($draw[1]))
 end

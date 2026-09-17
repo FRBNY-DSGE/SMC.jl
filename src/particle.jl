@@ -392,8 +392,11 @@ puts zero weight on particles with -Inf log-likelihoods
 function zero_bad_loglh_weights!(c::Matrix{Float64})
     n_cloud_cols = size(c, 2)
     badloglh = findall(c[:, ind_loglh(n_cloud_cols)] .== -Inf)
+    #badloglh = findall(c[:, ind_loglh(n_cloud_cols)] .<= -1e34)
+    println("Throwing out ", size(badloglh), " many bad particles out of ", size(c))
     c[badloglh, ind_weight(n_cloud_cols)] .= 0.
 end
+
 function zero_bad_loglh_weights!(c::Cloud)
     zero_bad_loglh_weights!(c.particles)
 end
@@ -540,7 +543,7 @@ For large clouds, the memory usage by one file may be too large. For example,
 the file may exceed GitHub's 100MB memory limit.
 """
 function split_cloud(filename::String, n_pieces::Int)
-    cloud = load(filename, "cloud")
+    cloud = load(filename,  "cloud")
     w    = load(filename, "w")
     W    = load(filename, "W")
     n_part = size(cloud.particles, 1)
@@ -731,7 +734,18 @@ function add_parameters_to_cloud(old_cloud::Cloud, para::ParameterVector{T}, old
     # and that the order of parameters haven't been switched around.
     # If that is the case, then the user need to write a function
     # that maps the old parameters to their correct indices.
+
     para_vals[:, old_para_inds] = old_para
+#= not working clearly... old_para_inds aren't mapping things correctly
+=#
+
+    #Make the function now of mapping old parameter indices into their new indicies!
+
+#=
+    for i in old_para_inds
+        para_vals[:, i] = old_para[i]
+    end
+    =#
 
     # Create logprior columns
     meta_info = Matrix{T}(undef, n_parts, 5) # additional 5 columns of "meta" information about particles

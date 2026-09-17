@@ -6,7 +6,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        julia-version: [1.5]
+        julia-version: ['1.12']
         julia-arch: [x64]
         os: [ubuntu-latest]
 
@@ -16,6 +16,11 @@ jobs:
         uses: julia-actions/setup-julia@latest
         with:
           version: ${{ matrix.julia-version }}
+      # The migrated ModelConstructors (stdev kwarg on DegenerateMvNormal, modern
+      # Distributions/PDMats) is not registered yet, so pull it from the integration branch
+      # instead of letting the resolver pick the stale registered release.
+      - name: "Use migrated ModelConstructors (integration branch)"
+        run: julia --project=. -e 'using Pkg; Pkg.add(PackageSpec(url="https://github.com/FRBNY-DSGE/ModelConstructors.jl", rev="integration"))'
       - uses: julia-actions/julia-buildpkg@master
       - uses: julia-actions/julia-runtest@master
       - uses: julia-actions/julia-processcoverage@v1

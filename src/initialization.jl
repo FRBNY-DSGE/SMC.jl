@@ -27,19 +27,19 @@ function one_draw(loglikelihood::Function, parameters::ParameterVector{U},
     draw       = vec(rand(parameters, 1, regime_switching = regime_switching, toggle = toggle))
 
     draw_loglh = draw_logprior = 0.0
-
     while !success
         try
+
             update!(parameters, draw)
 
             draw_loglh = loglikelihood(parameters, data)
+
 
             if toggle
                 toggle_regime!(parameters, 1)
             end
 
             draw_logprior = prior(parameters)
-
             if (draw_loglh == -Inf) || (draw_loglh === NaN)
                 draw_loglh = draw_logprior = -Inf
             end
@@ -94,6 +94,8 @@ function initial_draw!(loglikelihood::Function, parameters::ParameterVector{U},
     sendto(workers(), loglikelihood = loglikelihood)
     sendto(workers(), parameters = parameters)
     sendto(workers(), data       = data)
+    sendto(workers(), regime_switching = regime_switching)
+    sendto(workers(), toggle = toggle)
 
     one_draw_closure() = one_draw(loglikelihood, parameters, data, regime_switching = regime_switching, toggle = toggle)
     @everywhere one_draw_closure() = one_draw(loglikelihood, parameters, data, regime_switching = regime_switching, toggle = toggle)
@@ -107,10 +109,11 @@ function initial_draw!(loglikelihood::Function, parameters::ParameterVector{U},
     else
         vector_reduce([one_draw_closure() for i in 1:n_parts]...)
     end
-
     update_draws!(c, draws)
     update_loglh!(c, vec(loglh))
+
     update_logprior!(c, vec(logprior))
+
     update_old_loglh!(c, zeros(n_parts))
 
     # Need to call `set_weights` as opposed to `update_weights`
@@ -155,7 +158,10 @@ function initialize_likelihoods!(loglikelihood::Function, parameters::ParameterV
                                  parallel::Bool = false,
                                  toggle::Bool = true) where {U<:Number}
     n_parts = length(c)
+
     draws   = get_vals(c; transpose = false)
+
+
 
     # Retire log-likelihood values from the old estimation to the field old_loglh
     update_old_loglh!(c, get_loglh(c))
@@ -164,6 +170,7 @@ function initialize_likelihoods!(loglikelihood::Function, parameters::ParameterV
     sendto(workers(), parameters = parameters)
     sendto(workers(), loglikelihood = loglikelihood) # TODO: Check if this is necessary
     sendto(workers(), data = data)
+    sendto(workers(), toggle = toggle)
 
     draw_likelihood_closure(draw::Vector{Float64}) = draw_likelihood(loglikelihood, parameters,
                                                                      data, draw, toggle = toggle)

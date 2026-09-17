@@ -80,31 +80,28 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
             para_subset = para[block_a]
             d_subset    = MvNormal(d_μ[block_f], d_Σ[block_f, block_f])
             para_draw   = mvnormal_mixture_draw(para_subset, d_subset; c = c, α = α)
-
             q0, q1 = compute_proposal_densities(para_draw, para_subset,
                                                 d_subset, c = c, α = α)
 
             para_new          = deepcopy(para)
             para_new[block_a] = para_draw
-
             like_init, prior_init = like, logprior
             prior_new = like_new = like_old_data = -Inf
             try
+                @assert length(para_new) == sum(ModelConstructors.n_param_regs(parameters)) ## Delete for speed after testing
                 update!(parameters, para_new)
-
                 prior_new = prior(parameters)
                 like_new  = loglikelihood(parameters, data)
-
                 if toggle
                     toggle_regime!(parameters, 1)
                 end
-
                 if like_new == -Inf
                     prior_new = like_old_data = -Inf
                 end
 
-                like_old_data = isempty(old_data) ? 0. : old_loglikelihood(parameters, old_data)
 
+                like_old_data = isempty(old_data) ? 0. : old_loglikelihood(parameters, old_data; new_model_params = true)
+                #like_old_data = isempty(old_data) ? 0. : old_loglikelihood(parameters, old_data) #This is what is currently erroring!
                 if toggle && isempty(old_data)
                     toggle_regime!(parameters, 1)
                 end
@@ -113,7 +110,6 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                 if isa(err, ParamBoundsError) || isa(err, LinearAlgebra.LAPACKException) ||
                    isa(err, PosDefException)  || isa(err, SingularException)             ||
                    isa(err, DomainError)
-
                     prior_new = like_new = like_old_data = -Inf
                 else
                     throw(err)
@@ -123,16 +119,20 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
             η = exp(ϕ_n * (like_new - like_init) + (1 - ϕ_n) * (like_old_data - like_prev) +
                     (prior_new - prior_init) + (q0 - q1))
 
+
+
             if step_prob < η
                 para      = para_new
                 like      = like_new
                 logprior  = prior_new
                 like_prev = like_old_data
                 accept   += length(block_a)
+
             end
             step_prob = rand() # Draw again for next step
         end
     end
+
     update_mutation!(p, para, like, logprior, like_prev, accept / n_free_para)
     return p
 end
