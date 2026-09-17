@@ -1,3 +1,6 @@
+**Note (September 17th, 2026):** The `main` branch has been updated to support Julia v1.12+. If any bugs come up, please contact elena dot elbarmi at ny dot frb dot org, michael dot pham at ny dot frb dot org, or elizabeth dot wright at ny dot frb dot org. A Julia v1.5 version is available on the `julia1.5-stable-release` branch.
+
+
 <p align="center">
 <img width="450px" src="https://github.com/FRBNY-DSGE/SMC.jl/blob/main/docs/smc_logo_thin_crop.png" alt="SMC.jl"/>
 </p>
