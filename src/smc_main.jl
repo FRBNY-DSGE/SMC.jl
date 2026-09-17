@@ -275,7 +275,20 @@ n_fixed_para = length(fixed_para_inds)
     ### Initialize Algorithm: Draws from prior
     #################################################################################
 println(verbose, :low, "\n\n SMC " * (testing ? "testing " : "") * "starts ....\n\n")
-    if tempered_update
+    # RESUME FIRST. This branch used to sit below `if tempered_update`, which made
+    # it unreachable for a bridge run (tempered_update is true whenever old_data is
+    # passed) -- so resuming a bridge step silently fell into the bridge
+    # initialization below, which calls initialize_cloud_settings! and
+    # initialize_likelihoods! and thereby resets stage_index/c and recomputes every
+    # likelihood, i.e. it restarted the step instead of continuing it.
+    #
+    # A stage file already holds the fully initialized bridged cloud: draws, loglh,
+    # OLD loglh, weights, ESS history, stage_index and c. So on resume none of that
+    # initialization should run again, for a bridge step or otherwise -- we just
+    # load the cloud and let the w/W/j restore below pick up the rest.
+    if continue_intermediate
+        cloud = load(loadpath, "cloud")
+    elseif tempered_update
         # If user does not input Cloud object themselves, looks for cloud in loadpath.
         cloud = cloud_isempty(old_cloud) ? load(loadpath, "cloud") : old_cloud
         old_n_parts = length(cloud)
@@ -380,8 +393,6 @@ else
             throw(DomainError("The keyword tempered_update_prior_weight must be within the interval [0, 1] but " *
                               "is currently set to $(tempered_update_prior_weight)"))
 end
-elseif continue_intermediate
-        cloud = load(loadpath, "cloud")
 else
 # Initialization of Particle Array Cloud
 #println("Above new cloud?")
