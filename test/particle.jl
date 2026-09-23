@@ -38,5 +38,17 @@ end
     @test cloud.tempering_schedule  == rejoined_cloud.tempering_schedule
 end
 
+@testset "Weighted cloud summaries" begin
+    cloud = SMC.Cloud(2, 3)
+    SMC.update_draws!(cloud, [0.0 0.0; 2.0 1.0; 4.0 0.0])
+    SMC.set_weights!(cloud, [1.0, 2.0, 1.0])
+
+    # For points (0, 0), (2, 1), (4, 0) with normalized weights (1/4, 1/2, 1/4),
+    # the analytic weighted mean is (2, 1/2) and population covariance is diag(2, 1/4).
+    @test SMC.weighted_mean(cloud) ≈ [2.0, 0.5]
+    @test SMC.weighted_cov(cloud) ≈ [2.0 0.0; 0.0 0.25]
+    @test SMC.weighted_std(cloud) ≈ [sqrt(2.0), 0.5]
+end
+
 rm("reference/smc_cloud_fix=true_version=$(ver)_part1.jld2")
 rm("reference/smc_cloud_fix=true_version=$(ver)_part2.jld2")

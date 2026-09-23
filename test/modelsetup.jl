@@ -135,7 +135,7 @@ Xrs = h5read("$(@__DIR__)/reference/test_data.h5", "Xrs")
 
 # Log Likelihood Function
 N = 3
-function loglik_fn(p, d)
+function loglik_fn(p, d; new_model_params::Bool = false)
     # we assume the ordering of (α_i, β_i, σ_i)
     Σ = zeros(N,N)
     α = Vector{Float64}(undef,N)
@@ -156,7 +156,7 @@ function loglik_fn(p, d)
     return logprob
 end
 
-function rs_loglik_fn(p, d)
+function rs_loglik_fn(p, d; new_model_params::Bool = false)
     # we assume the ordering of (α_i, β_i, σ_i)
     Σ = zeros(N,N)
     α = Vector{Float64}(undef, 3 * N)
