@@ -1,5 +1,6 @@
 name: 'build'
-on: [push, pull_request]
+# Retained for manual, on-demand runs; ci.yml runs the test suite automatically.
+on: workflow_dispatch
 
 jobs:
   test:
