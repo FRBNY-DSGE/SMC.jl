@@ -143,9 +143,10 @@ m_new <= Setting(:previous_data_vintage, old_vint)
 loadpath = rawpath(m_old, "estimate", "smc_cloud.jld2")
 
 old_cloud = load(loadpath, "cloud")
+old_data = data[:, 1:Int(floor(end/2))]
 
 println("Estimating Linear Model using a bridge distribution... (approx. 2 minutes)")
-SMC.smc(loglik_fn, m_new.parameters, data, old_data=data[:,1:Int(floor(end/2))], old_cloud=old_cloud,
+SMC.smc(loglik_fn, m_new.parameters, data, old_data=old_data, old_cloud=old_cloud,
         verbose = :none, use_fixed_schedule = true, parallel = use_parallel,
         n_Φ = 100, n_mh_steps = 1, resampling_method = :polyalgo, data_vintage = "200708",
         target = 0.25, savepath = savepath, particle_store_path = particle_store_path,
@@ -153,6 +154,24 @@ SMC.smc(loglik_fn, m_new.parameters, data, old_data=data[:,1:Int(floor(end/2))],
 
 loadpath = rawpath(m_new, "estimate", "smc_cloud.jld2")
 new_cloud = load(loadpath, "cloud")
+
+@testset "Bridged Cloud Likelihoods and Weights" begin
+    # A tempered update must retain the previous-data likelihood and store the
+    # likelihood for the complete data in the current log-likelihood field.
+    bridge_vals = SMC.get_vals(new_cloud; transpose = false)
+    bridge_loglh = SMC.get_loglh(new_cloud)
+    bridge_old_loglh = SMC.get_old_loglh(new_cloud)
+    @test all(isapprox.(bridge_loglh,
+                        [loglik_fn(view(bridge_vals, i, :), data) for i in axes(bridge_vals, 1)]))
+    @test all(isapprox.(bridge_old_loglh,
+                        [loglik_fn(view(bridge_vals, i, :), old_data) for i in axes(bridge_vals, 1)]))
+
+    # Cloud weights are normalized to the particle count in SMC.jl.
+    bridge_weights = SMC.get_weights(new_cloud)
+    @test all(isfinite, bridge_weights)
+    @test all(>=(0), bridge_weights)
+    @test sum(bridge_weights) ≈ length(new_cloud)
+end
 
 @testset "Linear Regression Parameter Estimates Are Close" begin
     # Posterior mean should be close to true parameters
