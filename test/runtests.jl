@@ -23,7 +23,8 @@ my_tests = [
             "mutation",
             "particle",
             "smc",
-            "regime_switching_smc"
+            "regime_switching_smc",
+            "add_parameters_to_cloud"
             ]
 
 # Run every test file to completion, even if some throw, then report at the end.

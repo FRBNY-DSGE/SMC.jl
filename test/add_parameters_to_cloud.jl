@@ -6,8 +6,10 @@ path = dirname(@__FILE__)
 
 if VERSION < v"1.5"
     ver = "111"
-else
+elseif VERSION < v"1.7"
     ver = "150"
+else
+    ver = "1126"
 end
 
 m    = setup_linear_model(; regime_switching = false)
@@ -61,11 +63,11 @@ new_cloud2 = SMC.add_parameters_to_cloud(joinpath("reference", "smc_cloud_fix=tr
 run_benchmarks && display(@benchmark SMC.add_parameters_to_cloud($saved_cloud, $m_rs.parameters,
                                                $old_para_inds; regime_switching = true))
 
-@test saved_cloud.particles[:, 1:9] ≈ new_cloud.particles[:, 1:9]
-@test saved_cloud.particles[:, end - 2:end] ≈ new_cloud.particles[:, end - 2:end] # old_loglh, accept, and weight should be the same
-@test saved_cloud.particles[:, end - 4] ≈ new_cloud.particles[:, end - 4] # loglh should be the same
-@test !(saved_cloud.particles[:, end - 3] ≈ new_cloud.particles[:, end - 3]) # prior should not be the same b/c new parameters & resampling from prior
-@test saved_cloud.particles[:, 1:9] ≈ new_cloud2.particles[:, 1:9]
-@test saved_cloud.particles[:, end - 2:end] ≈ new_cloud2.particles[:, end - 2:end] # old_loglh, accept, and weight should be the same
-@test saved_cloud.particles[:, end - 4] ≈ new_cloud2.particles[:, end - 4] # loglh should be the same
-@test !(saved_cloud.particles[:, end - 3] ≈ new_cloud2.particles[:, end - 3]) # prior should not be the same b/c new parameters & resampling from prior
+@testset "Extend a saved cloud with additional parameters" begin
+    for new_cloud in (new_cloud, new_cloud2)
+        @test saved_cloud.particles[:, 1:9] ≈ new_cloud.particles[:, 1:9]
+        @test saved_cloud.particles[:, end - 2:end] ≈ new_cloud.particles[:, end - 2:end] # old log-likelihood, acceptance, and weights are retained
+        @test saved_cloud.particles[:, end - 4] ≈ new_cloud.particles[:, end - 4] # log-likelihood is retained
+        @test !(saved_cloud.particles[:, end - 3] ≈ new_cloud.particles[:, end - 3]) # the prior is recomputed for the expanded parameter vector
+    end
+end
