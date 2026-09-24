@@ -19,12 +19,3 @@ makedocs(modules = [SMC],
          ],
          doctest = false # for now
 )
-
-deploydocs(
-    repo = "github.com/FRBNY-DSGE/SMC.jl.git",
-    target = "build",
-    deps = nothing,
-    devbranch = "main",
-    branch = "gh-pages",
-    make = nothing
-)
