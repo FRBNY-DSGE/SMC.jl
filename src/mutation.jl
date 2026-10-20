@@ -165,8 +165,13 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                 end
 
 
-                like_old_data = isempty(old_data) ? 0. : old_loglikelihood(parameters, old_data; new_model_params = true)
-                #like_old_data = isempty(old_data) ? 0. : old_loglikelihood(parameters, old_data) #This is what is currently erroring!
+                if isempty(old_data)
+                    like_old_data = 0.
+                elseif old_loglikelihood === loglikelihood
+                    like_old_data = old_loglikelihood(parameters, old_data)
+                else
+                    like_old_data = old_loglikelihood(parameters, old_data; new_model_params = true)
+                end
                 if toggle && isempty(old_data)
                     toggle_regime!(parameters, 1)
                 end
