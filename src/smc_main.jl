@@ -20,6 +20,11 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     the mean and standard deviation of each parameter draw after each iteration,
     as well as calculated acceptance rate, ESS, and number of times resampled.
 - `parallel::Bool = false`: Flag for running algorithm in parallel.
+- `smc_seed::Union{Nothing,Integer} = nothing`: Nonnegative run seed for reproducible
+    particle, resampling, and block streams. If omitted, a seed is generated once and logged.
+    The seed and derivation version are stored under `smc_seed` and `smc_seed_version`
+    in saved JLD2 files. A stage checkpoint supplies its own seed on resume; an explicit
+    seed must match it. Bitwise replay assumes the same Julia and dependency versions.
 - `n_parts::Int = 5_000`: Number of particles.
 - `n_blocks::Int = 1`: Number of parameter blocks in mutation step.
 - `n_mh_steps::Int = 1`: Number of Metropolis Hastings steps to attempt during the mutation step.
@@ -159,11 +164,25 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
              toggle::Bool = true,
              debug_assertion::Bool = false,
              log_prob_old_data::Float64 = 0.0, add_zlb_duration::Tuple{Bool, Int} = (false, 1),
-             cholesky_fix = :none) where {S<:AbstractFloat, U<:Number}
+             cholesky_fix = :none,
+             smc_seed::Union{Nothing, Integer} = nothing) where {S<:AbstractFloat, U<:Number}
 
     ########################################################################################
     ### Settings
     ########################################################################################
+
+    # Checkpoint seed takes precedence on resume; a caller-supplied seed must match it.
+    run_seed = if continue_intermediate
+        saved_seed = load(loadpath, "smc_seed")
+        saved_version = load(loadpath, "smc_seed_version")
+        saved_version == SMC_SEED_VERSION || error("Unsupported SMC seed derivation version: $saved_version")
+        smc_seed === nothing || checked_smc_seed(smc_seed) == saved_seed ||
+            throw(ArgumentError("smc_seed differs from the checkpoint seed"))
+        saved_seed
+    else
+        smc_seed === nothing ? rand(RandomDevice(), UInt64) : checked_smc_seed(smc_seed)
+    end
+    @info "SMC run seed" smc_seed=run_seed smc_seed_version=SMC_SEED_VERSION
 
     # Construct closure of mutation function so as to avoid issues with serialization
     # across workers with different Julia system images
@@ -248,6 +267,7 @@ if tempered_update || cholesky_fix ∈ old_cloud_cholesky_fixes
     R_prior = weighted_cov(prev_cloud)[free_para_inds, free_para_inds]
 else
     # If we don't do data tempering, our "prior covariance" is the covariance of draws from marginal
+    Random.seed!(stream_seed(run_seed, :prior_covariance))
     R_prior = SMC.get_prior_covariance(parameters, regime_switching = regime_switching, n_draws = 1e5)
 end
 
@@ -325,7 +345,8 @@ println(verbose, :low, "\n\n SMC " * (testing ? "testing " : "") * "starts ....\
 
             if n_to_resample > 0
                 new_inds = resample(get_weights(cloud); n_parts = n_to_resample,
-                                    method = resampling_method, parallel = parallel)
+                                    method = resampling_method, parallel = parallel,
+                                    rng = Xoshiro(stream_seed(run_seed, :bridge_resample_1)))
 
             else
                 new_inds = Int64[] # empty
@@ -349,7 +370,9 @@ println(verbose, :low, "\n\n SMC " * (testing ? "testing " : "") * "starts ....\
                 # Evaluate old_loglikelihood on old data and new draws from prior
                 prior_cloud = Cloud(n_para, n_from_prior)
                 initial_draw!(old_loglikelihood, parameters, old_data, prior_cloud, parallel = parallel,
-                              regime_switching = regime_switching, toggle = toggle)
+                              regime_switching = regime_switching, toggle = toggle,
+                              smc_seed = run_seed, seed_operation = :bridge_prior_particle,
+                              seed_particle_offset = n_to_resample)
 
                 # Instantiating Cloud object, update draws, loglh, & logprior.
                 # Note the update_old_loglh! is commented out b/c
@@ -378,7 +401,8 @@ println(verbose, :low, "\n\n SMC " * (testing ? "testing " : "") * "starts ....\
 
             # Resample weights to remove the -Inf loglh
             new_inds = resample(normalized_weights/n_parts; method = resampling_method,
-                                parallel = parallel)
+                                parallel = parallel,
+                                rng = Xoshiro(stream_seed(run_seed, :bridge_resample_2)))
             cloud.particles = [deepcopy(cloud.particles[k,j]) for k in new_inds,
                                j=1:size(cloud.particles, 2)]
             reset_weights!(cloud)
@@ -400,7 +424,7 @@ cloud = Cloud(n_para, n_parts)
 # Instantiating Cloud object, update draws, loglh, & logprior
 #println("Making new cloud object")
         initial_draw!(loglikelihood, parameters, data, cloud; parallel = parallel, regime_switching = regime_switching,
-                      toggle = toggle)
+                      toggle = toggle, smc_seed = run_seed)
 #println("initializing cloud")
         initialize_cloud_settings!(cloud; tempered_update = tempered_update,
                                    n_parts = n_parts, n_Φ = n_Φ, c = c, accept = target)
@@ -417,6 +441,7 @@ end
         w_matrix = load(loadpath, "w")
         W_matrix = load(loadpath, "W")
         j        = load(loadpath, "j")
+        resampled_last_period = load(loadpath, "resampled_last_period")
         println(j)
         i        = cloud.stage_index
         c        = cloud.c
@@ -497,7 +522,8 @@ while ϕ_n < 1.
 
             # Resample according to particle weights, uniformly reset weights to 1/n_parts
             new_inds = resample(normalized_weights/n_parts; method = resampling_method,
-                                parallel = parallel)
+                                parallel = parallel,
+                                rng = Xoshiro(stream_seed(run_seed, :stage_resample, i)))
             cloud.particles = [deepcopy(cloud.particles[k,j]) for k in new_inds,
                                j=1:size(cloud.particles, 2)]
             reset_weights!(cloud)
@@ -579,20 +605,25 @@ R_fr_mix = (R_fr_mix + R_fr_mix') / 2.
 
 # Generate random parameter blocks
 @show n_blocks
-blocks_free = generate_free_blocks(n_free_para, n_blocks)
+blocks_free = generate_free_blocks(n_free_para, n_blocks;
+                                   rng = Xoshiro(stream_seed(run_seed, :stage_blocks, i)))
 blocks_all  = generate_all_blocks(blocks_free, free_para_inds)
 
 new_particles = if parallel
     @distributed (hcat) for k in 1:n_parts
+        Random.seed!(stream_seed(run_seed, :mutation_particle, i, k))
         mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
                          blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
                          n_mh_steps = n_mh_steps, old_data = old_data)
     end
 else
-    hcat([mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
+    hcat([begin
+        Random.seed!(stream_seed(run_seed, :mutation_particle, i, k))
+        mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
                            blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c,
                            α = α, n_mh_steps = n_mh_steps,
-                           old_data = old_data) for k=1:n_parts]...)
+                           old_data = old_data)
+    end for k=1:n_parts]...)
 end
 
 update_cloud!(cloud, new_particles)
@@ -620,6 +651,9 @@ update_acceptance_rate!(cloud)
                 write(file, "w", w_matrix)
                 write(file, "W", W_matrix)
                 write(file, "j", j)
+                write(file, "resampled_last_period", resampled_last_period)
+                write(file, "smc_seed", run_seed)
+                write(file, "smc_seed_version", SMC_SEED_VERSION)
             end
 
         end
@@ -640,6 +674,8 @@ update_acceptance_rate!(cloud)
             write(file, "cloud", cloud)
             write(file, "w", w_matrix)
             write(file, "W", W_matrix)
+            write(file, "smc_seed", run_seed)
+            write(file, "smc_seed_version", SMC_SEED_VERSION)
         end
     end
 end

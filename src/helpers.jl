@@ -244,12 +244,13 @@ function compute_ESS(loglh::Vector{T}, current_weights::Vector{T}, ϕ_n::T, ϕ_n
     return ESS
 end
 
-function generate_param_blocks(n_params::Int64, n_blocks::Int64)
+function generate_param_blocks(n_params::Int64, n_blocks::Int64;
+                               rng::AbstractRNG = Random.default_rng())
     if n_blocks == 1
         return [collect(1:n_params)]
     end
 
-    rand_inds = shuffle(1:n_params)
+    rand_inds = shuffle(rng, 1:n_params)
 
     subset_length     = cld(n_params, n_blocks) # ceiling division
     last_block_length = n_params - subset_length*(n_blocks - 1)
@@ -276,8 +277,9 @@ Return a Vector{Vector{Int64}} where each internal Vector{Int64} contains a subs
 1:n_free_para of randomly permuted indices. This is used to index out random blocks of free
 parameters from the covariance matrix for the mutation step.
 """
-function generate_free_blocks(n_free_para::Int64, n_blocks::Int64)
-    rand_inds = shuffle(1:n_free_para)
+function generate_free_blocks(n_free_para::Int64, n_blocks::Int64;
+                              rng::AbstractRNG = Random.default_rng())
+    rand_inds = shuffle(rng, 1:n_free_para)
 
     subset_length     = cld(n_free_para, n_blocks) # ceiling division
     last_block_length = n_free_para - subset_length*(n_blocks - 1)

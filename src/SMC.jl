@@ -19,6 +19,7 @@ module SMC
     const VERBOSITY   = Dict(:none => 0, :low => 1, :high => 2)
     const DATE_FORMAT = "yymmdd"
 
+    include("rng.jl")
     include("particle.jl")
     include("initialization.jl")
     include("helpers.jl")

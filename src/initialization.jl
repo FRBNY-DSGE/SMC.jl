@@ -84,11 +84,19 @@ requires that the fields of all parameters take their regime 1 values,
 or else sampling may be wrong. The default is `true` as a safety, but
 if speed is a paramount concern, setting `toggle = true` will avoid
 unnecessary computations.
+
+When `smc_seed` is supplied, each particle is seeded inside its draw task.
+`seed_operation` separates prior streams, and `seed_particle_offset` maps
+bridge prior rows to their destination positions in the combined cloud.
 """
 function initial_draw!(loglikelihood::Function, parameters::ParameterVector{U},
                        data::Matrix{Float64}, c::Cloud; parallel::Bool = false,
-                       regime_switching::Bool = false, toggle::Bool = true) where {U<:Number}
+                       regime_switching::Bool = false, toggle::Bool = true,
+                       smc_seed::Union{Nothing, Integer} = nothing,
+                       seed_operation::Symbol = :initial_particle,
+                       seed_particle_offset::Int = 0) where {U<:Number}
     n_parts = length(c)
+    run_seed = smc_seed === nothing ? nothing : checked_smc_seed(smc_seed)
 
     # ================== Define closure on one_draw function ==================
     sendto(workers(), loglikelihood = loglikelihood)
@@ -104,10 +112,14 @@ function initial_draw!(loglikelihood::Function, parameters::ParameterVector{U},
     # For each particle, finds valid parameter draw and returns loglikelihood & prior
     draws, loglh, logprior = if parallel
         @sync @distributed (vector_reduce) for i in 1:n_parts
+            run_seed === nothing || Random.seed!(stream_seed(run_seed, seed_operation, 0, seed_particle_offset + i))
             one_draw_closure()
         end
     else
-        vector_reduce([one_draw_closure() for i in 1:n_parts]...)
+        vector_reduce([begin
+            run_seed === nothing || Random.seed!(stream_seed(run_seed, seed_operation, 0, seed_particle_offset + i))
+            one_draw_closure()
+        end for i in 1:n_parts]...)
     end
     update_draws!(c, draws)
     update_loglh!(c, vec(loglh))
