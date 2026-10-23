@@ -21,6 +21,7 @@ my_tests = [
             "resample",
             "util",
             "mutation",
+            "proposal_cache",
             "particle",
             "smc",
             "regime_switching_smc",

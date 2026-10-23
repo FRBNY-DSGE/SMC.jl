@@ -1,3 +1,63 @@
+function mutation_block_proposal(μ::Vector{S}, Σ::Matrix{S}, block::Vector{Int},
+                                 c::S, α::S) where {S<:AbstractFloat}
+    @assert 0 <= α <= 1
+    # The covariance and its factorizations remain fixed across MH steps.
+    subset = MvNormal(μ[block], Σ[block, block])
+    scaled_draw = c^2 * subset.Σ
+    bar = MvNormal(subset.μ, scaled_draw)
+    diagonal = MvNormal(subset.μ, Diagonal(diag(scaled_draw)))
+
+    # Match compute_proposal_densities, which passes a covariance matrix
+    # to DegenerateMvNormal with stdev = false.
+    density_cov = c^2 * get_cov(subset)
+    singular_values = svd(density_cov).S
+    positive = findall(x -> x > 0.0, singular_values)
+    normalizer = length(positive) * Distributions.log2π +
+                 sum(log.(singular_values[positive]))
+    inverse = inv(density_cov[positive, positive])
+
+    return (full_cov = bar.Σ, diagonal_cov = diagonal.Σ, bar = bar,
+            weights = [α, (1 - α) / 2, (1 - α) / 2],
+            diagonal_stdev = sqrt.(diag(get_cov(subset))),
+            density_indices = positive, density_normalizer = normalizer,
+            density_inverse = inverse)
+end
+
+function draw_mutation_proposal(θ_old::Vector{S}, proposal) where {S<:AbstractFloat}
+    full_old = MvNormal(θ_old, proposal.full_cov)
+    diagonal_old = MvNormal(θ_old, proposal.diagonal_cov)
+    mixture = MixtureModel(MvNormal[full_old, diagonal_old, proposal.bar], proposal.weights)
+    return rand(mixture)
+end
+
+function mutation_normal_logpdf(x::Vector{S}, μ::Vector{S}, proposal) where {S<:AbstractFloat}
+    positive = proposal.density_indices
+    difference = x[positive] .- μ[positive]
+    return -(proposal.density_normalizer +
+             (difference' * proposal.density_inverse * difference)) / 2.0
+end
+
+function mutation_proposal_densities(θ_new::Vector{S}, θ_old::Vector{S},
+                                     proposal, α::S) where {S<:AbstractFloat}
+    q0 = α * exp(mutation_normal_logpdf(θ_old, θ_new, proposal))
+    q1 = α * exp(mutation_normal_logpdf(θ_new, θ_old, proposal))
+    diagonal = one(S)
+    for i in eachindex(θ_old)
+        σ = proposal.diagonal_stdev[i]
+        z = (θ_old[i] - θ_new[i]) / σ
+        diagonal = diagonal / (σ * sqrt(2.0 * π)) * exp(-0.5 * z^2)
+    end
+    q0 += (1.0 - α) / 2.0 * diagonal
+    q1 += (1.0 - α) / 2.0 * diagonal
+    q0 += (1.0 - α) / 2.0 * exp(mutation_normal_logpdf(θ_old, proposal.bar.μ, proposal))
+    q1 += (1.0 - α) / 2.0 * exp(mutation_normal_logpdf(θ_new, proposal.bar.μ, proposal))
+    q0, q1 = log(q0), log(q1)
+    if q0 == Inf && q1 == Inf
+        q0 = zero(S)
+    end
+    return q0, q1
+end
+
 """
 ```
 mutation(loglikelihood::Function, parameters::ParameterVector{U},
@@ -72,16 +132,21 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
     like_prev = p[ind_old_loglh(N)] # Likelihood evaluated at the old data (for time tempering)
     accept    = 0.0
 
-    for step in 1:n_mh_steps
-        for (block_f, block_a) in zip(blocks_free, blocks_all)
+    if n_mh_steps <= 0
+        update_mutation!(p, para, like, logprior, like_prev, accept / n_free_para)
+        return p
+    end
+    block_proposals = [mutation_block_proposal(d_μ, d_Σ, block, c, α)
+                       for (block, _) in zip(blocks_free, blocks_all)]
 
-            # Index out parameters corresponding to given random block, create distribution
-            # centered at weighted mean, with Σ corresponding to the same random block
+    for step in 1:n_mh_steps
+        for (block_a, proposal) in zip(blocks_all, block_proposals)
+
+            # Only the proposal center changes between MH steps.
             para_subset = para[block_a]
-            d_subset    = MvNormal(d_μ[block_f], d_Σ[block_f, block_f])
-            para_draw   = mvnormal_mixture_draw(para_subset, d_subset; c = c, α = α)
-            q0, q1 = compute_proposal_densities(para_draw, para_subset,
-                                                d_subset, c = c, α = α)
+            para_draw = draw_mutation_proposal(para_subset, proposal)
+            q0, q1 = mutation_proposal_densities(para_draw, para_subset,
+                                                 proposal, α)
 
             para_new          = deepcopy(para)
             para_new[block_a] = para_draw
@@ -100,8 +165,13 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                 end
 
 
-                like_old_data = isempty(old_data) ? 0. : old_loglikelihood(parameters, old_data; new_model_params = true)
-                #like_old_data = isempty(old_data) ? 0. : old_loglikelihood(parameters, old_data) #This is what is currently erroring!
+                if isempty(old_data)
+                    like_old_data = 0.
+                elseif old_loglikelihood === loglikelihood
+                    like_old_data = old_loglikelihood(parameters, old_data)
+                else
+                    like_old_data = old_loglikelihood(parameters, old_data; new_model_params = true)
+                end
                 if toggle && isempty(old_data)
                     toggle_regime!(parameters, 1)
                 end
