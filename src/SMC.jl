@@ -14,7 +14,10 @@ module SMC
     export
         mutation, resample, smc,
         mvnormal_mixture_draw, initial_draw!, Cloud, get_cloud,
-        isempty, join_cloud, split_cloud, add_parameters_to_cloud
+        isempty, join_cloud, split_cloud, add_parameters_to_cloud,
+        smc_log_mdd, stage_health_flags, write_stage_health, lineage_nse,
+        modified_harmonic_mean, bridge_sampling_estimate, gaussian_mixture_bic,
+        nse_validation, compare_estimates, pool_groups
 
     const VERBOSITY   = Dict(:none => 0, :low => 1, :high => 2)
     const DATE_FORMAT = "yymmdd"
@@ -26,5 +29,7 @@ module SMC
     include("util.jl")
     include("mutation.jl")
     include("resample.jl")
+    include("diagnostics.jl")
+    include("groups.jl")
     include("smc_main.jl")
 end

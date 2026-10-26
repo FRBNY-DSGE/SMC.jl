@@ -31,6 +31,17 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     dependency versions, which are saved under `run_info`.
 - `run_info::AbstractDict = Dict{String,String}()`: Extra provenance (e.g. the caller's package
     commit) saved under `run_info` in the JLD2 files, next to the Julia version and SMC commit.
+- `n_smc_groups::Int = 1`: Number of independent particle groups (Durham and Geweke 2014). With
+    J > 1, the `n_parts` particles are split into J complete SMC runs of `n_parts / J` particles,
+    each with its own seed (derived from `smc_seed`), saved with a `_group=g` suffix. The pooled
+    cloud is saved at `savepath` with `smc_groups` (pooled means, quantiles, their numerical
+    standard errors and RNEs; also written to `<savepath>_group_summary.csv`) and the pooled
+    `log_mdd_estimates`; it has no `w`/`W`. `continue_intermediate = true` (with the same
+    `smc_seed`) reuses finished groups and resumes the others from their latest checkpoint.
+- `bridge_sampling::Bool = false`: Also estimate the log MDD by bridge sampling on the final
+    cloud, which costs `n_bridge_draws` (default `n_parts`) extra likelihood evaluations.
+- `health_thresholds`: Flag thresholds for the per-stage health record
+    (see `SMC.DEFAULT_HEALTH_THRESHOLDS`).
 - `n_parts::Int = 5_000`: Number of particles.
 - `n_blocks::Int = 1`: Number of parameter blocks in mutation step.
 - `n_mh_steps::Int = 1`: Number of Metropolis Hastings steps to attempt during the mutation step.
@@ -101,6 +112,17 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     parameter values from the sample, their respective log-likelihoods, the ESS
     schedule, tempering schedule etc., which is saved in the saveroot.
 
+Besides the cloud and weights, the JLD2 file at `savepath` holds the run's reliability
+diagnostics (SMC reliability plan, step 3 part C):
+- `stage_health`: per stage, φ and Δφ, ESS and conditional ESS, the largest weight, the share of
+    distinct particles after selection and after mutation, the acceptance rate per MH step, the
+    scale c, -Inf counts, and per free parameter the pre/post-mutation correlation and relative
+    jump distance (also written to `<savepath>_stage_health.csv`);
+- `health_flags`: the flags these raise (also logged as warnings unless `verbose = :none`);
+- `log_mdd_estimates`: the incremental-weight log MDD (`smc`; `smc_level` on the level scale,
+    see `smc_log_mdd_level`), the modified harmonic mean (`mhm`), bridge sampling if requested,
+    and the ancestral-lineage NSEs (`smc_lineage_nse`, `mean_lineage_nse`, `n_eves`).
+
 ### Overview
 
 Sequential Monte Carlo can be used in lieu of Random Walk Metropolis Hastings to
@@ -128,16 +150,22 @@ SMC is broken up into three main steps:
 """
 function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matrix{S};
              smc_seed::Union{Nothing, Integer} = nothing, continue_intermediate::Bool = false,
-             kwargs...) where {S<:AbstractFloat, U<:Number}
+             n_smc_groups::Int = 1, kwargs...) where {S<:AbstractFloat, U<:Number}
     # With no seed, draw it from the caller's RNG so Random.seed! still controls the run (on a
     # resume the checkpoint supplies it)
     if smc_seed === nothing && !continue_intermediate
         smc_seed = rand(Random.default_rng(), UInt64)
     end
+    n_smc_groups >= 1 || throw(ArgumentError("n_smc_groups must be at least 1"))
     # The per-particle streams reseed the task-local RNG: give the caller's back afterwards
     return preserving_default_rng() do
-        _smc(loglikelihood, parameters, data; smc_seed = smc_seed,
-             continue_intermediate = continue_intermediate, kwargs...)
+        if n_smc_groups == 1
+            _smc(loglikelihood, parameters, data; smc_seed = smc_seed,
+                 continue_intermediate = continue_intermediate, kwargs...)["cloud"]
+        else
+            smc_groups(loglikelihood, parameters, data; n_smc_groups = n_smc_groups,
+                       smc_seed = smc_seed, continue_intermediate = continue_intermediate, kwargs...)
+        end
     end
 end
 
@@ -187,7 +215,9 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
              log_prob_old_data::Float64 = 0.0, add_zlb_duration::Tuple{Bool, Int} = (false, 1),
              cholesky_fix = :none,
              smc_seed::Union{Nothing, Integer} = nothing,
-             run_info::AbstractDict{<:AbstractString, <:AbstractString} = Dict{String, String}()) where {S<:AbstractFloat, U<:Number}
+             run_info::AbstractDict{<:AbstractString, <:AbstractString} = Dict{String, String}(),
+             health_thresholds = DEFAULT_HEALTH_THRESHOLDS,
+             bridge_sampling::Bool = false, n_bridge_draws::Int = 0) where {S<:AbstractFloat, U<:Number}
 
     ########################################################################################
     ### Settings
@@ -237,10 +267,13 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
                               blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
                               ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
                               old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64, T<:Matrix}
-        return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, n_free_para, blocks_free, blocks_all,
-                        ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data,
-                        old_loglikelihood = old_loglikelihood, regime_switching = regime_switching,
-                        toggle = toggle)
+        # The mutated particle plus its number of -Inf proposals (for the stage health record)
+        n_failed = Ref(0)
+        p = mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, n_free_para, blocks_free, blocks_all,
+                     ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data,
+                     old_loglikelihood = old_loglikelihood, regime_switching = regime_switching,
+                     toggle = toggle, n_failed = n_failed)
+        return vcat(p, n_failed[])
     end
     # NOTE: positional args MUST match the local closure above and mutation()'s signature
     # (n_free_para, blocks_free, blocks_all). A prior version had blocks_free/blocks_all/
@@ -251,9 +284,12 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
                                           ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
                                           old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64, T<:Matrix}
 
-        return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, n_free_para, blocks_free, blocks_all,
-                        ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data,
-                        old_loglikelihood = old_loglikelihood, regime_switching = regime_switching, toggle = toggle)
+        n_failed = Ref(0)
+        p = mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, n_free_para, blocks_free, blocks_all,
+                     ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data,
+                     old_loglikelihood = old_loglikelihood, regime_switching = regime_switching,
+                     toggle = toggle, n_failed = n_failed)
+        return vcat(p, n_failed[])
     end
 
 
@@ -469,6 +505,13 @@ end
         proposed_fixed_schedule  = ((collect(1:n_Φ) .- 1) / (n_Φ-1)) .^ λ
     end
 
+    # Diagnostics (reliability plan items 1-3): the per-stage health record, and each
+    # particle's Eve (stage-0 ancestor) with the number of resampling steps for lineage_nse
+    health            = new_stage_health(n_free_para)
+    eve               = collect(1:n_parts)
+    n_resample_events = 0
+    lineage_valid     = true
+
     # Instantiate incremental and normalized weight matrices for logMDD calculation
     if continue_intermediate
         w_matrix = load(loadpath, "w")
@@ -491,6 +534,15 @@ end
             if "resampled_last_period" in checkpoint_keys
                 resampled_last_period = load(loadpath, "resampled_last_period")
             end
+        end
+        # Per-stage health and the Eve indices for the lineage NSEs. A checkpoint without them
+        # resumes with the record restarted, and without lineage NSEs.
+        if "stage_health" in checkpoint_keys && "eve" in checkpoint_keys
+            health            = load(loadpath, "stage_health")
+            eve               = load(loadpath, "eve")
+            n_resample_events = load(loadpath, "n_resample_events")
+        else
+            lineage_valid = false
         end
         println("I have all vars")
     else
@@ -543,6 +595,9 @@ while ϕ_n < 1.
                                        (ϕ_n - ϕ_n1) * get_loglh(cloud))
         end
 
+        previous_weights = get_weights(cloud)
+        inf_cloud        = count(==(-Inf), get_loglh(cloud))
+
     # Update weights
         update_weights!(cloud, incremental_weights)
         mult_weights = get_weights(cloud)
@@ -575,6 +630,8 @@ while ϕ_n < 1.
             reset_weights!(cloud)
             cloud.resamples += 1
             resampled_last_period = true
+            eve = eve[new_inds]
+            n_resample_events += 1
         W_matrix[:, i] .= 1
 
         println("Resampled at stage: $(i)")
@@ -655,6 +712,10 @@ blocks_free = generate_free_blocks(n_free_para, n_blocks;
                                    rng = Xoshiro(stream_seed(run_seed, :stage_blocks, i)))
 blocks_all  = generate_all_blocks(blocks_free, free_para_inds)
 
+θ_selected      = cloud.particles[:, free_para_inds]
+weights_mutated = get_weights(cloud)
+
+# Each column is a particle plus, in the last row, its number of -Inf (failed) proposals
 new_particles = if parallel
     @distributed (hcat) for k in 1:n_parts
         Random.seed!(stream_seed(run_seed, :mutation_particle, i, k))
@@ -672,7 +733,8 @@ else
     end for k=1:n_parts]...)
 end
 
-update_cloud!(cloud, new_particles)
+inf_proposals = sum(new_particles[end, :])
+update_cloud!(cloud, new_particles[1:end-1, :])
 update_acceptance_rate!(cloud)
 
 
@@ -681,6 +743,21 @@ update_acceptance_rate!(cloud)
         ##############################################################################
         stage_sampling_time = Float64((time_ns() - start_time) * 1e-9)
         cloud.total_sampling_time += stage_sampling_time
+
+        θ_mutated  = cloud.particles[:, free_para_inds]
+        corr, esjd = particle_movement(θ_selected, θ_mutated, weights_mutated)
+        record_stage_health!(health,
+                             (stage = i, phi = ϕ_n, dphi = ϕ_n - ϕ_n1, ess = cloud.ESS[i] / n_parts,
+                              cess = conditional_ess(incremental_weights, previous_weights),
+                              max_weight = maximum(normalized_weights) / n_parts,
+                              resampled = cloud.ESS[i] < threshold,
+                              distinct_selected = distinct_share(θ_selected),
+                              distinct_mutated = distinct_share(θ_mutated),
+                              # cloud.accept sums acceptances over the MH steps; record the rate
+                              accept = cloud.accept / max(n_mh_steps, 1),
+                              c = c, inf_cloud = inf_cloud, inf_proposals = inf_proposals,
+                              n_proposals = n_parts * n_mh_steps * length(blocks_free),
+                              time = stage_sampling_time), corr, esjd)
 
         end_stage_print(cloud, para_symbols; verbose = verbose,
                         use_fixed_schedule = use_fixed_schedule)
@@ -702,10 +779,55 @@ update_acceptance_rate!(cloud)
                 write(file, "smc_seed", run_seed)
                 write(file, "smc_seed_version", SMC_SEED_VERSION)
                 write(file, "run_info", run_info)
+                write(file, "stage_health", health)
+                write(file, "eve", eve)
+                write(file, "n_resample_events", n_resample_events)
             end
 
         end
     end
+
+    ##################################################################################
+    ### Diagnostics: log MDD estimates and flags (reliability plan items 1-3)
+    ##################################################################################
+    θ_free  = cloud.particles[:, free_para_inds]
+    weights = get_weights(cloud)
+    log_mdd = smc_log_mdd(w_matrix, W_matrix)
+    estimates = Dict{String, Any}(
+        "smc"       => log_mdd,
+        "smc_level" => smc_log_mdd_level(log_mdd; tempered_update = tempered_update,
+                                         tempered_update_prior_weight = tempered_update_prior_weight,
+                                         log_prob_old_data = log_prob_old_data),
+        "mhm"       => modified_harmonic_mean(θ_free, get_logpost(cloud), weights).log_mdd)
+    if lineage_valid
+        lineage = lineage_nse(eve, n_resample_events, weights, θ_free)
+        estimates["smc_lineage_nse"] = lineage.log_mdd_nse
+        estimates["mean_lineage_nse"] = lineage.mean_nse
+        estimates["n_eves"] = lineage.n_eves
+    end
+    if bridge_sampling
+        bs = smc_bridge_sampling(loglikelihood, parameters, data, cloud, free_para_inds;
+                                 n_draws = n_bridge_draws > 0 ? n_bridge_draws : n_parts,
+                                 rng = Xoshiro(stream_seed(run_seed, :bridge_sampling)),
+                                 parallel = parallel, toggle = toggle)
+        estimates["bridge_sampling"]     = bs.log_mdd
+        estimates["bridge_sampling_nse"] = bs.nse
+    end
+
+    flags = stage_health_flags(health; thresholds = health_thresholds,
+                               para_names = para_symbols[free_para_inds])
+    gap = mdd_gap_flag(estimates)
+    gap === nothing || push!(flags, gap)
+    if verbose != :none
+        for flag in flags
+            @warn "SMC health: " * flag
+        end
+    end
+
+    result = Dict{String, Any}("cloud" => cloud, "w" => w_matrix, "W" => W_matrix,
+                               "smc_seed" => run_seed, "smc_seed_version" => SMC_SEED_VERSION,
+                               "run_info" => run_info, "stage_health" => health,
+                               "health_flags" => flags, "log_mdd_estimates" => estimates)
 
     ##################################################################################
     ### Saving data
@@ -719,12 +841,12 @@ update_acceptance_rate!(cloud)
         for k in 1:n_parts; particle_store[k,:] = cloud.particles[k, 1:n_para] end
         close(simfile)
         jldopen(savepath, true, true, true, IOStream) do file
-            write(file, "cloud", cloud)
-            write(file, "w", w_matrix)
-            write(file, "W", W_matrix)
-            write(file, "smc_seed", run_seed)
-            write(file, "smc_seed_version", SMC_SEED_VERSION)
-            write(file, "run_info", run_info)
+            for (key, value) in result
+                write(file, key, value)
+            end
         end
+        write_stage_health(replace(savepath, r"\.jld2$" => "") * "_stage_health.csv", health;
+                           para_names = para_symbols[free_para_inds])
     end
+    return result
 end

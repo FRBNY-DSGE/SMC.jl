@@ -20,6 +20,8 @@
 #     :stage_blocks             i       0           parameter blocks at stage i
 #     :mutation_particle        i       k           mutation of particle k at stage i
 #     :added_parameter_particle 0       row         add_parameters_to_cloud(; smc_seed)
+#     :group                    0       g           run seed of particle group g (n_smc_groups > 1)
+#     :bridge_sampling          0       0           split and proposal draws for bridge sampling
 #
 # Resampling and blocks draw from an explicit Xoshiro(seed). Per-particle draws (which happen
 # inside model code such as rand(::ParameterVector)) instead Random.seed! the task-local RNG

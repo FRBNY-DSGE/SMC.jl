@@ -107,6 +107,8 @@ Execute one proposed move of the Metropolis-Hastings algorithm for a given param
     the loglikelihood is computed. The regime-switching version of SMC assumes at various points
     that this resetting occurs. If speed is important, then ensure that the fields of parameters
     take their regime 1 values at the end of the loglikelihood computation and set `toggle = false`.
+- `n_failed::Union{Nothing, Base.RefValue{Int}} = nothing`: if given, incremented once for every
+    proposal whose log-likelihood is -Inf or cannot be evaluated.
 
 ### Outputs:
 - `p::Vector{Float64}`: An updated particle containing updated parameter values,
@@ -121,7 +123,8 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                   old_data::T = T(undef, size(data, 1), 0),
                   old_loglikelihood::Function = loglikelihood,
                   regime_switching::Bool = false,
-                  toggle::Bool = true) where {S<:AbstractFloat,T<:AbstractMatrix, U<:Number}
+                  toggle::Bool = true,
+                  n_failed::Union{Nothing, Base.RefValue{Int}} = nothing) where {S<:AbstractFloat,T<:AbstractMatrix, U<:Number}
 
     step_prob   = rand() # Draw initial step probability
 
@@ -184,6 +187,10 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                 else
                     throw(err)
                 end
+            end
+
+            if like_new == -Inf && n_failed !== nothing
+                n_failed[] += 1
             end
 
             η = exp(ϕ_n * (like_new - like_init) + (1 - ϕ_n) * (like_old_data - like_prev) +
