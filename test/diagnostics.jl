@@ -14,6 +14,13 @@ include("modelsetup.jl")
     @test SMC.smc_log_mdd_level(-3.0; tempered_update = true, tempered_update_prior_weight = 0.5,
                                 log_prob_old_data = -10.0) == -3.0
     @test SMC.logmeanexp([log(1.0), log(3.0)]) ≈ log(2.0)
+    est = Dict{String, Any}("smc_level" => -10.0, "smc_lineage_nse" => 0.1,
+                            "bridge_sampling" => -12.0, "bridge_sampling_nse" => 0.1)
+    @test occursin("log MDD gap", SMC.mdd_gap_flag(est))
+    @test SMC.mdd_gap_flag(merge(est, Dict("bridge_sampling" => -10.1))) === nothing
+    # A μ = 0 bridge has no level (NaN per run, absent once pooled): no flag, no error
+    @test SMC.mdd_gap_flag(merge(est, Dict("smc_level" => NaN))) === nothing
+    @test SMC.mdd_gap_flag(delete!(copy(est), "smc_level")) === nothing
 end
 
 @testset "Stage health pieces" begin

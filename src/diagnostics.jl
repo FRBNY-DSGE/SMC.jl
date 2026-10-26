@@ -414,7 +414,8 @@ lineage and Frühwirth-Schnatter approximations. Returns the flag or `nothing`.
 """
 function mdd_gap_flag(estimates::AbstractDict; n_se::Real = 2)
     haskey(estimates, "bridge_sampling") || return nothing
-    a, b = estimates["smc_level"], estimates["bridge_sampling"]
+    # No level for a μ = 0 bridge without log_prob_old_data (smc_level NaN, or dropped when pooled)
+    a, b = get(estimates, "smc_level", NaN), estimates["bridge_sampling"]
     nse_a = get(estimates, "smc_level_nse", get(estimates, "smc_lineage_nse", NaN))
     nse_b = estimates["bridge_sampling_nse"]
     (isfinite(a) && isfinite(b)) || return nothing
