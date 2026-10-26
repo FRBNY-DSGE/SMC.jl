@@ -16,6 +16,7 @@ cd(@__DIR__)
 run_benchmarks = false
 
 my_tests = [
+            "modelsetup",
             "helpers",
             "initialization",
             "resample",
