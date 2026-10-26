@@ -6,6 +6,12 @@ path = dirname(@__FILE__)
 # version-independent — the existing "150"/"111" files are valid on any stack.
 ver = VERSION < v"1.5" ? "111" : "150"
 
+@testset "sendto leaves caller globals alone" begin
+    global smc_sendto_probe = :caller_value
+    SMC.sendto(workers(), smc_sendto_probe = :worker_value)
+    @test Main.smc_sendto_probe == :caller_value
+end
+
 ###################################################################
 # Test: scalar_reshape()
 ###################################################################

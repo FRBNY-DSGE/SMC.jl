@@ -91,6 +91,9 @@ Code from ChrisRackauckas, avavailable at:
  https://github.com/ChrisRackauckas/ParallelDataTransfer.jl/blob/master/src/ParallelDataTransfer.jl.
 """
 function sendto(p::Int; args...)
+    # With no worker processes, workers() contains process 1. Never write
+    # worker bindings into the caller's Main module.
+    p == myid() && return nothing
     for (nm, val) in args
         @spawnat(p, Core.eval(Main, Expr(:(=), nm, val)))
     end
