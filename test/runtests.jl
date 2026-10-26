@@ -25,7 +25,8 @@ my_tests = [
             "particle",
             "smc",
             "regime_switching_smc",
-            "add_parameters_to_cloud"
+            "add_parameters_to_cloud",
+            "reproducibility"
             ]
 
 # Run every test file to completion, even if some throw, then report at the end.
