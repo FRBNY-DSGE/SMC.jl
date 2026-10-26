@@ -87,7 +87,9 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     take their regime 1 values at the end of the loglikelihood computation and set `toggle = false`.
 - `debug_assertion::Bool = false`: if true, then when an assertion error is thrown during the estimation,
     output is created in a JLD2 file to help the user debug the problem.
-- `log_prob_old_data::Float64 = 0.0`: Log MDD of old data for correct incremental weights when bridging
+- `log_prob_old_data::Float64 = 0.0`: Log MDD of the old data. Supply it for a bridge to
+    normalize the old-posterior component and keep the saved incremental weights on the
+    full-data MDD scale; the default assumes the old-data log MDD is zero.
 
 ### Outputs
 
@@ -198,16 +200,19 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     sendto(workers(), old_loglikelihood = old_loglikelihood)
     sendto(workers(), regime_switching = regime_switching)
     sendto(workers(), toggle = toggle)
+    sendto(workers(), tempered_update_prior_weight = tempered_update_prior_weight)
+    sendto(workers(), log_prob_old_data = log_prob_old_data)
 
     function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                               n_free_para::Int,
                               blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
-                              ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
-                              old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64, T<:Matrix}
+                              ϕ_n::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
+                              old_data::Matrix{S} = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64}
         return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, n_free_para, blocks_free, blocks_all,
-                        ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data,
+                        ϕ_n; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data,
                         old_loglikelihood = old_loglikelihood, regime_switching = regime_switching,
-                        toggle = toggle)
+                        toggle = toggle, tempered_update_prior_weight = tempered_update_prior_weight,
+                        log_prob_old_data = log_prob_old_data)
     end
     # NOTE: positional args MUST match the local closure above and mutation()'s signature
     # (n_free_para, blocks_free, blocks_all). A prior version had blocks_free/blocks_all/
@@ -215,18 +220,26 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     @everywhere function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                                           n_free_para::Int,
                                           blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
-                                          ϕ_n::S, ϕ_n1::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
-                                          old_data::T = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64, T<:Matrix}
+                                          ϕ_n::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
+                                          old_data::Matrix{S} = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64}
 
         return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, n_free_para, blocks_free, blocks_all,
-                        ϕ_n, ϕ_n1; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data,
-                        old_loglikelihood = old_loglikelihood, regime_switching = regime_switching, toggle = toggle)
+                        ϕ_n; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data,
+                        old_loglikelihood = old_loglikelihood, regime_switching = regime_switching, toggle = toggle,
+                        tempered_update_prior_weight = tempered_update_prior_weight,
+                        log_prob_old_data = log_prob_old_data)
     end
 
 
-    # Check that if there's a tempered update, old and current vintages are different
-    tempered_update = !isempty(old_data) # Time tempering
-    if (verbose != :none) && !(tempered_update & (old_vintage == data_vintage))
+    0.0 <= tempered_update_prior_weight <= 1.0 ||
+        throw(ArgumentError("tempered_update_prior_weight must be in [0, 1]"))
+    (tempered_update_prior_weight == 0.0 || tempered_update_prior_weight == 1.0 || !isempty(old_data)) ||
+        throw(ArgumentError("old_data is required when tempered_update_prior_weight is between 0 and 1"))
+
+    # A full prior share is an ordinary prior initialization and does not need
+    # any old-data cloud, even if old_data was supplied by the caller.
+    tempered_update = !isempty(old_data) && tempered_update_prior_weight < 1.0
+    if (verbose != :none) && tempered_update && (old_vintage == data_vintage)
         @info "Old & current vintages the same!"
     end
 
@@ -359,6 +372,9 @@ println(verbose, :low, "\n\n SMC " * (testing ? "testing " : "") * "starts ....\
             update_cloud!(bridge_cloud, cloud.particles[new_inds, :])
             update_loglh!(bridge_cloud, get_loglh(cloud)[new_inds])
             update_logprior!(bridge_cloud, get_logprior(cloud)[new_inds])
+            # The old cloud was selected according to its weights. Clear the
+            # copied weights so the selected particles are not weighted again.
+            reset_weights!(bridge_cloud)
             #update_old_loglh!(bridge_cloud, get_old_loglh(cloud)[new_inds])
 
             # Add to the cloud draws from the prior. Note that we are drawing from the current prior,
@@ -392,22 +408,9 @@ println(verbose, :low, "\n\n SMC " * (testing ? "testing " : "") * "starts ....\
             initialize_likelihoods!(loglikelihood, parameters, data, cloud; parallel = parallel,
                                     toggle = toggle)
 
-            # Ensure no particles yielding -Inf loglhs are kept.
-            # These "bad" particles emerge b/c particles from an old estimation
-            # won't necessarily imply good loglhs when evaluated on
-            # new data and parameters.
-            zero_bad_loglh_weights!(cloud)
-            normalized_weights = normalize_weights!(cloud) # need to renormalize to ensure weights sum to n_parts
-
-            # Resample weights to remove the -Inf loglh
-            new_inds = resample(normalized_weights/n_parts; method = resampling_method,
-                                parallel = parallel,
-                                rng = Xoshiro(stream_seed(run_seed, :bridge_resample_2)))
-            cloud.particles = [deepcopy(cloud.particles[k,j]) for k in new_inds,
-                               j=1:size(cloud.particles, 2)]
-            reset_weights!(cloud)
-
-            # Since there was a resampling, set ESS = n_parts
+            # Preserve particles with -Inf new-data likelihood through the
+            # first correction step. Their discarded mass contributes to the
+            # bridge evidence and would be lost by pre-resampling here.
             push!(cloud.ESS, n_parts)
 
             # Initialize remaining cloud settings
@@ -479,23 +482,19 @@ while ϕ_n < 1.
                                                        proposed_fixed_schedule,
                                                        i, j, ϕ_prop, ϕ_n1,
                                                        tempering_target,
-                                                       resampled_last_period)
+                                                       resampled_last_period,
+                                                       tempered_update_prior_weight = tempered_update_prior_weight,
+                                                       log_prob_old_data = log_prob_old_data)
         end
 
         #############################################################################
         ### Step 1: Correction
         #############################################################################
     # Calculate incremental weights (if no old data, get_old_loglh(cloud) = 0)
-        if tempered_update_prior_weight == 0.0
-            incremental_weights = exp.((ϕ_n1 - ϕ_n) * get_old_loglh(cloud) +
-                                       (ϕ_n - ϕ_n1) * get_loglh(cloud))
-        elseif tempered_update_prior_weight == 1.0
-            incremental_weights = exp.((ϕ_n - ϕ_n1) * get_loglh(cloud))
-        else
-            incremental_weights = exp.((ϕ_n1 - ϕ_n) * log.((exp.(get_old_loglh(cloud) .- log_prob_old_data .+
-                                                       log(1-tempered_update_prior_weight)) .+ tempered_update_prior_weight)) +
-                                       (ϕ_n - ϕ_n1) * get_loglh(cloud))
-        end
+        old_bridge = bridge_log_factor(get_old_loglh(cloud),
+                                       tempered_update_prior_weight, log_prob_old_data)
+        incremental_weights = exp.((ϕ_n1 - ϕ_n) .* old_bridge +
+                                   (ϕ_n - ϕ_n1) .* get_loglh(cloud))
 
     # Update weights
         update_weights!(cloud, incremental_weights)
@@ -613,14 +612,14 @@ new_particles = if parallel
     @distributed (hcat) for k in 1:n_parts
         Random.seed!(stream_seed(run_seed, :mutation_particle, i, k))
         mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
-                         blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c, α = α,
+                         blocks_free, blocks_all, ϕ_n; c = c, α = α,
                          n_mh_steps = n_mh_steps, old_data = old_data)
     end
 else
     hcat([begin
         Random.seed!(stream_seed(run_seed, :mutation_particle, i, k))
         mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
-                           blocks_free, blocks_all, ϕ_n, ϕ_n1; c = c,
+                           blocks_free, blocks_all, ϕ_n; c = c,
                            α = α, n_mh_steps = n_mh_steps,
                            old_data = old_data)
     end for k=1:n_parts]...)

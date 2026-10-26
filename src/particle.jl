@@ -774,5 +774,5 @@ function add_parameters_to_cloud(old_cloud::Cloud, para::ParameterVector{T}, old
     meta_info[:, 5] = view(old_cloud.particles, :, ind_weight(part_dim2))
 
     # Form a new Cloud
-    return Cloud(hcat(para_vals, meta_info), zeros(1), old_cloud.ESS, 1, 0, 0, 0., .25, 0.)
+    return Cloud(hcat(para_vals, meta_info), zeros(1), copy(old_cloud.ESS), 1, 0, 0, 0., .25, 0.)
 end

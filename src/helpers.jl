@@ -8,7 +8,9 @@ Solves for next Φ. Returns ϕ_n, resampled_last_period, j, ϕ_prop.
 """
 function solve_adaptive_ϕ(cloud::Cloud, proposed_fixed_schedule::Vector{Float64},
                           i::Int64, j::Int64, ϕ_prop::Float64, ϕ_n1::Float64,
-                          tempering_target::Float64, resampled_last_period::Bool)
+                          tempering_target::Float64, resampled_last_period::Bool;
+                          tempered_update_prior_weight::Float64 = 0.0,
+                          log_prob_old_data::Float64 = 0.0)
     n_Φ = length(proposed_fixed_schedule)
 
     if resampled_last_period
@@ -28,7 +30,9 @@ function solve_adaptive_ϕ(cloud::Cloud, proposed_fixed_schedule::Vector{Float64
 
     # Setting up the optimal ϕ solving function for endogenizing the tempering schedule
     optimal_ϕ_function(ϕ) = compute_ESS(get_loglh(cloud), get_weights(cloud), ϕ, ϕ_n1,
-                                        old_loglh = get_old_loglh(cloud)) - ESS_bar
+                                        old_loglh = get_old_loglh(cloud),
+                                        tempered_update_prior_weight = tempered_update_prior_weight,
+                                        log_prob_old_data = log_prob_old_data) - ESS_bar
 
     #println("tempering target: $(tempering_target)")
     # Find ϕ_prop s.t. optimal ϕ_n lies between ϕ_n1 and ϕ_prop --
@@ -45,7 +49,9 @@ function solve_adaptive_ϕ(cloud::Cloud, proposed_fixed_schedule::Vector{Float64
         try
             # Find suitable proposed phi
             ϕ_prop = get_least_upper_bound(get_loglh(cloud), get_weights(cloud), ϕ_n1, ϕ_prop, ESS_bar,
-                      old_loglh = get_old_loglh(cloud))
+                      old_loglh = get_old_loglh(cloud),
+                      tempered_update_prior_weight = tempered_update_prior_weight,
+                      log_prob_old_data = log_prob_old_data)
 
             # Adjust fixed schedule index for continuity
             j_ind = findfirst(x -> x > ϕ_prop, proposed_fixed_schedule)
@@ -221,10 +227,35 @@ function `compute_ESS(loglh::Vector{T}, current_weights::Vector{T}, ϕ_n::T, ϕ_
 ```
 Compute ESS given log likelihood, current weights, ϕ_n, ϕ_{n-1}, and old log likelihood.
 """
+function bridge_log_factor(old_loglh::T, prior_weight::T, log_prob_old_data::T) where T<:AbstractFloat
+    0.0 <= prior_weight <= 1.0 || throw(ArgumentError("prior_weight must be in [0, 1]"))
+    log_prior = prior_weight == 0.0 ? -Inf : log(prior_weight)
+    log_posterior = prior_weight == 1.0 ? -Inf :
+        log1p(-prior_weight) + old_loglh - log_prob_old_data
+    return _bridge_logaddexp(log_prior, log_posterior)
+end
+
+function _bridge_logaddexp(a::T, b::T) where T<:AbstractFloat
+    a == -Inf && return b
+    b == -Inf && return a
+    (a == Inf || b == Inf) && return Inf
+    m = max(a, b)
+    return m + log(exp(a - m) + exp(b - m))
+end
+
+function bridge_log_factor(old_loglh::Vector{T}, prior_weight::T,
+                            log_prob_old_data::T) where T<:AbstractFloat
+    return bridge_log_factor.(old_loglh, prior_weight, log_prob_old_data)
+end
+
 function compute_ESS(loglh::Vector{T}, current_weights::Vector{T}, ϕ_n::T, ϕ_n1::T;
-                     old_loglh::Vector{T} = zeros(length(loglh))) where T<:AbstractFloat
+                     old_loglh::Vector{T} = zeros(length(loglh)),
+                     tempered_update_prior_weight::T = zero(T),
+                     log_prob_old_data::T = zero(T)) where T<:AbstractFloat
     N            = length(loglh)
-    inc_weights  = exp.((ϕ_n1 - ϕ_n) * old_loglh + (ϕ_n - ϕ_n1) * loglh)
+    old_bridge   = bridge_log_factor(old_loglh, tempered_update_prior_weight,
+                                     log_prob_old_data)
+    inc_weights  = exp.((ϕ_n1 - ϕ_n) .* old_bridge + (ϕ_n - ϕ_n1) .* loglh)
     new_weights  = current_weights .* inc_weights
     norm_weights = N * new_weights / sum(new_weights) # Normalize to N
     ESS          = N^2 / sum(norm_weights .^ 2)       # Transform back for ESS
@@ -233,8 +264,8 @@ function compute_ESS(loglh::Vector{T}, current_weights::Vector{T}, ϕ_n::T, ϕ_n
         println("NAN Information:")
         println("N: $(N)")
         println("ϕ diffs: $(ϕ_n1 - ϕ_n)")
-        println("ϕ diffs loglh min: $(minimum((ϕ_n1 - ϕ_n) * old_loglh + (ϕ_n - ϕ_n1) * loglh))")
-        println("ϕ diffs loglh max: $(maximum((ϕ_n1 - ϕ_n) * old_loglh + (ϕ_n - ϕ_n1) * loglh))")
+        println("ϕ diffs loglh min: $(minimum((ϕ_n1 - ϕ_n) .* old_bridge + (ϕ_n - ϕ_n1) .* loglh))")
+        println("ϕ diffs loglh max: $(maximum((ϕ_n1 - ϕ_n) .* old_bridge + (ϕ_n - ϕ_n1) .* loglh))")
         println("max loglh: $(maximum(loglh))")
         println("min loglh: $(minimum(loglh))")
         println("new weights sum: $(sum(new_weights))")
@@ -246,6 +277,10 @@ end
 
 function generate_param_blocks(n_params::Int64, n_blocks::Int64;
                                rng::AbstractRNG = Random.default_rng())
+    n_params >= 0 || throw(ArgumentError("n_params must be nonnegative"))
+    n_blocks > 0 || throw(ArgumentError("n_blocks must be positive"))
+    n_params == 0 && return Vector{Vector{Int64}}()
+    n_blocks = min(n_blocks, n_params)
     if n_blocks == 1
         return [collect(1:n_params)]
     end
@@ -256,12 +291,25 @@ function generate_param_blocks(n_params::Int64, n_blocks::Int64;
     last_block_length = n_params - subset_length*(n_blocks - 1)
 
     blocks_free = Vector{Vector{Int64}}(undef, n_blocks)
-    for i in 1:n_blocks
-        if i < n_blocks
-            blocks_free[i] = rand_inds[((i-1)*subset_length + 1):(i*subset_length)]
-        else
-            # To account for the fact that the last block may be smaller than the others
-            blocks_free[i] = rand_inds[end-last_block_length+1:end]
+    if last_block_length <= 0
+        # When the requested number of blocks is large, the ceil-sized prefix
+        # blocks would consume all indices before the final block. Spread the
+        # remainder across the first blocks instead.
+        block_size, remainder = divrem(n_params, n_blocks)
+        start_ind = 1
+        for i in 1:n_blocks
+            block_length = block_size + (i <= remainder ? 1 : 0)
+            blocks_free[i] = rand_inds[start_ind:(start_ind + block_length - 1)]
+            start_ind += block_length
+        end
+    else
+        for i in 1:n_blocks
+            if i < n_blocks
+                blocks_free[i] = rand_inds[((i-1)*subset_length + 1):(i*subset_length)]
+            else
+                # To account for the fact that the last block may be smaller than the others
+                blocks_free[i] = rand_inds[end-last_block_length+1:end]
+            end
         end
     end
     blocks_free = [sort(p_block) for p_block in blocks_free]
@@ -279,18 +327,35 @@ parameters from the covariance matrix for the mutation step.
 """
 function generate_free_blocks(n_free_para::Int64, n_blocks::Int64;
                               rng::AbstractRNG = Random.default_rng())
+    n_free_para >= 0 || throw(ArgumentError("n_free_para must be nonnegative"))
+    n_blocks > 0 || throw(ArgumentError("n_blocks must be positive"))
+    n_free_para == 0 && return Vector{Vector{Int64}}()
+
+    # More blocks than parameters cannot form nonempty blocks. Capping the
+    # count produces a valid partition into singleton blocks.
+    n_blocks = min(n_blocks, n_free_para)
     rand_inds = shuffle(rng, 1:n_free_para)
 
     subset_length     = cld(n_free_para, n_blocks) # ceiling division
     last_block_length = n_free_para - subset_length*(n_blocks - 1)
 
     blocks_free = Vector{Vector{Int64}}(undef, n_blocks)
-    for i in 1:n_blocks
-        if i < n_blocks
-            blocks_free[i] = rand_inds[((i-1)*subset_length + 1):(i*subset_length)]
-        else
-            # To account for the fact that the last block may be smaller than the others
-            blocks_free[i] = rand_inds[end-last_block_length+1:end]
+    if last_block_length <= 0
+        block_size, remainder = divrem(n_free_para, n_blocks)
+        start_ind = 1
+        for i in 1:n_blocks
+            block_length = block_size + (i <= remainder ? 1 : 0)
+            blocks_free[i] = rand_inds[start_ind:(start_ind + block_length - 1)]
+            start_ind += block_length
+        end
+    else
+        for i in 1:n_blocks
+            if i < n_blocks
+                blocks_free[i] = rand_inds[((i-1)*subset_length + 1):(i*subset_length)]
+            else
+                # To account for the fact that the last block may be smaller than the others
+                blocks_free[i] = rand_inds[end-last_block_length+1:end]
+            end
         end
     end
     return blocks_free
@@ -373,6 +438,8 @@ end
 
 function get_least_upper_bound(loglh::Vector{T}, W::Vector{T}, ϕ_init::T, ϕ_init_prop::T, ESS_bar;
                                old_loglh::Vector{T} = zeros(length(loglh)),
+                               tempered_update_prior_weight::T = zero(T),
+                               log_prob_old_data::T = zero(T),
                                Φ_lb = ϕ_init,
                                Φ_ub = ϕ_init_prop,
                                ESS = NaN,
@@ -389,14 +456,20 @@ function get_least_upper_bound(loglh::Vector{T}, W::Vector{T}, ϕ_init::T, ϕ_in
     new_ϕ_prop = (Φ_lb + Φ_ub) / 2
 
     # Evaluate midpoint
-    ESS_new = compute_ESS(loglh, W, new_ϕ_prop, ϕ_init, old_loglh = old_loglh)
+    ESS_new = compute_ESS(loglh, W, new_ϕ_prop, ϕ_init, old_loglh = old_loglh,
+                          tempered_update_prior_weight = tempered_update_prior_weight,
+                          log_prob_old_data = log_prob_old_data)
 
     # Recursively define mid-point as either lower bound (not NaN) or upper bound (NaN) of search space
     if isnan(ESS_new)
         upper_bound = get_least_upper_bound(loglh, W, ϕ_init, ϕ_init_prop, ESS_bar,
-        old_loglh = old_loglh, Φ_lb = Φ_lb, Φ_ub = new_ϕ_prop, ESS = ESS_new, ESS_prev = ESS, Φ_target = new_ϕ_prop)
+        old_loglh = old_loglh, tempered_update_prior_weight = tempered_update_prior_weight,
+        log_prob_old_data = log_prob_old_data, Φ_lb = Φ_lb, Φ_ub = new_ϕ_prop,
+        ESS = ESS_new, ESS_prev = ESS, Φ_target = new_ϕ_prop)
     else
         upper_bound = get_least_upper_bound(loglh, W, ϕ_init, ϕ_init_prop, ESS_bar,
-        old_loglh = old_loglh, Φ_lb = new_ϕ_prop, Φ_ub = Φ_ub, ESS = ESS_new, ESS_prev = ESS, Φ_target = new_ϕ_prop)
+        old_loglh = old_loglh, tempered_update_prior_weight = tempered_update_prior_weight,
+        log_prob_old_data = log_prob_old_data, Φ_lb = new_ϕ_prop, Φ_ub = Φ_ub,
+        ESS = ESS_new, ESS_prev = ESS, Φ_target = new_ϕ_prop)
     end
 end
