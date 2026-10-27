@@ -28,6 +28,10 @@ function solve_adaptive_ϕ(cloud::Cloud, proposed_fixed_schedule::Vector{Float64
 
     end
 
+    loglh = get_loglh(cloud)
+    all(x -> x == -Inf, loglh) &&
+        throw(ArgumentError("all particles have -Inf new-data likelihood"))
+
     # Setting up the optimal ϕ solving function for endogenizing the tempering schedule
     optimal_ϕ_function(ϕ) = compute_ESS(get_loglh(cloud), get_weights(cloud), ϕ, ϕ_n1,
                                         old_loglh = get_old_loglh(cloud),
@@ -42,6 +46,25 @@ function solve_adaptive_ϕ(cloud::Cloud, proposed_fixed_schedule::Vector{Float64
     while optimal_ϕ_function(ϕ_prop) >= 0 && j <= n_Φ
         ϕ_prop = proposed_fixed_schedule[j]
         j += 1
+    end
+
+    # At the first positive step, particles with -Inf new-data likelihood lose
+    # all weight at once. If that jump alone crosses the ESS target, there is no
+    # root between ϕ_n1 and ϕ_prop. Take the proposed positive step so selection
+    # can resample the surviving particles and tempering can continue.
+    weights = get_weights(cloud)
+    dead = loglh .== -Inf
+    if any(dead .& (weights .> 0))
+        survivor_weights = weights[.!dead]
+        survivor_sum = sum(survivor_weights)
+        survivor_sum > 0 ||
+            throw(ArgumentError("no positive-weight particles have finite new-data likelihood"))
+        survivor_ESS = survivor_sum^2 / sum(abs2, survivor_weights)
+        if survivor_ESS <= ESS_bar
+            ϕ_prop > ϕ_n1 || throw(ArgumentError("adaptive tempering has no positive step"))
+            push!(cloud.tempering_schedule, ϕ_prop)
+            return ϕ_prop, resampled_last_period, j, ϕ_prop
+        end
     end
 
     # NaN fix:
@@ -248,19 +271,36 @@ function bridge_log_factor(old_loglh::Vector{T}, prior_weight::T,
     return bridge_log_factor.(old_loglh, prior_weight, log_prob_old_data)
 end
 
+function bridge_incremental_weights(loglh::Vector{T}, old_loglh::Vector{T},
+                                    ϕ_n::T, ϕ_n1::T, prior_weight::T,
+                                    log_prob_old_data::T) where T<:AbstractFloat
+    old_bridge = bridge_log_factor(old_loglh, prior_weight, log_prob_old_data)
+    Δϕ = ϕ_n - ϕ_n1
+    # At the left endpoint the incremental factor is one, including for particles
+    # whose new-data likelihood is -Inf. For a positive step those particles have
+    # zero weight. In particular, never evaluate 0 * -Inf in the ESS root solver.
+    Δϕ == zero(T) && return ones(T, length(loglh))
+    inc_weights = exp.((ϕ_n1 - ϕ_n) .* old_bridge + Δϕ .* loglh)
+    if Δϕ > zero(T)
+        inc_weights[loglh .== -Inf] .= zero(T)
+    end
+    return inc_weights
+end
+
 function compute_ESS(loglh::Vector{T}, current_weights::Vector{T}, ϕ_n::T, ϕ_n1::T;
                      old_loglh::Vector{T} = zeros(length(loglh)),
                      tempered_update_prior_weight::T = zero(T),
                      log_prob_old_data::T = zero(T)) where T<:AbstractFloat
     N            = length(loglh)
-    old_bridge   = bridge_log_factor(old_loglh, tempered_update_prior_weight,
-                                     log_prob_old_data)
-    inc_weights  = exp.((ϕ_n1 - ϕ_n) .* old_bridge + (ϕ_n - ϕ_n1) .* loglh)
+    inc_weights  = bridge_incremental_weights(loglh, old_loglh, ϕ_n, ϕ_n1,
+                                              tempered_update_prior_weight, log_prob_old_data)
     new_weights  = current_weights .* inc_weights
     norm_weights = N * new_weights / sum(new_weights) # Normalize to N
     ESS          = N^2 / sum(norm_weights .^ 2)       # Transform back for ESS
 
     if isnan(ESS)
+        old_bridge = bridge_log_factor(old_loglh, tempered_update_prior_weight,
+                                       log_prob_old_data)
         println("NAN Information:")
         println("N: $(N)")
         println("ϕ diffs: $(ϕ_n1 - ϕ_n)")

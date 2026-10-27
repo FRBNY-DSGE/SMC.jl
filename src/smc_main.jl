@@ -21,10 +21,16 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     as well as calculated acceptance rate, ESS, and number of times resampled.
 - `parallel::Bool = false`: Flag for running algorithm in parallel.
 - `smc_seed::Union{Nothing,Integer} = nothing`: Nonnegative run seed for reproducible
-    particle, resampling, and block streams. If omitted, a seed is generated once and logged.
-    The seed and derivation version are stored under `smc_seed` and `smc_seed_version`
-    in saved JLD2 files. A stage checkpoint supplies its own seed on resume; an explicit
-    seed must match it. Bitwise replay assumes the same Julia and dependency versions.
+    particle, resampling, and block streams (see `src/rng.jl`). A run with a given seed is
+    bitwise identical serially and with any number of workers. If omitted, the seed is drawn
+    from the caller's task-local RNG, so `Random.seed!(x)` before `smc` still makes the run
+    reproducible. Either way it is logged. smc() leaves the caller's task-local RNG as it found
+    it (apart from that one draw). The seed and derivation version are stored under `smc_seed`
+    and `smc_seed_version` in saved JLD2 files. A stage checkpoint supplies its own seed on
+    resume; an explicit seed must match it. Bitwise replay assumes the same Julia and
+    dependency versions, which are saved under `run_info`.
+- `run_info::AbstractDict = Dict{String,String}()`: Extra provenance (e.g. the caller's package
+    commit) saved under `run_info` in the JLD2 files, next to the Julia version and SMC commit.
 - `n_parts::Int = 5_000`: Number of particles.
 - `n_blocks::Int = 1`: Number of parameter blocks in mutation step.
 - `n_mh_steps::Int = 1`: Number of Metropolis Hastings steps to attempt during the mutation step.
@@ -87,9 +93,11 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     take their regime 1 values at the end of the loglikelihood computation and set `toggle = false`.
 - `debug_assertion::Bool = false`: if true, then when an assertion error is thrown during the estimation,
     output is created in a JLD2 file to help the user debug the problem.
-- `log_prob_old_data::Float64 = 0.0`: Log MDD of the old data. Supply it for a bridge to
-    normalize the old-posterior component and keep the saved incremental weights on the
-    full-data MDD scale; the default assumes the old-data log MDD is zero.
+- `log_prob_old_data::Union{Nothing,Float64} = nothing`: Log MDD of the old data.
+    Supplying it puts a bridge's saved incremental weights on the full-data MDD scale.
+    At zero prior share, omitting it retains the old incremental-MDD convention; do not
+    also add the old MDD when it is supplied. A prior share strictly between zero and
+    one requires this value to normalize the mixture.
 
 ### Outputs
 
@@ -123,6 +131,21 @@ SMC is broken up into three main steps:
     Hastings algorithm (the number of steps are specified by `n_mh_steps`).
 """
 function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matrix{S};
+             smc_seed::Union{Nothing, Integer} = nothing, continue_intermediate::Bool = false,
+             kwargs...) where {S<:AbstractFloat, U<:Number}
+    # With no seed, draw it from the caller's RNG so Random.seed! still controls the run (on a
+    # resume the checkpoint supplies it)
+    if smc_seed === nothing && !continue_intermediate
+        smc_seed = rand(Random.default_rng(), UInt64)
+    end
+    # The per-particle streams reseed the task-local RNG: give the caller's back afterwards
+    return preserving_default_rng() do
+        _smc(loglikelihood, parameters, data; smc_seed = smc_seed,
+             continue_intermediate = continue_intermediate, kwargs...)
+    end
+end
+
+function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matrix{S};
              verbose::Symbol = :low,
              testing::Bool   = false,
              data_vintage::String = Dates.format(today(), "yymmdd"),
@@ -165,16 +188,27 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
              regime_switching::Bool = false,
              toggle::Bool = true,
              debug_assertion::Bool = false,
-             log_prob_old_data::Float64 = 0.0, add_zlb_duration::Tuple{Bool, Int} = (false, 1),
+             log_prob_old_data::Union{Nothing, Float64} = nothing,
+             add_zlb_duration::Tuple{Bool, Int} = (false, 1),
              cholesky_fix = :none,
-             smc_seed::Union{Nothing, Integer} = nothing) where {S<:AbstractFloat, U<:Number}
+             smc_seed::Union{Nothing, Integer} = nothing,
+             run_info::AbstractDict{<:AbstractString, <:AbstractString} = Dict{String, String}()) where {S<:AbstractFloat, U<:Number}
 
     ########################################################################################
     ### Settings
     ########################################################################################
 
+    0.0 <= tempered_update_prior_weight <= 1.0 ||
+        throw(ArgumentError("tempered_update_prior_weight must be in [0, 1]"))
+    if 0.0 < tempered_update_prior_weight < 1.0 && log_prob_old_data === nothing
+        throw(ArgumentError("log_prob_old_data is required when tempered_update_prior_weight is between 0 and 1"))
+    end
+    log_prob_old_data = something(log_prob_old_data, 0.0)
+
     # Checkpoint seed takes precedence on resume; a caller-supplied seed must match it.
-    run_seed = if continue_intermediate
+    # Checkpoints written before the seeding (no smc_seed) still resume, with a new seed.
+    checkpoint_keys = continue_intermediate ? JLD2.jldopen(keys, loadpath, "r") : String[]
+    run_seed = if continue_intermediate && "smc_seed" in checkpoint_keys
         saved_seed = load(loadpath, "smc_seed")
         saved_version = load(loadpath, "smc_seed_version")
         saved_version == SMC_SEED_VERSION || error("Unsupported SMC seed derivation version: $saved_version")
@@ -182,9 +216,18 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
             throw(ArgumentError("smc_seed differs from the checkpoint seed"))
         saved_seed
     else
-        smc_seed === nothing ? rand(RandomDevice(), UInt64) : checked_smc_seed(smc_seed)
+        new_seed = smc_seed === nothing ? rand(Random.default_rng(), UInt64) : checked_smc_seed(smc_seed)
+        continue_intermediate &&
+            @warn "Checkpoint $loadpath has no smc_seed (written before SMC seeding): resuming with " *
+                  "a new seed, so the resumed stages cannot replay the original run" smc_seed=new_seed
+        new_seed
     end
     @info "SMC run seed" smc_seed=run_seed smc_seed_version=SMC_SEED_VERSION
+
+    # Provenance saved next to the seed: bitwise replay needs the same Julia and package versions
+    run_info = merge!(Dict{String, String}("julia_version" => string(VERSION),
+                                           "smc_version"   => string(pkgversion(SMC)),
+                                           "smc_commit"    => package_commit(SMC)), run_info)
 
     # Construct closure of mutation function so as to avoid issues with serialization
     # across workers with different Julia system images
@@ -231,8 +274,6 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     end
 
 
-    0.0 <= tempered_update_prior_weight <= 1.0 ||
-        throw(ArgumentError("tempered_update_prior_weight must be in [0, 1]"))
     (tempered_update_prior_weight == 0.0 || tempered_update_prior_weight == 1.0 || !isempty(old_data)) ||
         throw(ArgumentError("old_data is required when tempered_update_prior_weight is between 0 and 1"))
 
@@ -444,11 +485,24 @@ end
         w_matrix = load(loadpath, "w")
         W_matrix = load(loadpath, "W")
         j        = load(loadpath, "j")
-        resampled_last_period = load(loadpath, "resampled_last_period")
         println(j)
         i        = cloud.stage_index
         c        = cloud.c
-        ϕ_prop   = (((collect(1:n_Φ) .- 1) / (n_Φ-1)) .^ λ)[j]
+        # Older checkpoints lack these: fall back to what resuming used to assume. The saved
+        # ϕ_prop is the live one; sched[j] is generally not (it is sched[j-1] after
+        # solve_adaptive_ϕ, or off the grid), which made an adaptive resume diverge.
+        if "resampled_last_period" in checkpoint_keys && "ϕ_prop" in checkpoint_keys
+            resampled_last_period = load(loadpath, "resampled_last_period")
+            ϕ_prop                = load(loadpath, "ϕ_prop")
+        else
+            use_fixed_schedule ||
+                @warn "Checkpoint $loadpath has no ϕ_prop/resampled_last_period: an adaptive " *
+                      "schedule will not match the original run"
+            ϕ_prop = (((collect(1:n_Φ) .- 1) / (n_Φ-1)) .^ λ)[j]
+            if "resampled_last_period" in checkpoint_keys
+                resampled_last_period = load(loadpath, "resampled_last_period")
+            end
+        end
         println("I have all vars")
     else
         w_matrix = zeros(n_parts, 1)
@@ -491,10 +545,9 @@ while ϕ_n < 1.
         ### Step 1: Correction
         #############################################################################
     # Calculate incremental weights (if no old data, get_old_loglh(cloud) = 0)
-        old_bridge = bridge_log_factor(get_old_loglh(cloud),
-                                       tempered_update_prior_weight, log_prob_old_data)
-        incremental_weights = exp.((ϕ_n1 - ϕ_n) .* old_bridge +
-                                   (ϕ_n - ϕ_n1) .* get_loglh(cloud))
+        incremental_weights = bridge_incremental_weights(get_loglh(cloud), get_old_loglh(cloud),
+                                                         ϕ_n, ϕ_n1, tempered_update_prior_weight,
+                                                         log_prob_old_data)
 
     # Update weights
         update_weights!(cloud, incremental_weights)
@@ -651,8 +704,10 @@ update_acceptance_rate!(cloud)
                 write(file, "W", W_matrix)
                 write(file, "j", j)
                 write(file, "resampled_last_period", resampled_last_period)
+                write(file, "ϕ_prop", ϕ_prop)
                 write(file, "smc_seed", run_seed)
                 write(file, "smc_seed_version", SMC_SEED_VERSION)
+                write(file, "run_info", run_info)
             end
 
         end
@@ -675,6 +730,7 @@ update_acceptance_rate!(cloud)
             write(file, "W", W_matrix)
             write(file, "smc_seed", run_seed)
             write(file, "smc_seed_version", SMC_SEED_VERSION)
+            write(file, "run_info", run_info)
         end
     end
 end

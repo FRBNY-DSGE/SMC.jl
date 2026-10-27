@@ -704,7 +704,8 @@ This function performs this concatenation and allows for regime-switching.
 ### Keyword Arguments
 - `regime_switching`: this kwarg is needed to be able to draw from the prior correctly
     for the new parameters.
-- `smc_seed`: optional nonnegative seed for independent, row-indexed prior draws.
+- `smc_seed`: optional nonnegative seed for independent, row-indexed prior draws. Without
+    it the draws come from the caller's task-local RNG (so `Random.seed!` controls them).
 """
 function add_parameters_to_cloud(old_cloud_file::String, para::ParameterVector,
                                  old_para_inds::BitVector; regime_switching::Bool = false,
@@ -722,9 +723,18 @@ function add_parameters_to_cloud(old_cloud::Cloud, para::ParameterVector{T}, old
     n_parts   = length(old_cloud)
     para_vals = regime_switching ? Matrix{T}(undef, n_parts, n_parameters_regime_switching(para)) :
         Matrix{T}(undef, n_parts, length(para))
-    for i in 1:n_parts
-        smc_seed === nothing || Random.seed!(stream_seed(checked_smc_seed(smc_seed), :added_parameter_particle, 0, i))
-        para_vals[i, :] = rand(para; regime_switching = regime_switching)
+    if smc_seed === nothing
+        for i in 1:n_parts
+            para_vals[i, :] = rand(para; regime_switching = regime_switching)
+        end
+    else
+        run_seed = checked_smc_seed(smc_seed)
+        preserving_default_rng() do
+            for i in 1:n_parts
+                Random.seed!(stream_seed(run_seed, :added_parameter_particle, 0, i))
+                para_vals[i, :] = rand(para; regime_switching = regime_switching)
+            end
+        end
     end
 
     # Use same particles as the old cloud. Re-sampling is unnecessary
