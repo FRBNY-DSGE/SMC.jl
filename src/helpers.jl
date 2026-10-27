@@ -222,7 +222,7 @@ function compute_proposal_densities(para_draw::Vector{T}, para_subset::Vector{T}
         d_Σ[near_zero_inds] .= 0.
     end
     for i = 1:length(para_subset)
-        Σ_ii    = sqrt(d_Σ[i,i])
+        Σ_ii    = c * sqrt(d_Σ[i,i])  # the diagonal component's sd, as drawn in mutation
         zstat   = (para_subset[i] - para_draw[i]) / Σ_ii
         ind_pdf = ind_pdf / (Σ_ii * sqrt(2.0 * π)) * exp(-0.5 * zstat^2)
     end

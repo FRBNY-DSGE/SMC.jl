@@ -759,7 +759,7 @@ update_acceptance_rate!(cloud)
                               distinct_selected = distinct_share(θ_selected),
                               distinct_mutated = distinct_share(θ_mutated),
                               # cloud.accept sums acceptances over the MH steps; record the rate
-                              accept = cloud.accept / max(n_mh_steps, 1),
+                              accept = cloud.accept,
                               c = c, inf_cloud = inf_cloud, inf_proposals = inf_proposals,
                               n_proposals = n_parts * n_mh_steps * length(blocks_free),
                               time = stage_sampling_time), corr, esjd)

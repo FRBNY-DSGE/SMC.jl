@@ -18,7 +18,8 @@ function mutation_block_proposal(μ::Vector{S}, Σ::Matrix{S}, block::Vector{Int
 
     return (full_cov = bar.Σ, diagonal_cov = diagonal.Σ, bar = bar,
             weights = [α, (1 - α) / 2, (1 - α) / 2],
-            diagonal_stdev = sqrt.(diag(get_cov(subset))),
+            # The diagonal component is drawn with covariance c²·diag(Σ), so its density uses c·√Σᵢᵢ
+            diagonal_stdev = c .* sqrt.(diag(get_cov(subset))),
             density_indices = positive, density_normalizer = normalizer,
             density_inverse = inverse)
 end
@@ -142,7 +143,7 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
     accept    = 0.0
 
     if n_mh_steps <= 0
-        update_mutation!(p, para, like, logprior, like_prev, accept / n_free_para)
+        update_mutation!(p, para, like, logprior, like_prev, 0.0)
         return p
     end
     block_proposals = [mutation_block_proposal(d_μ, d_Σ, block, c, α)
@@ -220,7 +221,8 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
         end
     end
 
-    update_mutation!(p, para, like, logprior, like_prev, accept / n_free_para)
+    # Acceptance per MH step, so the adaptation of c targets the same rate for any n_mh_steps
+    update_mutation!(p, para, like, logprior, like_prev, accept / (n_free_para * n_mh_steps))
     return p
 end
 

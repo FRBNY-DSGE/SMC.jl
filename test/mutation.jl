@@ -70,3 +70,21 @@ if run_benchmarks
                         $n_params, $blocks_free, $blocks_all, $ϕ_n, $ϕ_n1;
                         c = $c, α = $α, old_data = $old_data)
 end
+
+# N3: the acceptance column is the rate per MH step (it used to sum over the steps, so the
+# adaptation of c targeted target / n_mh_steps). With a tiny step every proposal is accepted.
+@testset "Acceptance is per MH step" begin
+    # A particle whose stored likelihood and prior match its parameters, with no old data
+    p0 = copy(old_cloud.particles[1, :])
+    N  = length(p0)
+    ModelConstructors.update!(m.parameters, p0[1:SMC.ind_para_end(N)])
+    p0[SMC.ind_loglh(N)]     = loglik_fn(m.parameters, data)
+    p0[SMC.ind_logprior(N)]  = ModelConstructors.prior(m.parameters)
+    p0[SMC.ind_old_loglh(N)] = 0.0
+    for n_mh_steps in (1, 3)
+        Random.seed!(7)
+        p = SMC.mutation(loglik_fn, m.parameters, data, copy(p0), d.μ, Matrix(d.Σ), n_params,
+                         blocks_free, blocks_all, ϕ_n; c = 1e-8, α = 1.0, n_mh_steps = n_mh_steps)
+        @test SMC.get_accept(reshape(p, 1, :))[1] ≈ 1.0
+    end
+end

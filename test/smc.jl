@@ -35,11 +35,13 @@ full_data = copy(data)
 
 println("Estimating Linear Model... (approx. 8 minutes)")
 
-# n_mh_steps = 3: a single MH step per tempering stage under-mixes this 9-parameter problem
+# n_mh_steps = 5: fewer MH steps per tempering stage under-mix this 9-parameter problem
 # (the weakest-identified equation, σ1, gets stuck — max|dev| ≈ 0.65 at 1 step, erratic up
-# to ~48). 3 steps mixes with comfortable margin (the sweep gave ≈ 0.12 at 5 steps).
+# to ~48). 3 steps used to pass only because acceptance was summed over the steps (N3), so c
+# adapted to a much larger scale; with acceptance per step, 3 steps got stuck at 1 of 12 seeds
+# (seed 42: max|dev| 15.8) and 5 steps passed at all 12 (max|dev| ≤ 0.134).
 SMC.smc(loglik_fn, m.parameters, data, verbose = :none, use_fixed_schedule = true,
-        parallel = use_parallel, n_Φ = 120, n_mh_steps = 3, resampling_method = :polyalgo,
+        parallel = use_parallel, n_Φ = 120, n_mh_steps = 5, resampling_method = :polyalgo,
         data_vintage = "200707", target = 0.25, savepath = savepath,
         particle_store_path = particle_store_path, α = .9, threshold_ratio = .5,
         smc_iteration = 0, smc_seed = 42)

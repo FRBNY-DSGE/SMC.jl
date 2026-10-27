@@ -64,8 +64,8 @@ Empty per-stage health record: one Float64 vector per column of `STAGE_HEALTH_CO
 of the particles before and after mutation, and the expected squared jump distance relative
 to the weighted variance before mutation (Fearnhead and Taylor 2013).
 
-`accept` is the mutation acceptance rate per MH step (`cloud.accept` divided by the number of
-MH steps, since the particles' acceptance column sums over the steps), `ess` and `cess` are fractions of N (ESS before resampling; conditional ESS of Zhou, Johansen
+`accept` is the mutation acceptance rate per MH step (`cloud.accept`), `ess` and `cess` are
+fractions of N (ESS before resampling; conditional ESS of Zhou, Johansen
 and Aston 2016), `max_weight` the largest normalized weight's share, `distinct_*` the shares
 of distinct particles after selection and after mutation, `inf_cloud` the number of -Inf
 log-likelihoods in the cloud, `inf_proposals`/`n_proposals` the -Inf (or failed) MH
