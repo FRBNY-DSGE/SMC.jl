@@ -125,7 +125,10 @@ old_vint = "000000"
 m_new <= Setting(:previous_data_vintage, old_vint)
 loadpath = rawpath(m_old, "estimate", "smc_cloud.jld2")
 
-old_cloud = load(loadpath, "cloud")
+old_result = load(loadpath)
+old_cloud = old_result["cloud"]
+old_w, old_W = old_result["w"], old_result["W"]
+old_mdd = sum(log.(vec(sum(old_w[:, 2:end] .* old_W[:, 1:end-1] ./ length(old_cloud), dims = 1))))
 old_data = data[:, 1:Int(floor(end/2))]
 
 println("Estimating Linear Model using a bridge distribution... (approx. 2 minutes)")
@@ -134,7 +137,8 @@ SMC.smc(loglik_fn, m_new.parameters, data, old_data=old_data, old_cloud=old_clou
         n_Φ = 100, n_mh_steps = 1, resampling_method = :polyalgo, data_vintage = "200708",
         target = 0.25, savepath = savepath, particle_store_path = particle_store_path,
         α = .9, threshold_ratio = .5, smc_iteration = 0,
-        tempered_update_prior_weight = 0.5, smc_seed = 44)
+        tempered_update_prior_weight = 0.5, log_prob_old_data = old_mdd,
+        smc_seed = 44)
 @test data == full_data
 @test parameters === :caller_parameters
 

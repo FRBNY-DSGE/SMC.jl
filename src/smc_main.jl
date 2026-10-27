@@ -104,9 +104,11 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     take their regime 1 values at the end of the loglikelihood computation and set `toggle = false`.
 - `debug_assertion::Bool = false`: if true, then when an assertion error is thrown during the estimation,
     output is created in a JLD2 file to help the user debug the problem.
-- `log_prob_old_data::Float64 = 0.0`: Log MDD of the old data. Supply it for a bridge to
-    normalize the old-posterior component and keep the saved incremental weights on the
-    full-data MDD scale; the default assumes the old-data log MDD is zero.
+- `log_prob_old_data::Union{Nothing,Float64} = nothing`: Log MDD of the old data.
+    Supplying it puts a bridge's saved incremental weights on the full-data MDD scale.
+    At zero prior share, omitting it retains the old incremental-MDD convention; do not
+    also add the old MDD when it is supplied. A prior share strictly between zero and
+    one requires this value to normalize the mixture.
 
 ### Outputs
 
@@ -214,7 +216,8 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
              regime_switching::Bool = false,
              toggle::Bool = true,
              debug_assertion::Bool = false,
-             log_prob_old_data::Float64 = 0.0, add_zlb_duration::Tuple{Bool, Int} = (false, 1),
+             log_prob_old_data::Union{Nothing, Float64} = nothing,
+             add_zlb_duration::Tuple{Bool, Int} = (false, 1),
              cholesky_fix = :none,
              smc_seed::Union{Nothing, Integer} = nothing,
              run_info::AbstractDict{<:AbstractString, <:AbstractString} = Dict{String, String}(),
@@ -224,6 +227,13 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
     ########################################################################################
     ### Settings
     ########################################################################################
+
+    0.0 <= tempered_update_prior_weight <= 1.0 ||
+        throw(ArgumentError("tempered_update_prior_weight must be in [0, 1]"))
+    if 0.0 < tempered_update_prior_weight < 1.0 && log_prob_old_data === nothing
+        throw(ArgumentError("log_prob_old_data is required when tempered_update_prior_weight is between 0 and 1"))
+    end
+    log_prob_old_data = something(log_prob_old_data, 0.0)
 
     # Checkpoint seed takes precedence on resume; a caller-supplied seed must match it.
     # Checkpoints written before the seeding (no smc_seed) still resume, with a new seed.
@@ -299,8 +309,6 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
     end
 
 
-    0.0 <= tempered_update_prior_weight <= 1.0 ||
-        throw(ArgumentError("tempered_update_prior_weight must be in [0, 1]"))
     (tempered_update_prior_weight == 0.0 || tempered_update_prior_weight == 1.0 || !isempty(old_data)) ||
         throw(ArgumentError("old_data is required when tempered_update_prior_weight is between 0 and 1"))
 
@@ -588,10 +596,9 @@ while ϕ_n < 1.
         ### Step 1: Correction
         #############################################################################
     # Calculate incremental weights (if no old data, get_old_loglh(cloud) = 0)
-        old_bridge = bridge_log_factor(get_old_loglh(cloud),
-                                       tempered_update_prior_weight, log_prob_old_data)
-        incremental_weights = exp.((ϕ_n1 - ϕ_n) .* old_bridge +
-                                   (ϕ_n - ϕ_n1) .* get_loglh(cloud))
+        incremental_weights = bridge_incremental_weights(get_loglh(cloud), get_old_loglh(cloud),
+                                                         ϕ_n, ϕ_n1, tempered_update_prior_weight,
+                                                         log_prob_old_data)
 
         previous_weights = get_weights(cloud)
         inf_cloud        = count(==(-Inf), get_loglh(cloud))

@@ -1,3 +1,12 @@
+# Unreleased
+
+Bug Fixes:
+- Adaptive bridge tempering now handles particles with `-Inf` new-data likelihood without
+  stalling the ESS solver; their weight becomes zero at the first positive tempering step.
+- A bridge with `0 < tempered_update_prior_weight < 1` now requires `log_prob_old_data`.
+  At zero prior share, omitting it keeps the saved MDD as an increment; supplying it
+  makes the saved MDD the full-data level. Do not add the old MDD again in that case.
+
 # SMC.jl 0.1.15 Release Notes
 New Features:
 - Option to use different likelihood functions with tempered updates

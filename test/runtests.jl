@@ -20,14 +20,18 @@ my_tests = [
             "helpers",
             "initialization",
             "resample",
+            "adaptive_bridge_infinite_likelihood",
             "util",
             "mutation",
             "proposal_cache",
+            "stream_reproducibility",
+            "reproducibility",
+            "reproducibility_smc",
+            "reproducibility_regime",
             "particle",
             "smc",
             "regime_switching_smc",
             "add_parameters_to_cloud",
-            "reproducibility",
             "diagnostics"
             ]
 

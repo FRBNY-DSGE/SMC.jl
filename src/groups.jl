@@ -30,11 +30,11 @@ function group_old_clouds(old_cloud, loadpath::AbstractString, n_groups::Int, te
     verbose == :none ||
         @warn "Bridging $n_groups particle groups from one old cloud: each group gets a disjoint " *
               "part of it, but the group NSEs leave out the old run's Monte Carlo error"
-    return split_cloud(shared, n_groups, Xoshiro(stream_seed(run_seed, :group, 0, 0)))
+    return split_old_cloud(shared, n_groups, Xoshiro(stream_seed(run_seed, :group, 0, 0)))
 end
 
 # J disjoint random parts of a cloud, each with ⌊N/J⌋ particles and the cloud's weights
-function split_cloud(cloud::Cloud, n_groups::Int, rng::AbstractRNG)
+function split_old_cloud(cloud::Cloud, n_groups::Int, rng::AbstractRNG)
     n_parts = size(cloud.particles, 1)
     n_each  = n_parts ÷ n_groups
     n_each > 0 || throw(ArgumentError("the old cloud has $n_parts particles for $n_groups groups"))

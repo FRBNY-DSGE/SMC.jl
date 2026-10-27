@@ -31,15 +31,19 @@ end
 serial = repro_smc("serial"; smc_seed = 7, save_intermediate = true, intermediate_stage_increment = 2)
 
 @testset "Same smc_seed: serial and 2 workers are bitwise identical" begin
-    new_workers = Distributed.addprocs(2; exeflags = "--project=$(Base.active_project())")
+    # A batch runner may already have reserved workers. SMC uses all available
+    # workers, so initialize each of them and remove only workers added here.
+    added_workers = length(workers()) < 2 ?
+        Distributed.addprocs(2 - length(workers()); exeflags = "--project=$(Base.active_project())") : Int[]
+    run_workers = workers()
     try
-        @everywhere new_workers begin
+        @everywhere run_workers begin
             using SMC, ModelConstructors
             include(joinpath($(@__DIR__), "modelsetup.jl"))
         end
         @test same_run(serial, repro_smc("parallel"; parallel = true, smc_seed = 7))
     finally
-        Distributed.rmprocs(new_workers)
+        isempty(added_workers) || Distributed.rmprocs(added_workers)
     end
     @test serial["smc_seed"] == 7
     @test serial["smc_seed_version"] == SMC.SMC_SEED_VERSION
