@@ -140,6 +140,21 @@ end
     @test same.ks_pvalue > 0.01
     shifted = SMC.compare_estimates(a .+ 1, ones(500), b, ones(500))
     @test shifted.ks_pvalue < 1e-6
+
+    # NSEs from J = 6 groups: raw t's exceed 2 too often; the small-J z's don't
+    J, n = 6, 20_000
+    ga, gb = randn(rng, n, J), randn(rng, n, J)
+    ma, mb = vec(mean(ga, dims = 2)), vec(mean(gb, dims = 2))
+    sa, sb = vec(std(ga, dims = 2)) ./ sqrt(J), vec(std(gb, dims = 2)) ./ sqrt(J)
+    raw   = SMC.compare_estimates(ma, sa, mb, sb)
+    small = SMC.compare_estimates(ma, sa, mb, sb; n_groups_a = J, n_groups_b = J)
+    @test raw.share_above_2 > 0.065
+    @test isapprox(small.share_above_2, 0.0455, atol = 0.006)
+    @test small.ks_pvalue > 0.001
+    @test SMC.comparison_z(1.0, 0.5, 0.0) ≈ 2.0
+    @test SMC.comparison_z(1.0, 0.5, 0.0, 6, 6) < 2.0
+    @test SMC.comparison_z(-1.0, 0.5, 0.0, 6, 6) ≈ -SMC.comparison_z(1.0, 0.5, 0.0, 6, 6)
+    @test isfinite(SMC.comparison_z(100.0, 0.5, 0.5, 6, 6))
 end
 
 # Exact log MDD of the linear test model: per equation, integrate α and β analytically given σ,
@@ -221,6 +236,18 @@ end
     @test mtime(joinpath(diag_dir, "groups_group=1.jld2")) == before
     @test isequal(again.particles, cloud.particles)
     @test_throws ArgumentError diag_smc("bad"; smc_seed = 1, n_smc_groups = 3)
+
+    # A single old cloud is split into disjoint parts, one per group
+    parts = SMC.group_old_clouds(cloud, "", 4, true; run_seed = UInt64(5), verbose = :none)
+    @test all(p -> size(p.particles) == (250, size(cloud.particles, 2)), parts)
+    @test sortslices(reduce(vcat, [p.particles for p in parts]), dims = 1) ==
+          sortslices(cloud.particles, dims = 1)
+    @test parts[1].particles == SMC.group_old_clouds(cloud, "", 4, true; run_seed = UInt64(5),
+                                                     verbose = :none)[1].particles
+    @test cloud.particles == again.particles   # the old cloud itself is untouched
+    # A grouped old run's group files are used one per group
+    files = SMC.group_old_clouds(SMC.Cloud(0, 0), joinpath(diag_dir, "groups.jld2"), 4, true)
+    @test files[3].particles == load(joinpath(diag_dir, "groups_group=3.jld2"), "cloud").particles
 end
 
 rm(diag_dir; recursive = true, force = true)

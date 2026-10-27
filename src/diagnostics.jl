@@ -532,18 +532,42 @@ end
 
 """
 ```
-compare_estimates(a, nse_a, b, nse_b)
+compare_estimates(a, nse_a, b, nse_b; n_groups_a = Inf, n_groups_b = Inf)
 ```
-Item 6: z = (a - b)/√(nse_a² + nse_b²) per estimate, the share with |z| > 2 (≈ 5% if the two
-runs agree), and a Kolmogorov–Smirnov test of the z's against N(0, 1) (asymptotic p-value).
+Item 6: t = (a - b)/√(nse_a² + nse_b²) per estimate. NSEs estimated from J groups make t
+heavier-tailed than N(0, 1) (with J = 6, |t| > 2 about 8% of the time under the null), so each
+t is referred to a t distribution with Welch–Satterthwaite degrees of freedom from the group
+counts and mapped to the normal quantile with the same tail probability: `z`. Returns `z`, the
+share with |z| > 2 (≈ 4.6% if the runs agree), and a Kolmogorov–Smirnov test of the z's against
+N(0, 1) (asymptotic p-value). Infinite group counts give z = t.
 """
 function compare_estimates(a::AbstractVector, nse_a::AbstractVector, b::AbstractVector,
-                           nse_b::AbstractVector)
-    z = (a .- b) ./ sqrt.(nse_a .^ 2 .+ nse_b .^ 2)
+                           nse_b::AbstractVector; n_groups_a::Real = Inf, n_groups_b::Real = Inf)
+    z = comparison_z.(a .- b, nse_a, nse_b, n_groups_a, n_groups_b)
     zs = sort(filter(isfinite, z))
     n = length(zs)
     Φ = cdf.(Normal(), zs)
     ks = n == 0 ? NaN : maximum(max.((1:n) ./ n .- Φ, Φ .- (0:n-1) ./ n))
     return (z = z, share_above_2 = n == 0 ? NaN : count(x -> abs(x) > 2, zs) / n,
             ks_statistic = ks, ks_pvalue = n == 0 ? NaN : ccdf(Kolmogorov(), sqrt(n) * ks))
+end
+
+"""
+```
+comparison_z(diff, nse_a, nse_b, n_groups_a = Inf, n_groups_b = Inf)
+```
+The normal-equivalent z of t = diff/√(nse_a² + nse_b²) under t_ν, ν from Welch–Satterthwaite
+with J - 1 degrees of freedom per NSE (an NSE with J = Inf, or 0, adds none).
+"""
+function comparison_z(diff::Real, nse_a::Real, nse_b::Real, n_groups_a::Real = Inf,
+                      n_groups_b::Real = Inf)
+    t = diff / sqrt(nse_a^2 + nse_b^2)
+    isfinite(t) || return t
+    term(nse, J) = (isinf(J) || nse == 0) ? 0.0 : nse^4 / (J - 1)
+    denom = term(nse_a, n_groups_a) + term(nse_b, n_groups_b)
+    denom == 0 && return t
+    ν = (nse_a^2 + nse_b^2)^2 / denom
+    # Through the smaller tail, so large |t| don't round to p = 0 or 1
+    p = ccdf(TDist(ν), abs(t))
+    return sign(t) * cquantile(Normal(), p)
 end

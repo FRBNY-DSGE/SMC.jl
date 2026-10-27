@@ -17,7 +17,7 @@ module SMC
         isempty, join_cloud, split_cloud, add_parameters_to_cloud,
         smc_log_mdd, stage_health_flags, write_stage_health, lineage_nse,
         modified_harmonic_mean, bridge_sampling_estimate, gaussian_mixture_bic,
-        nse_validation, compare_estimates, pool_groups
+        nse_validation, compare_estimates, comparison_z, pool_groups
 
     const VERBOSITY   = Dict(:none => 0, :low => 1, :high => 2)
     const DATE_FORMAT = "yymmdd"

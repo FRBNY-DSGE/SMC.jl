@@ -10,21 +10,39 @@ function group_path(path::AbstractString, g::Integer)
     return "$(base)_group=$(g)$(ext)"
 end
 
-# The old cloud(s) a bridge starts each group from: a vector gives one per group, which keeps
-# the groups independent; a single cloud (passed, or found at `loadpath`) is shared by all
-# groups. Groups of a grouped old run are found next to `loadpath`.
-function group_old_clouds(old_cloud, loadpath::AbstractString, n_groups::Int, tempered_update::Bool)
+# The old cloud(s) a bridge starts each group from: a vector gives one per group, and groups
+# of a grouped old run are found next to `loadpath`. A single old cloud (passed, or found at
+# `loadpath`) is split into J disjoint random parts, so the groups don't share old particles
+# and each bridges from N_old/J particles, like a group of a grouped old run. The parts still
+# share the old run's Monte Carlo error, which the group NSEs leave out: a grouped old run
+# avoids that.
+function group_old_clouds(old_cloud, loadpath::AbstractString, n_groups::Int, tempered_update::Bool;
+                          run_seed::UInt64 = UInt64(0), verbose::Symbol = :low)
     tempered_update || return fill(Cloud(0, 0), n_groups)
     if old_cloud isa AbstractVector
         length(old_cloud) == n_groups ||
             throw(ArgumentError("old_cloud has $(length(old_cloud)) clouds for $n_groups groups"))
         return collect(Cloud, old_cloud)
-    elseif !cloud_isempty(old_cloud)
-        return fill(old_cloud, n_groups)
-    elseif all(g -> isfile(group_path(loadpath, g)), 1:n_groups)
+    elseif cloud_isempty(old_cloud) && all(g -> isfile(group_path(loadpath, g)), 1:n_groups)
         return [load(group_path(loadpath, g), "cloud") for g in 1:n_groups]
-    else
-        return fill(load(loadpath, "cloud"), n_groups)
+    end
+    shared = cloud_isempty(old_cloud) ? load(loadpath, "cloud") : old_cloud
+    verbose == :none ||
+        @warn "Bridging $n_groups particle groups from one old cloud: each group gets a disjoint " *
+              "part of it, but the group NSEs leave out the old run's Monte Carlo error"
+    return split_cloud(shared, n_groups, Xoshiro(stream_seed(run_seed, :group, 0, 0)))
+end
+
+# J disjoint random parts of a cloud, each with ⌊N/J⌋ particles and the cloud's weights
+function split_cloud(cloud::Cloud, n_groups::Int, rng::AbstractRNG)
+    n_parts = size(cloud.particles, 1)
+    n_each  = n_parts ÷ n_groups
+    n_each > 0 || throw(ArgumentError("the old cloud has $n_parts particles for $n_groups groups"))
+    order = randperm(rng, n_parts)
+    return map(1:n_groups) do g
+        part = deepcopy(cloud)
+        part.particles = cloud.particles[order[(g-1)*n_each+1:g*n_each], :]
+        part
     end
 end
 
@@ -65,7 +83,8 @@ function smc_groups(loglikelihood::Function, parameters::ParameterVector, data::
     smc_seed === nothing &&
         throw(ArgumentError("resuming a run with n_smc_groups > 1 needs its smc_seed"))
     run_seed = checked_smc_seed(smc_seed)
-    old_clouds = group_old_clouds(old_cloud, loadpath, J, !isempty(old_data))
+    old_clouds = group_old_clouds(old_cloud, loadpath, J, !isempty(old_data);
+                                  run_seed = run_seed, verbose = verbose)
 
     results = map(1:J) do g
         seed = stream_seed(run_seed, :group, 0, g)
