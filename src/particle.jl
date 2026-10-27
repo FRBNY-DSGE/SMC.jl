@@ -83,6 +83,20 @@ end
 
 """
 ```
+set_last_ESS_from_weights!(c::Cloud)
+```
+Set the last entry of `c.ESS` to the effective sample size of the cloud's own weights,
+(Σw)² / Σw² (the formula `compute_ESS` uses). For clouds made from part of another cloud.
+"""
+function set_last_ESS_from_weights!(c::Cloud)
+    w = get_weights(c)
+    ess = sum(w)^2 / sum(abs2, w)
+    isempty(c.ESS) ? push!(c.ESS, ess) : (c.ESS[end] = ess)
+    return c
+end
+
+"""
+```
 get_vals(c::Cloud; transposed::Bool = true)
 ```
 Returns Matrix{Float64}(n_params, n_parts) of parameter values in particle cloud.
@@ -564,6 +578,9 @@ function split_cloud(filename::String, n_pieces::Int)
         # Since loglh, logprior, old_loglh are all stored in cloud.particles, this updates them all too!
         SMC.update_cloud!(clouds[i], cloud.particles[inds, :])
 
+        # Keep the full cloud's ESS: these pieces only exist to be saved and joined back
+        # (join_cloud), so a split/join round trip must preserve it. Bridge groups split the
+        # old cloud with split_old_cloud (groups.jl), which sets each part's own ESS.
         clouds[i].ESS = cloud.ESS
         clouds[i].c = cloud.c
         clouds[i].stage_index = cloud.stage_index

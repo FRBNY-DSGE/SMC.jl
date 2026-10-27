@@ -233,6 +233,8 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
     if 0.0 < tempered_update_prior_weight < 1.0 && log_prob_old_data === nothing
         throw(ArgumentError("log_prob_old_data is required when tempered_update_prior_weight is between 0 and 1"))
     end
+    # Keep what the caller passed: smc_log_mdd_level must tell "not given" from an explicit 0.0
+    log_prob_old_data_given = log_prob_old_data
     log_prob_old_data = something(log_prob_old_data, 0.0)
 
     # Checkpoint seed takes precedence on resume; a caller-supplied seed must match it.
@@ -255,9 +257,18 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
     @info "SMC run seed" smc_seed=run_seed smc_seed_version=SMC_SEED_VERSION
 
     # Provenance saved next to the seed: bitwise replay needs the same Julia and package versions
+    # The caller adds keys (e.g. DSGE's commit) but cannot overwrite these three
+    provenance = Dict{String, String}("julia_version" => string(VERSION),
+                                      "smc_version"   => string(pkgversion(SMC)),
+                                      "smc_commit"    => package_commit(SMC))
+    clash = intersect(keys(run_info), keys(provenance))
+    isempty(clash) || @warn "run_info keys $(sort(collect(clash))) are set by SMC; the caller's values are ignored"
+    run_info = merge(Dict{String, String}(run_info), provenance)
+    #= Old: the caller's run_info was merged last, so it could overwrite the provenance keys
     run_info = merge!(Dict{String, String}("julia_version" => string(VERSION),
                                            "smc_version"   => string(pkgversion(SMC)),
                                            "smc_commit"    => package_commit(SMC)), run_info)
+    =#
 
     # Construct closure of mutation function so as to avoid issues with serialization
     # across workers with different Julia system images
@@ -802,7 +813,12 @@ update_acceptance_rate!(cloud)
         "smc"       => log_mdd,
         "smc_level" => smc_log_mdd_level(log_mdd; tempered_update = tempered_update,
                                          tempered_update_prior_weight = tempered_update_prior_weight,
+                                         log_prob_old_data = log_prob_old_data_given),
+        #= Old: passed the value after `something(…, 0.0)`, so "not given" and 0.0 looked alike
+        "smc_level" => smc_log_mdd_level(log_mdd; tempered_update = tempered_update,
+                                         tempered_update_prior_weight = tempered_update_prior_weight,
                                          log_prob_old_data = log_prob_old_data),
+        =#
         "mhm"       => modified_harmonic_mean(θ_free, get_logpost(cloud), weights).log_mdd)
     if lineage_valid
         lineage = lineage_nse(eve, n_resample_events, weights, θ_free)

@@ -248,6 +248,50 @@ end
     # A grouped old run's group files are used one per group
     files = SMC.group_old_clouds(SMC.Cloud(0, 0), joinpath(diag_dir, "groups.jld2"), 4, true)
     @test files[3].particles == load(joinpath(diag_dir, "groups_group=3.jld2"), "cloud").particles
+
+    # Each part's last ESS comes from its own weights, not the full cloud's (SMC-CHECK-5)
+    for p in parts
+        w = SMC.get_weights(p)
+        @test p.ESS[end] ≈ sum(w)^2 / sum(abs2, w)
+        @test p.ESS[end] <= 250 + 1e-8
+    end
+end
+
+@testset "Adaptive grouped bridge from a single old cloud" begin
+    # Old run on the first half of the data, then a grouped bridge to the full data with
+    # adaptive tempering. Before the split fix every part kept the old cloud's ESS (for
+    # 1,000 particles), so a group of 250 could not reach tempering_target × ESS and the
+    # adaptive root solver threw (SMC-CHECK-5: 4 of 5 groups failed).
+    half = diag_data[:, 1:end÷2]
+    SMC.smc(loglik_fn, setup_linear_model().parameters, half; verbose = :none, n_parts = 1_000,
+            n_mh_steps = 2, use_fixed_schedule = false, tempering_target = 0.95, α = 0.9,
+            smc_seed = 21, savepath = joinpath(diag_dir, "old_half.jld2"),
+            particle_store_path = joinpath(diag_dir, "old_half.h5"))
+    old = load(joinpath(diag_dir, "old_half.jld2"), "cloud")
+    @test old.ESS[end] > 250        # so a part that kept it would have an unreachable target
+
+    bridged = diag_smc("grouped_bridge"; smc_seed = 22, n_smc_groups = 4,
+                       old_data = half, old_cloud = old)
+    @test length(bridged) == 1_000
+    for g in 1:4
+        group = load(joinpath(diag_dir, "grouped_bridge_group=$g.jld2"))
+        @test length(group["cloud"]) == 250
+        @test group["cloud"].tempering_schedule[end] == 1.0
+        @test all(isfinite, group["cloud"].ESS)
+    end
+end
+
+@testset "Provenance in run_info" begin
+    # A full commit hash, "-dirty" only if src/ or Project.toml differ from it
+    commit = SMC.package_commit(SMC)
+    @test occursin(r"^[0-9a-f]{40}(-dirty)?$", commit)
+    # The caller can add keys but not overwrite SMC's own provenance
+    @test_logs (:warn, r"set by SMC") match_mode = :any diag_smc("prov"; smc_seed = 31,
+        run_info = Dict("smc_commit" => "fake", "caller_key" => "kept"))
+    info = load(joinpath(diag_dir, "prov.jld2"), "run_info")
+    @test info["smc_commit"] == commit
+    @test info["caller_key"] == "kept"
+    @test info["julia_version"] == string(VERSION)
 end
 
 rm(diag_dir; recursive = true, force = true)

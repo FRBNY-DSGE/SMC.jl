@@ -33,7 +33,23 @@ function group_old_clouds(old_cloud, loadpath::AbstractString, n_groups::Int, te
     return split_old_cloud(shared, n_groups, Xoshiro(stream_seed(run_seed, :group, 0, 0)))
 end
 
-# J disjoint random parts of a cloud, each with ⌊N/J⌋ particles and the cloud's weights
+# J disjoint random parts of a cloud, each with ⌊N/J⌋ particles and the cloud's weights.
+# Each part's last ESS is computed from its own weights: a bridge's adaptive tempering
+# targets tempering_target × ESS[end], so a part that kept the full cloud's ESS (e.g. 652
+# for 200 particles) asked for an ESS it could never reach and the root solver threw.
+function split_old_cloud(cloud::Cloud, n_groups::Int, rng::AbstractRNG)
+    n_parts = size(cloud.particles, 1)
+    n_each  = n_parts ÷ n_groups
+    n_each > 0 || throw(ArgumentError("the old cloud has $n_parts particles for $n_groups groups"))
+    order = randperm(rng, n_parts)
+    return map(1:n_groups) do g
+        part = deepcopy(cloud)
+        part.particles = cloud.particles[order[(g-1)*n_each+1:g*n_each], :]
+        set_last_ESS_from_weights!(part)
+        part
+    end
+end
+#= Old: each part kept the full cloud's ESS (deepcopy)
 function split_old_cloud(cloud::Cloud, n_groups::Int, rng::AbstractRNG)
     n_parts = size(cloud.particles, 1)
     n_each  = n_parts ÷ n_groups
@@ -45,6 +61,7 @@ function split_old_cloud(cloud::Cloud, n_groups::Int, rng::AbstractRNG)
         part
     end
 end
+=#
 
 # Where to pick group g up on a resume: its finished output, its latest stage checkpoint, or
 # a fresh start. Files from another seed are ignored.

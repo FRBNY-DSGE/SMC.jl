@@ -35,9 +35,18 @@ smc_log_mdd_level(log_mdd; tempered_update, tempered_update_prior_weight, log_pr
 ```
 Put `smc_log_mdd` on the level scale log p(Y). Since F4 (ab37203) a bridge's incremental
 weights divide by p(Ỹ) = exp(`log_prob_old_data`), so every bridge returns the level when
-`log_prob_old_data` is supplied. A μ = 0 bridge without it returns the increment
-log p(Y) - log p(Ỹ), which has no level: NaN.
+`log_prob_old_data` is supplied (even if it is 0.0). A μ = 0 bridge without it (`nothing`)
+returns the increment log p(Y) - log p(Ỹ), which has no level: NaN.
 """
+function smc_log_mdd_level(log_mdd::Real; tempered_update::Bool = false,
+                           tempered_update_prior_weight::Real = 0.0,
+                           log_prob_old_data::Union{Nothing, Real} = nothing)
+    if tempered_update && tempered_update_prior_weight == 0.0
+        return log_prob_old_data === nothing ? NaN : Float64(log_mdd)
+    end
+    return Float64(log_mdd)
+end
+#= Old: an explicit log_prob_old_data = 0.0 was treated as "not given"
 function smc_log_mdd_level(log_mdd::Real; tempered_update::Bool = false,
                            tempered_update_prior_weight::Real = 0.0,
                            log_prob_old_data::Real = 0.0)
@@ -46,6 +55,7 @@ function smc_log_mdd_level(log_mdd::Real; tempered_update::Bool = false,
     end
     return Float64(log_mdd)
 end
+=#
 
 ########################################################################################
 ### Item 2: per-stage health

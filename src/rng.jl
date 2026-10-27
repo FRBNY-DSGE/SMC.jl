@@ -77,9 +77,27 @@ end
 ```
 package_commit(mod::Module)
 ```
-The git commit of the checkout `mod` was loaded from (with a `-dirty` suffix if it has
-uncommitted changes), or `""` if it isn't a git checkout or git is unavailable.
+The git commit of the checkout `mod` was loaded from, with a `-dirty` suffix if its code
+(`src/`, `Project.toml`) differs from that commit, or `""` if it isn't a git checkout or git is
+unavailable. `safe.directory=*` lets git read checkouts owned by another user (shared
+directories); other changes in the tree, such as test reference files rewritten by the tests,
+do not count as dirty.
 """
+function package_commit(mod::Module)
+    dir = pkgdir(mod)
+    dir === nothing && return ""
+    git(args...) = `git -c 'safe.directory=*' -C $dir $args`
+    try
+        commit = String(readchomp(pipeline(git("rev-parse", "HEAD"); stderr = devnull)))
+        clean  = success(pipeline(git("diff", "--quiet", "HEAD", "--", "src", "Project.toml");
+                                  stdout = devnull, stderr = devnull))
+        return clean ? commit : commit * "-dirty"
+    catch
+        return ""
+    end
+end
+#= Old: no safe.directory (blank on shared checkouts), and --dirty counted any change in the
+   tree, e.g. test reference files rewritten by the tests
 function package_commit(mod::Module)
     dir = pkgdir(mod)
     dir === nothing && return ""
@@ -89,3 +107,4 @@ function package_commit(mod::Module)
         return ""
     end
 end
+=#
