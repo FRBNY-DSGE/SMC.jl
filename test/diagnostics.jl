@@ -10,7 +10,7 @@ include("modelsetup.jl")
     @test SMC.smc_log_mdd(w, W) ≈ log((2 * 1 + 4 * 3) / 4)
     @test SMC.smc_log_mdd_level(-3.0) == -3.0
     @test isnan(SMC.smc_log_mdd_level(-3.0; tempered_update = true))
-    @test SMC.smc_log_mdd_level(-3.0; tempered_update = true, log_prob_old_data = -10.0) == -13.0
+    @test SMC.smc_log_mdd_level(-3.0; tempered_update = true, log_prob_old_data = -10.0) == -3.0
     @test SMC.smc_log_mdd_level(-3.0; tempered_update = true, tempered_update_prior_weight = 0.5,
                                 log_prob_old_data = -10.0) == -3.0
     @test SMC.logmeanexp([log(1.0), log(3.0)]) ≈ log(2.0)

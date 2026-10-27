@@ -33,15 +33,16 @@ end
 ```
 smc_log_mdd_level(log_mdd; tempered_update, tempered_update_prior_weight, log_prob_old_data)
 ```
-Put `smc_log_mdd` on the level scale log p(Y). A bridge with μ = 0 omits 1/p̃(Ỹ) from its
-incremental weights, so its product is the increment log p(Y) - log p̃(Ỹ) (bug F4); add
-`log_prob_old_data` back, or return NaN if it wasn't supplied. Update this together with F4.
+Put `smc_log_mdd` on the level scale log p(Y). Since F4 (ab37203) a bridge's incremental
+weights divide by p(Ỹ) = exp(`log_prob_old_data`), so every bridge returns the level when
+`log_prob_old_data` is supplied. A μ = 0 bridge without it returns the increment
+log p(Y) - log p(Ỹ), which has no level: NaN.
 """
 function smc_log_mdd_level(log_mdd::Real; tempered_update::Bool = false,
                            tempered_update_prior_weight::Real = 0.0,
                            log_prob_old_data::Real = 0.0)
     if tempered_update && tempered_update_prior_weight == 0.0
-        return log_prob_old_data == 0.0 ? NaN : log_mdd + log_prob_old_data
+        return log_prob_old_data == 0.0 ? NaN : Float64(log_mdd)
     end
     return Float64(log_mdd)
 end

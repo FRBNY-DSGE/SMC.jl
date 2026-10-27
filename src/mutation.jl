@@ -63,10 +63,11 @@ end
 mutation(loglikelihood::Function, parameters::ParameterVector{U},
          data::Matrix{S}, p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
          blocks_free::Vector{Vector{Int}}, blocks_all::Vector{Vector{Int}},
-         ϕ_n::S, ϕ_n1::S; c::S = 1., α::S = 1., n_mh_steps::Int = 1,
-         old_data::T = T(undef, size(data, 1), 0),
+         ϕ_n::S; c::S = 1., α::S = 1., n_mh_steps::Int = 1,
+         old_data::AbstractMatrix{S} = Matrix{S}(undef, size(data, 1), 0),
          old_loglikelihood::Function = loglikelihood,
-         regime_switching::Bool = false) where {S<:AbstractFloat,T<:AbstractMatrix, U<:Number})
+         tempered_update_prior_weight::S = 0., log_prob_old_data::S = 0.,
+         regime_switching::Bool = false) where {S<:AbstractFloat, U<:Number})
 ```
 
 Execute one proposed move of the Metropolis-Hastings algorithm for a given parameter
@@ -86,7 +87,6 @@ Execute one proposed move of the Metropolis-Hastings algorithm for a given param
     each block corresponds to the ordering of all parameters (e.g. all the indices will
     be in ∈ 1:n_para, free and fixed)
 - `ϕ_n::Float64`: The current tempering factor
-- `ϕ_n1::Float64`: The previous tempering factor
 
 ### Keyword Arguments:
 - `c::Float64`: The scaling parameter for the proposed covariance matrix
@@ -94,6 +94,8 @@ Execute one proposed move of the Metropolis-Hastings algorithm for a given param
 - `n_mh_steps::Int`: Number of Metropolis Hastings steps to attempt
 - `old_data::Matrix{Float64}`: The matrix of old data to be used in calculating the
     old_loglh, old_logprior in time tempering
+- `tempered_update_prior_weight::Float64`: Prior share in the old posterior/prior bridge.
+- `log_prob_old_data::Float64`: Log marginal likelihood used to normalize the old posterior.
 - `old_loglikelihood::Function = loglikelihood`: the old log-likelihood function when running
     a time tempered estimation. This function should be able to evaluate the log-likelihood
     of `old_data` given the current `parameters`, which may be nontrivial if the current
@@ -119,12 +121,16 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                   data::Matrix{S}, p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                   n_free_para::Int,
                   blocks_free::Vector{Vector{Int}}, blocks_all::Vector{Vector{Int}},
-                  ϕ_n::S, ϕ_n1::S; c::S = 1., α::S = 1., n_mh_steps::Int = 1,
-                  old_data::T = T(undef, size(data, 1), 0),
+                  ϕ_n::S; c::S = 1., α::S = 1., n_mh_steps::Int = 1,
+                  old_data::AbstractMatrix{S} = Matrix{S}(undef, size(data, 1), 0),
                   old_loglikelihood::Function = loglikelihood,
+                  tempered_update_prior_weight::S = 0., log_prob_old_data::S = 0.,
                   regime_switching::Bool = false,
                   toggle::Bool = true,
-                  n_failed::Union{Nothing, Base.RefValue{Int}} = nothing) where {S<:AbstractFloat,T<:AbstractMatrix, U<:Number}
+                  n_failed::Union{Nothing, Base.RefValue{Int}} = nothing) where {S<:AbstractFloat, U<:Number}
+
+    0.0 <= tempered_update_prior_weight <= 1.0 ||
+        throw(ArgumentError("tempered_update_prior_weight must be in [0, 1]"))
 
     step_prob   = rand() # Draw initial step probability
 
@@ -168,7 +174,7 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                 end
 
 
-                if isempty(old_data)
+                if isempty(old_data) || tempered_update_prior_weight == 1.0
                     like_old_data = 0.
                 elseif old_loglikelihood === loglikelihood
                     like_old_data = old_loglikelihood(parameters, old_data)
@@ -193,7 +199,11 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                 n_failed[] += 1
             end
 
-            η = exp(ϕ_n * (like_new - like_init) + (1 - ϕ_n) * (like_old_data - like_prev) +
+            bridge_new = bridge_log_factor(like_old_data, tempered_update_prior_weight,
+                                           log_prob_old_data)
+            bridge_old = bridge_log_factor(like_prev, tempered_update_prior_weight,
+                                           log_prob_old_data)
+            η = exp(ϕ_n * (like_new - like_init) + (1 - ϕ_n) * (bridge_new - bridge_old) +
                     (prior_new - prior_init) + (q0 - q1))
 
 
@@ -212,4 +222,14 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
 
     update_mutation!(p, para, like, logprior, like_prev, accept / n_free_para)
     return p
+end
+
+# Backwards-compatible positional form. The previous tempering exponent does
+# not affect the MH target; the current exponent fully determines it.
+function mutation(loglikelihood::Function, parameters::ParameterVector{U},
+                  data::Matrix{S}, p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
+                  n_free_para::Int, blocks_free::Vector{Vector{Int}},
+                  blocks_all::Vector{Vector{Int}}, ϕ_n::S, ::S; kwargs...) where {S<:AbstractFloat, U<:Number}
+    return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, n_free_para,
+                    blocks_free, blocks_all, ϕ_n; kwargs...)
 end
