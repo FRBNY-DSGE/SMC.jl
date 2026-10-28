@@ -33,7 +33,10 @@ function group_old_clouds(old_cloud, loadpath::AbstractString, n_groups::Int, te
     return split_old_cloud(shared, n_groups, Xoshiro(stream_seed(run_seed, :group, 0, 0)))
 end
 
-# J disjoint random parts of a cloud, each with ⌊N/J⌋ particles and the cloud's weights.
+# J disjoint random parts of a cloud, each with ⌊N/J⌋ particles and the cloud's weights
+# rescaled to sum to the part's size (the bridge's first incremental weights assume weights
+# that sum to N; unscaled parts summed to 190-213 for 200 particles and shifted each group's
+# log MDD by up to 0.8, SMC-CHECK-6).
 # Each part's last ESS is computed from its own weights: a bridge's adaptive tempering
 # targets tempering_target × ESS[end], so a part that kept the full cloud's ESS (e.g. 652
 # for 200 particles) asked for an ESS it could never reach and the root solver threw.
@@ -45,6 +48,7 @@ function split_old_cloud(cloud::Cloud, n_groups::Int, rng::AbstractRNG)
     return map(1:n_groups) do g
         part = deepcopy(cloud)
         part.particles = cloud.particles[order[(g-1)*n_each+1:g*n_each], :]
+        normalize_weights!(part)
         set_last_ESS_from_weights!(part)
         part
     end

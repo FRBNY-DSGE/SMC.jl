@@ -99,14 +99,8 @@ function initial_draw!(loglikelihood::Function, parameters::ParameterVector{U},
     run_seed = smc_seed === nothing ? nothing : checked_smc_seed(smc_seed)
 
     # ================== Define closure on one_draw function ==================
-    sendto(workers(), loglikelihood = loglikelihood)
-    sendto(workers(), parameters = parameters)
-    sendto(workers(), data       = data)
-    sendto(workers(), regime_switching = regime_switching)
-    sendto(workers(), toggle = toggle)
-
+    # (@distributed serializes this closure to the workers)
     one_draw_closure() = one_draw(loglikelihood, parameters, data, regime_switching = regime_switching, toggle = toggle)
-    @everywhere one_draw_closure() = one_draw(loglikelihood, parameters, data, regime_switching = regime_switching, toggle = toggle)
     # =========================================================================
 
     # For each particle, finds valid parameter draw and returns loglikelihood & prior
@@ -179,16 +173,9 @@ function initialize_likelihoods!(loglikelihood::Function, parameters::ParameterV
     update_old_loglh!(c, get_loglh(c))
 
     # ============== Define closure on draw_likelihood function ===============
-    sendto(workers(), parameters = parameters)
-    sendto(workers(), loglikelihood = loglikelihood) # TODO: Check if this is necessary
-    sendto(workers(), data = data)
-    sendto(workers(), toggle = toggle)
-
+    # (@distributed serializes this closure to the workers)
     draw_likelihood_closure(draw::Vector{Float64}) = draw_likelihood(loglikelihood, parameters,
                                                                      data, draw, toggle = toggle)
-    @everywhere draw_likelihood_closure(draw::Vector{Float64}) = draw_likelihood(loglikelihood,
-                                                                                 parameters,
-                                                                                 data, draw, toggle = toggle)
     # =========================================================================
 
     # TODO: handle when the likelihood with new data cannot be evaluated (returns -Inf),

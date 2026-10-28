@@ -6,6 +6,16 @@ Bug Fixes:
 - A bridge with `0 < tempered_update_prior_weight < 1` now requires `log_prob_old_data`.
   At zero prior share, omitting it keeps the saved MDD as an increment; supplying it
   makes the saved MDD the full-data level. Do not add the old MDD again in that case.
+- The mutation step's diagonal proposal component is now scaled by `c` times the
+  parameter sd (it was scaled by `c` times the variance), and the proposal density used in
+  the MH ratio matches the draws. Acceptance rates are now per MH step (they were summed
+  over the `n_mh_steps` steps), so `c` adapts to the target acceptance rate as intended.
+  **Both change estimation results**: seeded runs are not reproducible across this change.
+  On An–Schorfheide, posterior means move by up to 0.08 posterior sd, sds by about 3%, the
+  log MDD gap to bridge sampling shrinks (−0.46 to −0.03 at N = 3,000) and run time
+  rises about 30%.
+- When a bridge splits one old cloud into particle groups, each part's weights are
+  rescaled to its size and its last ESS is computed from its own weights.
 
 # SMC.jl 0.1.15 Release Notes
 New Features:

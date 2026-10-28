@@ -240,8 +240,10 @@ end
     # A single old cloud is split into disjoint parts, one per group
     parts = SMC.group_old_clouds(cloud, "", 4, true; run_seed = UInt64(5), verbose = :none)
     @test all(p -> size(p.particles) == (250, size(cloud.particles, 2)), parts)
-    @test sortslices(reduce(vcat, [p.particles for p in parts]), dims = 1) ==
-          sortslices(cloud.particles, dims = 1)
+    # Same particles apart from the weight column, which each part rescales to its size
+    keep = 1:size(cloud.particles, 2) - 1
+    @test sortslices(reduce(vcat, [p.particles[:, keep] for p in parts]), dims = 1) ==
+          sortslices(cloud.particles[:, keep], dims = 1)
     @test parts[1].particles == SMC.group_old_clouds(cloud, "", 4, true; run_seed = UInt64(5),
                                                      verbose = :none)[1].particles
     @test cloud.particles == again.particles   # the old cloud itself is untouched
@@ -254,6 +256,11 @@ end
         w = SMC.get_weights(p)
         @test p.ESS[end] ≈ sum(w)^2 / sum(abs2, w)
         @test p.ESS[end] <= 250 + 1e-8
+        @test sum(w) ≈ 250   # weights rescaled to the part's size (SMC-CHECK-6)
+        # ... in proportion to the old cloud's weights for the same particles
+        rows = [findfirst(r -> cloud.particles[r, keep] == p.particles[k, keep], 1:length(cloud))
+                for k in 1:2]
+        @test w[1] / w[2] ≈ SMC.get_weights(cloud)[rows[1]] / SMC.get_weights(cloud)[rows[2]]
     end
 end
 

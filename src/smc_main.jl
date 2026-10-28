@@ -270,23 +270,8 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
                                            "smc_commit"    => package_commit(SMC)), run_info)
     =#
 
-    # Construct closure of mutation function so as to avoid issues with serialization
-    # across workers with different Julia system images
-    # Ship everything the worker-local closure reads as a Main global. The @distributed
-    # body below lexically binds the *local* `mutation_closure` (which captures these by
-    # value and is serialized to workers), so these sends are only exercised if the global
-    # `@everywhere` definition is ever dispatched — but keep them complete so that path is
-    # correct too (previously only parameters/data were sent, so loglikelihood /
-    # old_loglikelihood / regime_switching / toggle would be UndefVar on workers).
-    sendto(workers(), parameters = parameters)
-    sendto(workers(), data = data)
-    sendto(workers(), loglikelihood = loglikelihood)
-    sendto(workers(), old_loglikelihood = old_loglikelihood)
-    sendto(workers(), regime_switching = regime_switching)
-    sendto(workers(), toggle = toggle)
-    sendto(workers(), tempered_update_prior_weight = tempered_update_prior_weight)
-    sendto(workers(), log_prob_old_data = log_prob_old_data)
-
+    # The @distributed loop below captures this local closure and serializes it to the
+    # workers, so nothing needs to be defined on them beforehand.
     function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                               n_free_para::Int,
                               blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
@@ -301,24 +286,6 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
                      log_prob_old_data = log_prob_old_data, n_failed = n_failed)
         return vcat(p, n_failed[])
     end
-    # NOTE: positional args MUST match the local closure above and mutation()'s signature
-    # (n_free_para, blocks_free, blocks_all). A prior version had blocks_free/blocks_all/
-    # n_free_para swapped here, which would MethodError if this global were ever dispatched.
-    @everywhere function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
-                                          n_free_para::Int,
-                                          blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
-                                          ϕ_n::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
-                                          old_data::Matrix{S} = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64}
-
-        n_failed = Ref(0)
-        p = mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, n_free_para, blocks_free, blocks_all,
-                     ϕ_n; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data,
-                     old_loglikelihood = old_loglikelihood, regime_switching = regime_switching,
-                     toggle = toggle, tempered_update_prior_weight = tempered_update_prior_weight,
-                     log_prob_old_data = log_prob_old_data, n_failed = n_failed)
-        return vcat(p, n_failed[])
-    end
-
 
     (tempered_update_prior_weight == 0.0 || tempered_update_prior_weight == 1.0 || !isempty(old_data)) ||
         throw(ArgumentError("old_data is required when tempered_update_prior_weight is between 0 and 1"))
