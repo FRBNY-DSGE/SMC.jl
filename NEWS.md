@@ -1,5 +1,9 @@
 # Unreleased
 
+New Features:
+- `mvnormal_mixture_draw` takes an `rng` keyword (default: the global RNG), so callers such as
+  DSGE's Metropolis–Hastings can draw proposals from their own RNG. SMC results are unchanged.
+
 Bug Fixes:
 - Adaptive bridge tempering now handles particles with `-Inf` new-data likelihood without
   stalling the ESS solver; their weight becomes zero at the first positive tempering step.
