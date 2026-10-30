@@ -118,7 +118,7 @@ end
 """
 ```
 `mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
-                       c::T = 1.0, α::T = 1.0) where T<:AbstractFloat`
+                       c::T = 1.0, α::T = 1.0, rng::AbstractRNG = Random.default_rng()) where T<:AbstractFloat`
 ```
 
 Create a `DegenerateMvNormal` distribution object, `d`, from a parameter vector, `p`, and a
@@ -140,12 +140,14 @@ the standard distribution and `(1 - α)` of the diagonalized distribution.
 - `cc::T`: The standard deviation matrix scaling factor
 - `α::T`: The mixing proportion
 - `θ_prop::Vector{T}`: The proposed parameter vector to be used as part of the mixture distribution, set by default to be the weighted mean of the particles, prior to mutation.
+- `rng::AbstractRNG`: The random number generator to draw from (default: the global RNG)
 
 ### Outputs
 - `θ_new::Vector{T}`: The draw from the mixture distribution to be used as the MH proposed step
 """
 function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
-                               c::T = 1.0, α::T = 1.0) where T<:AbstractFloat
+                               c::T = 1.0, α::T = 1.0,
+                               rng::AbstractRNG = Random.default_rng()) where T<:AbstractFloat
     @assert 0 <= α <= 1
     # Use get_cov (defined below) rather than the raw `.Σ` field: for a DegenerateMvNormal the
     # covariance lives in `.σ` (and its 4-arg constructor leaves `.Σ` unset), so `.Σ` here is
@@ -169,7 +171,7 @@ function mvnormal_mixture_draw(θ_old::Vector{T}, d_prop::Distribution;
     d_diag_old = MvNormal(θ_old, Diagonal(diag(c^2 * Σ)))
     d_mix_old  = MixtureModel(MvNormal[d_old, d_diag_old, d_bar], [α, (1 - α)/2, (1 - α)/2])
 
-    θ_new = rand(d_mix_old)
+    θ_new = rand(rng, d_mix_old)
 
     return θ_new
 end

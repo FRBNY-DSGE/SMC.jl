@@ -43,3 +43,22 @@ end
         @test all(SMC.compute_proposal_densities(θ_new, θ_old, MvNormal(μ, Σ); c = c, α = α) .≈ (q0, q1))
     end
 end
+
+@testset "mvnormal_mixture_draw draws from the RNG it is given" begin
+    d = MvNormal([0.1, -0.2, 0.3], [1.0 0.25 0.0; 0.25 1.5 0.1; 0.0 0.1 0.8])
+    θ_old = [0.4, -0.6, 0.2]
+    # An explicit RNG: the draw does not depend on, or advance, the global RNG
+    draws = map((1, 2)) do global_seed
+        Random.seed!(global_seed)
+        x = SMC.mvnormal_mixture_draw(θ_old, d; c = 0.5, α = 0.9, rng = Xoshiro(11))
+        x, rand()
+    end
+    @test draws[1][1] == draws[2][1]
+    Random.seed!(1)
+    @test draws[1][2] == rand()
+    # The default is the global RNG, as before
+    Random.seed!(7)
+    x_default = SMC.mvnormal_mixture_draw(θ_old, d; c = 0.5, α = 0.9)
+    Random.seed!(7)
+    @test x_default == SMC.mvnormal_mixture_draw(θ_old, d; c = 0.5, α = 0.9, rng = Random.default_rng())
+end
