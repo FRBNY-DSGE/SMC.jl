@@ -60,7 +60,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     With `param_blocks` or `blockwise_c`, `stage_health` also records each group's acceptance
     rate and scale (`accept_blocks`, `c_blocks`, `block_labels`), the CSV gets an `accept_<label>`
     and a `c_<label>` column per group, and the JLD2 files save the scales and the blocks
-    (`c_blocks`, `accept_blocks`, `param_blocks`) so `continue_intermediate` resumes them.
+    (`c_blocks`, `accept_blocks`, `param_blocks`, `blockwise_c`) so `continue_intermediate`
+    resumes them; resuming with other blocks or another `blockwise_c` raises an `ArgumentError`.
 - `n_mh_steps::Int = 1`: Number of Metropolis Hastings steps to attempt during the mutation step.
 - `λ::S = 2.1`: The 'bending coefficient' λ in Φ(n) = (n/N(Φ))^λ
 - `n_Φ::Int = 300`: Number of stages in the tempering schedule.
@@ -601,6 +602,28 @@ end
                 length(c_blocks) == n_groups == length(accept_blocks) ||
                     throw(ArgumentError("checkpoint $loadpath has $(length(c_blocks)) block scales " *
                                         "for $n_groups block groups"))
+                # blockwise_c must match too, or the resumed run is a hybrid of shared and
+                # per-block scales. Checkpoints written before blockwise_c was saved: a shared c
+                # writes c_blocks = fill(c, n_groups) every stage, so unequal saved scales mean
+                # blockwise_c = true; equal scales cannot tell the two apart (warn).
+                if "blockwise_c" in checkpoint_keys
+                    saved_bwc = load(loadpath, "blockwise_c")
+                elseif !allequal(c_blocks)
+                    saved_bwc = true
+                else
+                    saved_bwc = nothing
+                    @warn "Checkpoint $loadpath does not record blockwise_c and its block scales " *
+                          "are all equal, so it cannot be checked: resuming with blockwise_c = " *
+                          "$blockwise_c (if the original run used the other setting, the resumed " *
+                          "run mixes the two)"
+                end
+                saved_bwc === nothing || saved_bwc == blockwise_c ||
+                    throw(ArgumentError("blockwise_c differs from the checkpoint's: this run has " *
+                                        "blockwise_c = $blockwise_c, checkpoint $loadpath was " *
+                                        "written with blockwise_c = $saved_bwc" *
+                                        ("blockwise_c" in checkpoint_keys ? "" :
+                                         " (inferred from its unequal block scales)") *
+                                        "; resume it with the same blockwise_c"))
             else
                 @warn "Checkpoint $loadpath has no c_blocks: every block group resumes with the scale c = $c"
                 c_blocks      = fill(c, n_groups)
@@ -890,6 +913,7 @@ update_cloud!(cloud, new_particles[1:end-1, :])
                     write(file, "c_blocks", c_blocks)
                     write(file, "accept_blocks", accept_blocks)
                     write(file, "param_blocks", block_names)
+                    write(file, "blockwise_c", blockwise_c)
                 end
             end
 
@@ -946,6 +970,7 @@ update_cloud!(cloud, new_particles[1:end-1, :])
         result["c_blocks"]      = c_blocks
         result["accept_blocks"] = accept_blocks
         result["param_blocks"]  = block_names
+        result["blockwise_c"]   = blockwise_c
     end
 
     ##################################################################################

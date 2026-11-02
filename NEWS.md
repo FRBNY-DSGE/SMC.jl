@@ -8,7 +8,8 @@ New Features:
   `n_blocks`). With `blockwise_c = true` each fixed block, and the rest together, adapts its
   own scale c from its own acceptance rate (same rule and target as `c`). Per-group
   acceptance and scales are recorded in `stage_health` (extra CSV columns) and saved in
-  checkpoints. Both are off by default, and default runs are bitwise unchanged.
+  checkpoints (with `blockwise_c`; resuming with other blocks or another `blockwise_c` is
+  refused). Both are off by default, and default runs are bitwise unchanged.
 
 Bug Fixes:
 - Adaptive bridge tempering now handles particles with `-Inf` new-data likelihood without

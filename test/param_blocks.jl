@@ -94,7 +94,7 @@ mktempdir() do dir
 
     base     = run("base")
     explicit = run("explicit"; param_blocks = Vector{Vector{Symbol}}(), blockwise_c = false)
-    shared   = run("shared"; param_blocks = [[:r]])
+    shared   = run("shared"; param_blocks = [[:r]], save_intermediate = true)
     blockc   = run("blockc"; param_blocks = [[:r]], blockwise_c = true, save_intermediate = true)
     resumed  = run("resumed"; param_blocks = [[:r]], blockwise_c = true, resume = true,
                    loadpath = joinpath(dir, "blockc_stage=5.jld2"))
@@ -175,6 +175,52 @@ mktempdir() do dir
         # A checkpoint without blocks still resumes without blocks
         @test run("plainres"; resume = true, loadpath = joinpath(dir, "plain_stage=5.jld2"))["cloud"].particles ==
               plain["cloud"].particles
+    end
+
+    @testset "Resuming with the same blocks but another blockwise_c is refused" begin
+        bckpt = joinpath(dir, "blockc_stage=5.jld2")
+        sckpt = joinpath(dir, "shared_stage=5.jld2")
+        @test load(bckpt, "blockwise_c") === true && load(sckpt, "blockwise_c") === false
+        @test blockc["blockwise_c"] === true && shared["blockwise_c"] === false
+        # Written with blockwise c, resumed with a shared c (and the reverse): refused before
+        # any output is written
+        err = try run("bwc_off"; param_blocks = [[:r]], resume = true, loadpath = bckpt); nothing catch e; e end
+        @test err isa ArgumentError && occursin("blockwise_c differs", err.msg)
+        @test !isfile(joinpath(dir, "bwc_off.jld2")) && !isfile(joinpath(dir, "bwc_off_stage_health.csv"))
+        err = try run("bwc_on"; param_blocks = [[:r]], blockwise_c = true, resume = true,
+                      loadpath = sckpt); nothing catch e; e end
+        @test err isa ArgumentError && occursin("blockwise_c differs", err.msg)
+        @test !isfile(joinpath(dir, "bwc_on.jld2")) && !isfile(joinpath(dir, "bwc_on_stage_health.csv"))
+        # A shared-c blocks checkpoint resumes bitwise with the same settings
+        sres = run("sres"; param_blocks = [[:r]], resume = true, loadpath = sckpt)
+        @test sres["cloud"].particles == shared["cloud"].particles
+        @test sres["stage_health"]["c_blocks"] == shared["stage_health"]["c_blocks"]
+
+        # Checkpoints written before blockwise_c was saved: drop the key
+        function strip_bwc(src, dst)
+            d = load(src)
+            jldopen(dst, "w") do f
+                for (k, v) in d
+                    k == "blockwise_c" || write(f, k, v)
+                end
+            end
+            return dst
+        end
+        old_b = strip_bwc(bckpt, joinpath(dir, "oldb_stage=5.jld2"))
+        old_s = strip_bwc(sckpt, joinpath(dir, "olds_stage=5.jld2"))
+        @test !("blockwise_c" in keys(load(old_b)))
+        # Unequal saved scales: blockwise_c = true is inferred
+        @test !allequal(load(old_b, "c_blocks"))
+        err = try run("oldb_off"; param_blocks = [[:r]], resume = true, loadpath = old_b); nothing catch e; e end
+        @test err isa ArgumentError && occursin("inferred", err.msg)
+        @test !isfile(joinpath(dir, "oldb_off.jld2"))
+        oldb_on = run("oldb_on"; param_blocks = [[:r]], blockwise_c = true, resume = true, loadpath = old_b)
+        @test oldb_on["cloud"].particles == blockc["cloud"].particles
+        # Equal saved scales (shared c) cannot be told apart: warn, and resume as asked
+        @test allequal(load(old_s, "c_blocks"))
+        olds = @test_logs (:warn, r"does not record blockwise_c") match_mode = :any run("olds";
+               param_blocks = [[:r]], resume = true, loadpath = old_s)
+        @test olds["cloud"].particles == shared["cloud"].particles
     end
 
     @testset "Old checkpoints, random rest blocks, blocks by index" begin

@@ -82,8 +82,10 @@ Execute one proposed move of the Metropolis-Hastings algorithm for a given param
     values, prior dists, and bounds
 - `data::Matrix{Float64}`: Matrix of data
 - `p::Vector{Float64}`: Initial particle value
-- `d::Distribution`: A distribution with μ = the weighted mean, and Σ = the weighted
-    variance/covariance matrix
+- `d_μ::Vector{Float64}`: The weighted mean of the particles (the proposal mean)
+- `d_Σ::Matrix{Float64}`: The weighted variance/covariance matrix of the particles
+    (the proposal covariance)
+- `n_free_para::Int`: Number of free (non-fixed) parameters
 - `blocks_free::Vector{Vector{Int64}}`: A vector of index blocks, where the indices
     in each block corresponds to the ordering of free parameters only (e.g. all the
     indices will be ∈ 1:n_free_parameters)
