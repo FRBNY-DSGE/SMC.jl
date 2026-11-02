@@ -577,13 +577,30 @@ end
         println("I have all vars")
         # Per-group scales and acceptance rates. A checkpoint without them (written before
         # param_blocks, or by a run without blocks) starts every group from the cloud's c.
+        # A checkpoint written with blocks must be resumed with the same blocks: refuse a
+        # mismatch here rather than fail at the end of the run (the stage health record
+        # carries the checkpoint's block columns).
+        ckpt_has_blocks = "c_blocks" in checkpoint_keys ||
+            haskey(health, "block_labels")
+        if !track_blocks && ckpt_has_blocks
+            saved_blocks = "param_blocks" in checkpoint_keys ? load(loadpath, "param_blocks") : "?"
+            throw(ArgumentError("checkpoint $loadpath was written with param_blocks/blockwise_c " *
+                                "(block groups $saved_blocks), but this run has neither: resume " *
+                                "it with the same param_blocks and blockwise_c"))
+        end
         if track_blocks
             if "c_blocks" in checkpoint_keys
                 c_blocks      = load(loadpath, "c_blocks")
                 accept_blocks = load(loadpath, "accept_blocks")
                 saved_blocks  = load(loadpath, "param_blocks")
                 saved_blocks == block_names ||
-                    throw(ArgumentError("param_blocks differ from the checkpoint's: $saved_blocks"))
+                    throw(ArgumentError("param_blocks differ from the checkpoint's: this run has " *
+                                        "$(length(block_names)) block groups $block_names, " *
+                                        "checkpoint $loadpath has $(length(saved_blocks)) " *
+                                        "$saved_blocks; resume it with the same param_blocks"))
+                length(c_blocks) == n_groups == length(accept_blocks) ||
+                    throw(ArgumentError("checkpoint $loadpath has $(length(c_blocks)) block scales " *
+                                        "for $n_groups block groups"))
             else
                 @warn "Checkpoint $loadpath has no c_blocks: every block group resumes with the scale c = $c"
                 c_blocks      = fill(c, n_groups)

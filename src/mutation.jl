@@ -63,12 +63,15 @@ end
 ```
 mutation(loglikelihood::Function, parameters::ParameterVector{U},
          data::Matrix{S}, p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
+         n_free_para::Int,
          blocks_free::Vector{Vector{Int}}, blocks_all::Vector{Vector{Int}},
-         ϕ_n::S; c::S = 1., α::S = 1., n_mh_steps::Int = 1,
+         ϕ_n::S; c::Union{S, Vector{S}} = 1., α::S = 1., n_mh_steps::Int = 1,
          old_data::AbstractMatrix{S} = Matrix{S}(undef, size(data, 1), 0),
          old_loglikelihood::Function = loglikelihood,
          tempered_update_prior_weight::S = 0., log_prob_old_data::S = 0.,
-         regime_switching::Bool = false) where {S<:AbstractFloat, U<:Number})
+         regime_switching::Bool = false, toggle::Bool = true,
+         n_failed::Union{Nothing, Base.RefValue{Int}} = nothing,
+         n_accepted::Union{Nothing, Vector{Int}} = nothing) where {S<:AbstractFloat, U<:Number}
 ```
 
 Execute one proposed move of the Metropolis-Hastings algorithm for a given parameter

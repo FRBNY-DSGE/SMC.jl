@@ -157,6 +157,26 @@ mktempdir() do dir
                                        loadpath = joinpath(dir, "blockc_stage=5.jld2"))
     end
 
+    @testset "Resuming a blocked checkpoint with other or no blocks is refused" begin
+        ckpt = joinpath(dir, "blockc_stage=5.jld2")
+        # Blocks off (used to run to the end and fail in write_stage_health)
+        err = try run("noblocks"; resume = true, loadpath = ckpt); nothing catch e; e end
+        @test err isa ArgumentError && occursin("written with param_blocks", err.msg)
+        @test !isfile(joinpath(dir, "noblocks_stage_health.csv"))
+        @test_throws ArgumentError run("noblocks2"; blockwise_c = false, resume = true, loadpath = ckpt)
+        # A different number of block groups, or the same number with other labels
+        err = try run("more"; param_blocks = [[:r], [:x1]], blockwise_c = true, resume = true,
+                      loadpath = ckpt); nothing catch e; e end
+        @test err isa ArgumentError && occursin("param_blocks differ", err.msg)
+        @test_throws ArgumentError run("other"; param_blocks = [[:x2]], blockwise_c = true,
+                                       resume = true, loadpath = ckpt)
+        # blockwise_c alone (one group "all") against a checkpoint with {r} + rest
+        @test_throws ArgumentError run("allgroup"; blockwise_c = true, resume = true, loadpath = ckpt)
+        # A checkpoint without blocks still resumes without blocks
+        @test run("plainres"; resume = true, loadpath = joinpath(dir, "plain_stage=5.jld2"))["cloud"].particles ==
+              plain["cloud"].particles
+    end
+
     @testset "Old checkpoints, random rest blocks, blocks by index" begin
         h = oldckpt["stage_health"]
         @test all(isnan, h["accept_blocks"][:, 1:4]) && all(isfinite, h["accept_blocks"][:, 5:end])
