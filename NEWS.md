@@ -3,6 +3,12 @@
 New Features:
 - `mvnormal_mixture_draw` takes an `rng` keyword (default: the global RNG), so callers such as
   DSGE's Metropolis–Hastings can draw proposals from their own RNG. SMC results are unchanged.
+- `smc` takes `param_blocks`: fixed mutation blocks of free parameters (by name or index),
+  kept across stages; the parameters no block lists form one more block (split at random by
+  `n_blocks`). With `blockwise_c = true` each fixed block, and the rest together, adapts its
+  own scale c from its own acceptance rate (same rule and target as `c`). Per-group
+  acceptance and scales are recorded in `stage_health` (extra CSV columns) and saved in
+  checkpoints. Both are off by default, and default runs are bitwise unchanged.
 
 Bug Fixes:
 - Adaptive bridge tempering now handles particles with `-Inf` new-data likelihood without

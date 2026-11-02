@@ -43,7 +43,24 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 - `health_thresholds`: Flag thresholds for the per-stage health record
     (see `SMC.DEFAULT_HEALTH_THRESHOLDS`).
 - `n_parts::Int = 5_000`: Number of particles.
-- `n_blocks::Int = 1`: Number of parameter blocks in mutation step.
+- `n_blocks::Int = 1`: Number of parameter blocks in mutation step. The blocks are drawn at
+    random every stage. With `param_blocks`, they split only the parameters no block lists.
+- `param_blocks::AbstractVector = []`: Fixed mutation blocks, kept across stages: a vector of
+    blocks, each a vector of free parameters by name (`Symbol`/`String`; an extra regime is
+    `Symbol(key, "_reg2")`) or by index into the full parameter vector. The blocks are updated
+    in the order given, then the free parameters no block lists, which `n_blocks` splits at
+    random (one block with the default `n_blocks = 1`). E.g. `param_blocks = [[:ρ_σ_w]]` gives
+    ρ_σ_w its own block and puts all other free parameters in a second one.
+- `blockwise_c::Bool = false`: Give each fixed block, and the remaining parameters together,
+    its own scale c_b, adapted every stage from that group's own acceptance rate with the same
+    rule and `target` as `c` (all start at `c`). The random blocks of the remaining parameters
+    share one scale. `cloud.c` and the `c` column of `stage_health` then hold the remaining
+    parameters' scale (the last block's if every parameter is listed). Without `param_blocks`
+    there is a single group, so this is the shared scale again.
+    With `param_blocks` or `blockwise_c`, `stage_health` also records each group's acceptance
+    rate and scale (`accept_blocks`, `c_blocks`, `block_labels`), the CSV gets an `accept_<label>`
+    and a `c_<label>` column per group, and the JLD2 files save the scales and the blocks
+    (`c_blocks`, `accept_blocks`, `param_blocks`) so `continue_intermediate` resumes them.
 - `n_mh_steps::Int = 1`: Number of Metropolis Hastings steps to attempt during the mutation step.
 - `λ::S = 2.1`: The 'bending coefficient' λ in Φ(n) = (n/N(Φ))^λ
 - `n_Φ::Int = 300`: Number of stages in the tempering schedule.
@@ -182,6 +199,8 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
              n_parts::Int    = 5_000,
              n_blocks::Int   = 1,
              n_mh_steps::Int = 1,
+             param_blocks::AbstractVector = Vector{Vector{Int}}(),
+             blockwise_c::Bool = false,
 
              λ::S = 2.1,
              n_Φ::Int64 = 300,
@@ -275,16 +294,20 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
     function mutation_closure(p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                               n_free_para::Int,
                               blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
-                              ϕ_n::S; c::S = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
-                              old_data::Matrix{S} = Matrix{S}(undef, size(data, 1), 0)) where {S<:Float64}
+                              ϕ_n::S; c::Union{S, Vector{S}} = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
+                              old_data::Matrix{S} = Matrix{S}(undef, size(data, 1), 0),
+                              track_blocks::Bool = false) where {S<:Float64}
         # The mutated particle plus its number of -Inf proposals (for the stage health record)
-        n_failed = Ref(0)
+        # and, with track_blocks, its number of accepted proposals per block
+        n_failed   = Ref(0)
+        n_accepted = track_blocks ? zeros(Int, length(blocks_free)) : nothing
         p = mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, n_free_para, blocks_free, blocks_all,
                      ϕ_n; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data,
                      old_loglikelihood = old_loglikelihood, regime_switching = regime_switching,
                      toggle = toggle, tempered_update_prior_weight = tempered_update_prior_weight,
-                     log_prob_old_data = log_prob_old_data, n_failed = n_failed)
-        return vcat(p, n_failed[])
+                     log_prob_old_data = log_prob_old_data, n_failed = n_failed,
+                     n_accepted = n_accepted)
+        return track_blocks ? vcat(p, n_failed[], n_accepted) : vcat(p, n_failed[])
     end
 
     (tempered_update_prior_weight == 0.0 || tempered_update_prior_weight == 1.0 || !isempty(old_data)) ||
@@ -357,6 +380,25 @@ end
 n_free_para = length(free_para_inds)
 n_fixed_para = length(fixed_para_inds)
 @assert n_free_para > 0 "All model parameters are fixed!"
+
+    # Mutation blocks: the user's fixed blocks (groups 1:K) and the remaining free parameters
+    # (group K+1, split at random into n_blocks blocks every stage). With neither param_blocks
+    # nor blockwise_c (the default) nothing below the per-stage block draw changes.
+    fixed_blocks, rest_block = resolve_param_blocks(param_blocks, para_symbols, free_para_inds)
+    track_blocks = !isempty(fixed_blocks) || blockwise_c
+    n_groups     = length(fixed_blocks) + (isempty(rest_block) ? 0 : 1)
+    block_labels = vcat([length(b) == 1 ? string(para_symbols[free_para_inds[b[1]]]) : "block$k"
+                         for (k, b) in enumerate(fixed_blocks)],
+                        isempty(rest_block) ? String[] : [isempty(fixed_blocks) ? "all" : "rest"])
+    block_names  = vcat([para_symbols[free_para_inds[b]] for b in fixed_blocks],
+                        isempty(rest_block) ? Vector{Symbol}[] : [para_symbols[free_para_inds[rest_block]]])
+    if track_blocks && verbose != :none
+        for (label, names) in zip(block_labels, block_names)
+            @info "SMC mutation block group $label ($(length(names)) parameters)" parameters = names
+        end
+    end
+    blockwise_c && isempty(fixed_blocks) &&
+        @warn "blockwise_c without param_blocks: all parameters share one scale, as without blockwise_c"
 
     #################################################################################
     ### Initialize Algorithm: Draws from prior
@@ -533,6 +575,21 @@ end
             lineage_valid = false
         end
         println("I have all vars")
+        # Per-group scales and acceptance rates. A checkpoint without them (written before
+        # param_blocks, or by a run without blocks) starts every group from the cloud's c.
+        if track_blocks
+            if "c_blocks" in checkpoint_keys
+                c_blocks      = load(loadpath, "c_blocks")
+                accept_blocks = load(loadpath, "accept_blocks")
+                saved_blocks  = load(loadpath, "param_blocks")
+                saved_blocks == block_names ||
+                    throw(ArgumentError("param_blocks differ from the checkpoint's: $saved_blocks"))
+            else
+                @warn "Checkpoint $loadpath has no c_blocks: every block group resumes with the scale c = $c"
+                c_blocks      = fill(c, n_groups)
+                accept_blocks = fill(cloud.accept, n_groups)
+            end
+        end
     else
         w_matrix = zeros(n_parts, 1)
         W_matrix = tempered_update ? (sum(get_weights(cloud)) <= 1.0 ?
@@ -540,6 +597,16 @@ end
                                       fill(1,(n_parts, 1))
     end
 
+
+    # Every block group starts from the initial c (the stage-1 adaptation then leaves it there,
+    # as for c, since cloud.accept starts at the target)
+    if track_blocks
+        if !continue_intermediate
+            c_blocks      = fill(c, n_groups)
+            accept_blocks = fill(cloud.accept, n_groups)
+        end
+        add_block_health!(health, block_labels)
+    end
 
     # Printing
     init_stage_print(cloud, para_symbols; verbose = verbose,
@@ -623,9 +690,22 @@ while ϕ_n < 1.
         ##############################################################################
         ### Step 3: Mutation
         ##############################################################################
-        # Calculate adaptive c-step for use as scaling coefficient in mutation MH step
+        # Calculate adaptive c-step for use as scaling coefficient in mutation MH step.
+        # With blockwise_c, each block group's scale follows the same rule from its own
+        # acceptance rate, and c (cloud.c) is the last group's.
+        if blockwise_c
+            c_blocks = [update_c(c_blocks[g], accept_blocks[g], target) for g in 1:n_groups]
+            c        = c_blocks[end]
+        else
+            c = update_c(c, cloud.accept, target)
+            if track_blocks
+                c_blocks = fill(c, n_groups)
+            end
+        end
+        #= Old: inline (update_c is the same expression)
         c = c * (0.95 + 0.10 * exp(16.0 * (cloud.accept - target)) /
                  (1.0 + exp(16.0 * (cloud.accept - target))))
+        =#
     cloud.c = c
 
 
@@ -689,36 +769,54 @@ R_fr_mix = (R_fr_mix + R_fr_mix') / 2.
         # MvNormal centered at ̄θ with var-cov ̄Σ, subsetting out the fixed parameters
         θ_bar_fr = θ_bar[free_para_inds]
 
-# Generate random parameter blocks
+# Generate parameter blocks: the fixed ones, if any, then random blocks of the rest
 @show n_blocks
+blocks_free, block_group = generate_stage_blocks(fixed_blocks, rest_block, n_free_para, n_blocks;
+                                                 rng = Xoshiro(stream_seed(run_seed, :stage_blocks, i)))
+#= Old: random blocks only (generate_stage_blocks draws the same ones without param_blocks)
 blocks_free = generate_free_blocks(n_free_para, n_blocks;
                                    rng = Xoshiro(stream_seed(run_seed, :stage_blocks, i)))
+=#
 blocks_all  = generate_all_blocks(blocks_free, free_para_inds)
+# Per-block scale with blockwise_c, else the shared scalar c
+c_mutation  = blockwise_c ? c_blocks[block_group] : c
 
 θ_selected      = cloud.particles[:, free_para_inds]
 weights_mutated = get_weights(cloud)
 
-# Each column is a particle plus, in the last row, its number of -Inf (failed) proposals
+# Each column is a particle plus its number of -Inf (failed) proposals and, with blocks
+# tracked, its number of accepted proposals per block (the last length(blocks_free) rows)
 new_particles = if parallel
     @distributed (hcat) for k in 1:n_parts
         Random.seed!(stream_seed(run_seed, :mutation_particle, i, k))
         mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
-                         blocks_free, blocks_all, ϕ_n; c = c, α = α,
-                         n_mh_steps = n_mh_steps, old_data = old_data)
+                         blocks_free, blocks_all, ϕ_n; c = c_mutation, α = α,
+                         n_mh_steps = n_mh_steps, old_data = old_data,
+                         track_blocks = track_blocks)
     end
 else
     hcat([begin
         Random.seed!(stream_seed(run_seed, :mutation_particle, i, k))
         mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
-                           blocks_free, blocks_all, ϕ_n; c = c,
+                           blocks_free, blocks_all, ϕ_n; c = c_mutation,
                            α = α, n_mh_steps = n_mh_steps,
-                           old_data = old_data)
+                           old_data = old_data, track_blocks = track_blocks)
     end for k=1:n_parts]...)
 end
 
+n_block_rows  = track_blocks ? length(blocks_free) : 0
+n_rows        = size(new_particles, 1) - n_block_rows
+inf_proposals = sum(new_particles[n_rows, :])
+if track_blocks
+    accept_blocks = group_acceptance(vec(sum(new_particles[n_rows+1:end, :], dims = 2)),
+                                     blocks_free, block_group, n_groups, n_parts * n_mh_steps)
+end
+update_cloud!(cloud, new_particles[1:n_rows-1, :])
+update_acceptance_rate!(cloud)
+#= Old: no per-block rows
 inf_proposals = sum(new_particles[end, :])
 update_cloud!(cloud, new_particles[1:end-1, :])
-update_acceptance_rate!(cloud)
+=#
 
 
         ##############################################################################
@@ -741,6 +839,12 @@ update_acceptance_rate!(cloud)
                               c = c, inf_cloud = inf_cloud, inf_proposals = inf_proposals,
                               n_proposals = n_parts * n_mh_steps * length(blocks_free),
                               time = stage_sampling_time), corr, esjd)
+        if track_blocks
+            record_block_health!(health, accept_blocks, c_blocks)
+            println(verbose, :low, "Block acceptance: " *
+                    join(["$l $(round(a, digits = 3)) (c = $(round(cg, digits = 4)))"
+                          for (l, a, cg) in zip(block_labels, accept_blocks, c_blocks)], ", "))
+        end
 
         end_stage_print(cloud, para_symbols; verbose = verbose,
                         use_fixed_schedule = use_fixed_schedule)
@@ -765,6 +869,11 @@ update_acceptance_rate!(cloud)
                 write(file, "stage_health", health)
                 write(file, "eve", eve)
                 write(file, "n_resample_events", n_resample_events)
+                if track_blocks
+                    write(file, "c_blocks", c_blocks)
+                    write(file, "accept_blocks", accept_blocks)
+                    write(file, "param_blocks", block_names)
+                end
             end
 
         end
@@ -816,6 +925,11 @@ update_acceptance_rate!(cloud)
                                "smc_seed" => run_seed, "smc_seed_version" => SMC_SEED_VERSION,
                                "run_info" => run_info, "stage_health" => health,
                                "health_flags" => flags, "log_mdd_estimates" => estimates)
+    if track_blocks
+        result["c_blocks"]      = c_blocks
+        result["accept_blocks"] = accept_blocks
+        result["param_blocks"]  = block_names
+    end
 
     ##################################################################################
     ### Saving data

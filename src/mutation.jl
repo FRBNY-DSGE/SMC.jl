@@ -90,7 +90,9 @@ Execute one proposed move of the Metropolis-Hastings algorithm for a given param
 - `ϕ_n::Float64`: The current tempering factor
 
 ### Keyword Arguments:
-- `c::Float64`: The scaling parameter for the proposed covariance matrix
+- `c::Union{Float64, Vector{Float64}}`: The scaling parameter for the proposed covariance matrix.
+    A vector gives one scale per block (`c[b]` for `blocks_free[b]`), as used by `smc`'s
+    `blockwise_c`.
 - `α::Float64`: The mixing proportion
 - `n_mh_steps::Int`: Number of Metropolis Hastings steps to attempt
 - `old_data::Matrix{Float64}`: The matrix of old data to be used in calculating the
@@ -112,6 +114,8 @@ Execute one proposed move of the Metropolis-Hastings algorithm for a given param
     take their regime 1 values at the end of the loglikelihood computation and set `toggle = false`.
 - `n_failed::Union{Nothing, Base.RefValue{Int}} = nothing`: if given, incremented once for every
     proposal whose log-likelihood is -Inf or cannot be evaluated.
+- `n_accepted::Union{Nothing, Vector{Int}} = nothing`: if given (one entry per block),
+    `n_accepted[b]` is incremented once for every accepted proposal of block `b`.
 
 ### Outputs:
 - `p::Vector{Float64}`: An updated particle containing updated parameter values,
@@ -122,16 +126,21 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                   data::Matrix{S}, p::Vector{S}, d_μ::Vector{S}, d_Σ::Matrix{S},
                   n_free_para::Int,
                   blocks_free::Vector{Vector{Int}}, blocks_all::Vector{Vector{Int}},
-                  ϕ_n::S; c::S = 1., α::S = 1., n_mh_steps::Int = 1,
+                  ϕ_n::S; c::Union{S, Vector{S}} = 1., α::S = 1., n_mh_steps::Int = 1,
                   old_data::AbstractMatrix{S} = Matrix{S}(undef, size(data, 1), 0),
                   old_loglikelihood::Function = loglikelihood,
                   tempered_update_prior_weight::S = 0., log_prob_old_data::S = 0.,
                   regime_switching::Bool = false,
                   toggle::Bool = true,
-                  n_failed::Union{Nothing, Base.RefValue{Int}} = nothing) where {S<:AbstractFloat, U<:Number}
+                  n_failed::Union{Nothing, Base.RefValue{Int}} = nothing,
+                  n_accepted::Union{Nothing, Vector{Int}} = nothing) where {S<:AbstractFloat, U<:Number}
 
     0.0 <= tempered_update_prior_weight <= 1.0 ||
         throw(ArgumentError("tempered_update_prior_weight must be in [0, 1]"))
+    c isa Vector && length(c) != length(blocks_free) &&
+        throw(ArgumentError("c has $(length(c)) entries but there are $(length(blocks_free)) blocks"))
+    n_accepted === nothing || length(n_accepted) == length(blocks_free) ||
+        throw(ArgumentError("n_accepted needs one entry per block"))
 
     step_prob   = rand() # Draw initial step probability
 
@@ -146,11 +155,12 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
         update_mutation!(p, para, like, logprior, like_prev, 0.0)
         return p
     end
-    block_proposals = [mutation_block_proposal(d_μ, d_Σ, block, c, α)
-                       for (block, _) in zip(blocks_free, blocks_all)]
+    # A scalar c is shared by every block; a vector gives block b the scale c[b]
+    block_proposals = [mutation_block_proposal(d_μ, d_Σ, block, c isa Vector ? c[b] : c, α)
+                       for (b, (block, _)) in enumerate(zip(blocks_free, blocks_all))]
 
     for step in 1:n_mh_steps
-        for (block_a, proposal) in zip(blocks_all, block_proposals)
+        for (b, (block_a, proposal)) in enumerate(zip(blocks_all, block_proposals))
 
             # Only the proposal center changes between MH steps.
             para_subset = para[block_a]
@@ -215,7 +225,9 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                 logprior  = prior_new
                 like_prev = like_old_data
                 accept   += length(block_a)
-
+                if n_accepted !== nothing
+                    n_accepted[b] += 1
+                end
             end
             step_prob = rand() # Draw again for next step
         end

@@ -405,6 +405,103 @@ end
 
 """
 ```
+resolve_param_blocks(param_blocks, para_symbols, free_para_inds)
+```
+Turn user-specified parameter blocks (`smc`'s `param_blocks`) into blocks of free-parameter
+indices (∈ `1:n_free_para`, the ordering of `blocks_free`). Each block lists parameters by
+name (`Symbol` or `String`, as in `para_symbols`, so an extra regime is `Symbol(key, "_reg2")`)
+or by index into the full parameter vector (`1:n_para`, the columns of `cloud.particles`).
+Every listed parameter must be free and listed at most once. Returns `(fixed, rest)`: the
+blocks, each sorted, and the sorted free indices that no block lists.
+"""
+function resolve_param_blocks(param_blocks::AbstractVector, para_symbols::AbstractVector{Symbol},
+                              free_para_inds::Vector{Int64})
+    free_pos = Dict(ind => k for (k, ind) in enumerate(free_para_inds))
+    listed   = Set{Int64}()
+    fixed    = Vector{Vector{Int64}}()
+    for (b, block) in enumerate(param_blocks)
+        isempty(block) && throw(ArgumentError("param_blocks[$b] is empty"))
+        free_block = Int64[]
+        for p in block
+            ind = if p isa Symbol || p isa AbstractString
+                k = findfirst(==(Symbol(p)), para_symbols)
+                k === nothing && throw(ArgumentError("param_blocks: unknown parameter $p"))
+                k
+            elseif p isa Integer
+                1 <= p <= length(para_symbols) ||
+                    throw(ArgumentError("param_blocks: index $p is outside 1:$(length(para_symbols))"))
+                Int64(p)
+            else
+                throw(ArgumentError("param_blocks entries must be parameter names or indices, got $(repr(p))"))
+            end
+            haskey(free_pos, ind) ||
+                throw(ArgumentError("param_blocks: parameter $(para_symbols[ind]) is fixed"))
+            free_pos[ind] in listed &&
+                throw(ArgumentError("param_blocks: parameter $(para_symbols[ind]) is listed more than once"))
+            push!(listed, free_pos[ind])
+            push!(free_block, free_pos[ind])
+        end
+        push!(fixed, sort(free_block))
+    end
+    rest = [k for k in 1:length(free_para_inds) if !(k in listed)]
+    return fixed, rest
+end
+
+"""
+```
+generate_stage_blocks(fixed_blocks, rest, n_free_para, n_blocks; rng)
+```
+The mutation blocks of one stage (free-parameter indices) and, per block, its group: the
+user-specified `fixed_blocks` are groups `1:K`, in the order given, and come first; the
+remaining free parameters `rest` are split at random into `n_blocks` (sorted) blocks by
+`generate_free_blocks` (redrawn every stage), which all belong to group `K + 1`.
+
+With no fixed blocks this is `generate_free_blocks(n_free_para, n_blocks; rng = rng)`, a
+single group, and draws the same blocks from `rng`.
+"""
+function generate_stage_blocks(fixed_blocks::Vector{Vector{Int64}}, rest::Vector{Int64},
+                               n_free_para::Int64, n_blocks::Int64;
+                               rng::AbstractRNG = Random.default_rng())
+    if isempty(fixed_blocks)
+        blocks_free = generate_free_blocks(n_free_para, n_blocks; rng = rng)
+        return blocks_free, ones(Int64, length(blocks_free))
+    end
+    rest_blocks = [sort(rest[b]) for b in generate_free_blocks(length(rest), n_blocks; rng = rng)]
+    K = length(fixed_blocks)
+    return vcat(fixed_blocks, rest_blocks), vcat(collect(1:K), fill(K + 1, length(rest_blocks)))
+end
+
+"""
+```
+group_acceptance(n_accepted, blocks_free, block_group, n_groups, n_trials)
+```
+Acceptance rate per block group: the accepted proposals of the group's blocks, each weighted
+by its number of parameters as in the particle's overall rate, divided by the `n_trials`
+(particles × MH steps) proposals per block.
+"""
+function group_acceptance(n_accepted::AbstractVector, blocks_free::Vector{Vector{Int64}},
+                          block_group::Vector{Int64}, n_groups::Int, n_trials::Int)
+    accepted = zeros(n_groups)
+    n_in     = zeros(n_groups)
+    for (b, g) in enumerate(block_group)
+        accepted[g] += length(blocks_free[b]) * n_accepted[b]
+        n_in[g]     += length(blocks_free[b])
+    end
+    return accepted ./ (n_trials .* n_in)
+end
+
+"""
+```
+update_c(c, accept, target)
+```
+Adaptive mutation scale (Herbst and Schorfheide 2014): `c` times a factor between 0.95 and 1.05
+that rises with the acceptance rate's gap to `target` (and is 1 at `accept == target`).
+"""
+update_c(c::T, accept::Real, target::Real) where {T<:AbstractFloat} =
+    c * (0.95 + 0.10 * exp(16.0 * (accept - target)) / (1.0 + exp(16.0 * (accept - target))))
+
+"""
+```
 `generate_all_blocks(blocks_free::Vector{Vector{Int64}}, free_para_inds::Vector{Int64})`
 ```
 
