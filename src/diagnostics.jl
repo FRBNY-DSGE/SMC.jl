@@ -98,6 +98,35 @@ function record_stage_health!(h::AbstractDict, row::NamedTuple, corr::Vector{Flo
     return h
 end
 
+"""
+```
+add_block_health!(h, labels)
+```
+Add the per-block-group columns to a stage health record (when `smc` runs with `param_blocks`
+or `blockwise_c`): `"block_labels"` and, per group × stage, `"accept_blocks"` (the group's
+acceptance rate per MH step) and `"c_blocks"` (its scale). A record resumed from a checkpoint
+that lacks them gets NaN for the earlier stages.
+"""
+function add_block_health!(h::AbstractDict, labels::Vector{String})
+    if haskey(h, "accept_blocks")
+        size(h["accept_blocks"], 1) == length(labels) ||
+            throw(ArgumentError("the stage health record has $(size(h["accept_blocks"], 1)) block " *
+                                "groups but the run has $(length(labels))"))
+    else
+        h["accept_blocks"] = fill(NaN, length(labels), n_stages(h))
+        h["c_blocks"]      = fill(NaN, length(labels), n_stages(h))
+    end
+    h["block_labels"] = labels
+    return h
+end
+
+function record_block_health!(h::AbstractDict, accept_blocks::Vector{Float64},
+                              c_blocks::Vector{Float64})
+    h["accept_blocks"] = hcat(h["accept_blocks"], accept_blocks)
+    h["c_blocks"]      = hcat(h["c_blocks"], c_blocks)
+    return h
+end
+
 n_stages(h::AbstractDict) = length(h["stage"])
 
 """
@@ -214,18 +243,25 @@ write_stage_health(path, h; para_names = nothing)
 ```
 Write the per-stage record as CSV: the scalar columns plus, per stage, the largest pre/post
 correlation and the smallest relative jump distance with the parameters they belong to.
+A record with block groups (see `add_block_health!`) has, after those, an `accept_<label>`
+and a `c_<label>` column per group.
 """
 function write_stage_health(path::AbstractString, h::AbstractDict; para_names = nothing)
     name(k) = para_names === nothing ? string(k) : string(para_names[k])
     nanmax(v) = isempty(v) || all(isnan, v) ? (NaN, 0) : findmax(x -> isnan(x) ? -Inf : x, v)
     nanmin(v) = isempty(v) || all(isnan, v) ? (NaN, 0) : findmin(x -> isnan(x) ? Inf : x, v)
+    labels = haskey(h, "block_labels") ? h["block_labels"] : String[]
     open(path, "w") do io
-        println(io, join((STAGE_HEALTH_COLUMNS..., "max_corr", "max_corr_para", "min_esjd", "min_esjd_para"), ","))
+        println(io, join((STAGE_HEALTH_COLUMNS..., "max_corr", "max_corr_para", "min_esjd", "min_esjd_para",
+                          ("accept_" .* labels)..., ("c_" .* labels)...), ","))
         for s in 1:n_stages(h)
             mc, kc = nanmax(h["corr"][:, s])
             me, ke = nanmin(h["esjd"][:, s])
             row = [string(h[col][s]) for col in STAGE_HEALTH_COLUMNS]
             push!(row, string(mc), kc == 0 ? "" : name(kc), string(me), ke == 0 ? "" : name(ke))
+            if !isempty(labels)
+                append!(row, string.(h["accept_blocks"][:, s]), string.(h["c_blocks"][:, s]))
+            end
             println(io, join(row, ","))
         end
     end
