@@ -33,7 +33,8 @@ my_tests = [
             "regime_switching_smc",
             "add_parameters_to_cloud",
             "diagnostics",
-            "param_blocks"
+            "param_blocks",
+            "param_blocks_coverage"
             ]
 
 # Run every test file to completion, even if some throw, then report at the end.
