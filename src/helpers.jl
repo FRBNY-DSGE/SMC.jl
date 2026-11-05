@@ -449,6 +449,46 @@ end
 
 """
 ```
+resolve_initial_c_blocks(initial_c_blocks, block_labels, blockwise_c)
+```
+The starting scale of each block group (`smc`'s `initial_c_blocks`), in the order of
+`block_labels`. `initial_c_blocks` is a `Dict` from block label (`String` or `Symbol`) to scale
+with exactly one entry per group, or a vector with one scale per group in group order. Requires
+`blockwise_c`; every scale must be finite and positive.
+"""
+function resolve_initial_c_blocks(initial_c_blocks::Union{AbstractVector{<:Real}, AbstractDict},
+                                  block_labels::Vector{String}, blockwise_c::Bool)
+    blockwise_c || throw(ArgumentError("initial_c_blocks needs blockwise_c = true"))
+    n_groups = length(block_labels)
+    scales = if initial_c_blocks isa AbstractDict
+        given = Dict{String, Any}()
+        for (k, v) in initial_c_blocks
+            (k isa Symbol || k isa AbstractString) ||
+                throw(ArgumentError("initial_c_blocks keys must be block labels, got $(repr(k))"))
+            string(k) in block_labels ||
+                throw(ArgumentError("initial_c_blocks: unknown block label $(repr(string(k))); " *
+                                    "the block groups are $block_labels"))
+            haskey(given, string(k)) &&
+                throw(ArgumentError("initial_c_blocks gives block $(repr(string(k))) twice"))
+            given[string(k)] = v
+        end
+        missing_labels = setdiff(block_labels, keys(given))
+        isempty(missing_labels) ||
+            throw(ArgumentError("initial_c_blocks has no scale for block group(s) $missing_labels"))
+        [given[l] for l in block_labels]
+    else
+        length(initial_c_blocks) == n_groups ||
+            throw(ArgumentError("initial_c_blocks has $(length(initial_c_blocks)) scales for " *
+                                "$n_groups block groups $block_labels"))
+        collect(initial_c_blocks)
+    end
+    all(x -> x isa Real && isfinite(x) && x > 0, scales) ||
+        throw(ArgumentError("initial_c_blocks must be finite and positive: $initial_c_blocks"))
+    return Vector{Float64}(scales)
+end
+
+"""
+```
 generate_stage_blocks(fixed_blocks, rest, n_free_para, n_blocks; rng)
 ```
 The mutation blocks of one stage (free-parameter indices) and, per block, its group: the
