@@ -21,7 +21,9 @@ smc_log_mdd(w::AbstractMatrix, W::AbstractMatrix)
 ```
 The SMC log MDD estimate Σ_n log((1/N) Σ_i w̃ⁱ_n Wⁱ_{n-1}) from the incremental (`w`) and
 normalized (`W`) weight matrices that `smc` saves. Same formula as DSGE's
-`marginal_data_density(...; calculation_method = :incremental_weights)`.
+`marginal_data_density(...; calculation_method = :incremental_weights)` uses for files without
+`log_mdd_estimates`. For a μ = 0 bridge with `log_prob_old_data`, `log_mdd_estimates["smc"]` =
+this + `log_prob_old_data` (B1: the saved `w` leave that particle-constant factor out).
 """
 function smc_log_mdd(w::AbstractMatrix, W::AbstractMatrix)
     size(w, 2) < 2 && return 0.0
@@ -33,9 +35,10 @@ end
 ```
 smc_log_mdd_level(log_mdd; tempered_update, tempered_update_prior_weight, log_prob_old_data)
 ```
-Put `smc_log_mdd` on the level scale log p(Y). Since F4 (ab37203) a bridge's incremental
-weights divide by p(Ỹ) = exp(`log_prob_old_data`), so every bridge returns the level when
-`log_prob_old_data` is supplied (even if it is 0.0). A μ = 0 bridge without it (`nothing`)
+Put `smc_log_mdd` on the level scale log p(Y). For μ > 0 the incremental weights divide by
+p(Ỹ) = exp(`log_prob_old_data`). For μ = 0, smc keeps that particle-constant factor out of the
+weights (B1) and adds `log_prob_old_data` to the log MDD once. Either way every bridge returns
+the level when `log_prob_old_data` is supplied (even 0.0). A μ = 0 bridge without it (`nothing`)
 returns the increment log p(Y) - log p(Ỹ), which has no level: NaN.
 """
 function smc_log_mdd_level(log_mdd::Real; tempered_update::Bool = false,
