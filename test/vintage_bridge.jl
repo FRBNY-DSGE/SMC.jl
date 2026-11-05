@@ -17,8 +17,10 @@ using Test, SMC, ModelConstructors, Distributions, LinearAlgebra, Random, JLD2, 
 #      final old_loglh / loglh columns equal fresh evaluations on Ỹ / Y;
 #   5. resume mid-bridge from an intermediate save is bitwise equal to the uninterrupted run;
 #   6. equal old/new vintage strings and equal sizes trigger no shortcut;
-#   7. two known weaknesses, as @test_broken: the stale ESS of the old cloud at bridge start,
-#      and the 0 * -Inf = NaN rejection at ϕ_n = 1 in the MH step.
+#   7. two former weaknesses, fixed: the stale ESS of the old cloud at bridge start (B2),
+#      and the 0 * -Inf = NaN rejection at ϕ_n = 1 in the MH step (B3);
+#   8. μ = 0 with a DSGE-sized log_prob_old_data: the weights no longer underflow (B1), the run
+#      equals the one without log_prob_old_data, and its level = increment + old log MDD.
 
 const VB_T = 60
 const VB_K = 3
@@ -141,7 +143,12 @@ mktempdir() do dir
         @test cloud.tempering_schedule == [0.0, 1.0]           # one stage
         @test cloud.stage_index == 2
         w = out["w"][:, 2]
-        @test maximum(abs.(log.(w) .- lmdd_rt)) < 1e-9         # every incremental weight = exp(Δϕ log p(Ỹ))
+        # B1: the constant Δϕ log p(Ỹ) is kept out of the weights (added to the MDD once), so with
+        # identical data every incremental weight is exactly 1
+        @test all(==(1.0), w)
+        #= Old (before B1): every incremental weight = exp(Δϕ log p(Ỹ))
+        @test maximum(abs.(log.(w) .- lmdd_rt)) < 1e-9
+        =#
         @test out["stage_health"]["ess"][1] ≈ 1.0              # no weight dispersion
         @test abs(out["log_mdd_estimates"]["smc_level"] - lmdd_rt) < 1e-9
         @test SMC.get_old_loglh(cloud) == SMC.get_loglh(cloud) # old term evaluated on identical data
@@ -176,6 +183,15 @@ mktempdir() do dir
             @test all(abs.(μ .- μ_rt) .< 0.12 .* sd_rt)
             @test all(abs.(sqrt.(diag(Σ)) ./ sd_rt .- 1) .< 0.1)
             @test abs(lm - lmdd_rt) < 0.1
+            # MDD bookkeeping (B1): μ = 0 adds log p̃(Ỹ) to the incremental-weight sum once; μ > 0
+            # keeps it in the weights, as before
+            lm_w = SMC.smc_log_mdd(out["w"], out["W"])
+            if kw.tempered_update_prior_weight == 0.0
+                @test out["log_mdd_estimates"]["smc"] == lm_w + lmdd_rev
+            else
+                @test out["log_mdd_estimates"]["smc"] == lm_w
+            end
+            @test out["log_mdd_estimates"]["smc_level"] == out["log_mdd_estimates"]["smc"]
             r = VB_REC[]
             @test r.new_other == 0 && r.old_other == 0 && r.old_rev > 0
         end
@@ -325,10 +341,13 @@ mktempdir() do dir
         @test a_inf == a_fin                       # B3: was 0 of 200
     end
 
-    @testset "8. μ = 0 with a DSGE-sized log_prob_old_data (log likelihoods near -5600)" begin
+    @testset "8. B1: μ = 0 with a DSGE-sized log_prob_old_data (log likelihoods near -5600)" begin
         # Same toy, every log likelihood shifted by K (posterior unchanged, MDD shifted by K).
-        # The incremental weight is exp(Δϕ (loglh - old_loglh + log_prob_old_data)): with
-        # log_prob_old_data ≈ -5600 it underflows to 0 for every particle once Δϕ > ~0.13.
+        # With μ = 0 the exact incremental weight is exp(Δϕ (loglh - old_loglh + log_prob_old_data)):
+        # with log_prob_old_data ≈ -5600 it underflows to 0 for every particle once Δϕ > ~0.13.
+        # Before B1, smc passed it into the weights, so a full run did not terminate (job 343006:
+        # the identity bridge spun in get_least_upper_bound for > 10 min). Since B1, smc keeps the
+        # particle-constant Δϕ log p̃(Ỹ) out of the weights and adds log p̃(Ỹ) to the MDD once.
         K = -5600.0
         lik_K(p, d) = vb_new_lik(p, d) + K
         old_K(p, d; kw...) = vb_old_lik(p, d) + K
@@ -337,29 +356,46 @@ mktempdir() do dir
             c.particles[:, VB_K + 1] .+= K
             return c
         end
-        # A full smc run here does not terminate (job 343006: the identity bridge with
-        # log_prob_old_data = log p(Y) + K spun in get_least_upper_bound for > 10 min, printing
-        # "new weights sum: 0.0 / norm weights sum: NaN" ~4 million times), so check the pieces.
+        # Why: the helper, handed log p̃(Ỹ) at μ = 0, still underflows (smc no longer does that) ...
         oc = cloud_K(VB_Y_RT, 31)
         ll = SMC.get_loglh(oc)                       # identity: new loglh = old loglh
         w1 = SMC.bridge_incremental_weights(ll, ll, 1.0, 0.0, 0.0, lmdd_rt + K)
-        println("  identity, Δϕ = 1: max incremental weight $(maximum(w1)) (should be exp(log p(Ỹ)) > 0 up to scale)")
-        @test_broken any(>(0), w1)                   # all underflow to 0
-        ess(ϕ) = SMC.compute_ESS(ll, ones(VB_N), ϕ, 0.0; old_loglh = ll, log_prob_old_data = lmdd_rt + K)
-        println("  identity: ESS at ϕ = 0.1 → $(ess(0.1)), ϕ = 0.2 → $(ess(0.2)), ϕ = 1 → $(ess(1.0))")
-        @test ess(0.1) ≈ VB_N
-        @test_broken !isnan(ess(1.0))                # NaN: the adaptive solver cannot reach ϕ = 1
-        # the same weights with the constant Δϕ·log p(Ỹ) left out are fine
+        @test all(==(0.0), w1)
+        @test isnan(SMC.compute_ESS(ll, ones(VB_N), 1.0, 0.0; old_loglh = ll, log_prob_old_data = lmdd_rt + K))
+        # ... while the same weights without the constant, which is what smc now uses, are fine
         w0 = SMC.bridge_incremental_weights(ll, ll, 1.0, 0.0, 0.0, 0.0)
         @test all(==(1.0), w0)
+        @test SMC.compute_ESS(ll, ones(VB_N), 1.0, 0.0; old_loglh = ll) ≈ VB_N
 
-        # Workaround: no log_prob_old_data (μ = 0 needs none); level = smc + log p(Ỹ)
+        # Identity bridge with log_prob_old_data (hung before B1): one stage, exact level
+        old_same = copy(VB_Y_RT)
+        VB_OLD[] = old_same
+        o1 = vb_run("big_identity"; lik = lik_K, old_data = old_same, old_cloud = cloud_K(VB_Y_RT, 31),
+                    old_loglikelihood = old_K, log_prob_old_data = lmdd_rt + K, smc_seed = 31)
+        VB_OLD[] = VB_Y_REV
+        println("  identity with log_prob_old_data: schedule $(o1["cloud"].tempering_schedule), smc_level err ",
+                o1["log_mdd_estimates"]["smc_level"] - (lmdd_rt + K))
+        @test o1["cloud"].tempering_schedule == [0.0, 1.0]
+        @test all(==(1.0), o1["w"][:, 2])
+        @test abs(o1["log_mdd_estimates"]["smc_level"] - (lmdd_rt + K)) < 1e-9
+
+        # Real bridge, with and without log_prob_old_data (the latter was the pre-B1 workaround)
         o = vb_run("big_rev_nolpod"; lik = lik_K, old_data = VB_Y_REV, old_cloud = cloud_K(VB_Y_REV, 32),
                    old_loglikelihood = old_K, smc_seed = 32)
-        μ, Σ = vb_moments(o["cloud"])
-        lvl = o["log_mdd_estimates"]["smc"] + lmdd_rev + K
-        println("  workaround: stages $(o["cloud"].stage_index - 1), mean err/sd ", round.((μ .- μ_rt) ./ sd_rt, digits = 3),
-                ", MDD err ", round(lvl - (lmdd_rt + K), digits = 4))
+        a = vb_run("big_rev_lpod"; lik = lik_K, old_data = VB_Y_REV, old_cloud = cloud_K(VB_Y_REV, 32),
+                   old_loglikelihood = old_K, log_prob_old_data = lmdd_rev + K, smc_seed = 32)
+        μ, Σ = vb_moments(a["cloud"])
+        lvl = a["log_mdd_estimates"]["smc_level"]
+        println("  with log_prob_old_data: stages $(a["cloud"].stage_index - 1), mean err/sd ",
+                round.((μ .- μ_rt) ./ sd_rt, digits = 3), ", MDD err ", round(lvl - (lmdd_rt + K), digits = 4))
+        # log p̃(Ỹ) no longer enters the weights, the ESS or the MH ratio: the same run bitwise
+        @test a["cloud"].particles == o["cloud"].particles
+        @test a["cloud"].tempering_schedule == o["cloud"].tempering_schedule
+        @test a["w"] == o["w"]
+        # MDD bookkeeping: level = increment + old log MDD (BRIDGE-NOTES A1 with μ = 0: Z₀ = e^δ)
+        @test isnan(o["log_mdd_estimates"]["smc_level"])
+        @test lvl == o["log_mdd_estimates"]["smc"] + (lmdd_rev + K)
+        @test a["log_mdd_estimates"]["smc"] == lvl
         @test all(abs.(μ .- μ_rt) .< 0.12 .* sd_rt)
         @test abs(lvl - (lmdd_rt + K)) < 0.1
     end

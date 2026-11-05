@@ -123,10 +123,13 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 - `debug_assertion::Bool = false`: if true, then when an assertion error is thrown during the estimation,
     output is created in a JLD2 file to help the user debug the problem.
 - `log_prob_old_data::Union{Nothing,Float64} = nothing`: Log MDD of the old data.
-    Supplying it puts a bridge's saved incremental weights on the full-data MDD scale.
-    At zero prior share, omitting it retains the old incremental-MDD convention; do not
-    also add the old MDD when it is supplied. A prior share strictly between zero and
-    one requires this value to normalize the mixture.
+    Supplying it puts a bridge's `log_mdd_estimates` (`smc`, `smc_level`) on the full-data
+    MDD scale. At zero prior share, omitting it retains the old incremental-MDD convention; do not
+    also add the old MDD when it is supplied. At zero prior share it is a constant that is kept
+    out of the incremental weights (B1: it would underflow them) and added to the log MDD once,
+    so the saved `w` of a μ = 0 bridge are on the increment scale p(Y)/p̃(Ỹ) either way. A prior
+    share strictly between zero and one requires this value to normalize the mixture, and
+    there it stays in the weights.
 
 ### Outputs
 
@@ -256,6 +259,14 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
     # Keep what the caller passed: smc_log_mdd_level must tell "not given" from an explicit 0.0
     log_prob_old_data_given = log_prob_old_data
     log_prob_old_data = something(log_prob_old_data, 0.0)
+    # B1: for a μ = 0 bridge the bridge factor is old_loglh - log p̃(Ỹ), so the incremental weight
+    # is exp(Δϕ (loglh - old_loglh + log p̃(Ỹ))). The term Δϕ log p̃(Ỹ) is the same for every
+    # particle and cancels in the normalized weights, the ESS and the MH ratio, but with a
+    # DSGE-sized log p̃(Ỹ) (≈ -1000 to -6000) it underflows every weight to 0. So keep it out of
+    # the weights (log_prob_old_data_w = 0) and add Σ Δϕ log p̃(Ỹ) = log p̃(Ỹ) to the log MDD once,
+    # below. For μ > 0 (and runs without old data) nothing changes: it does not cancel there.
+    log_prob_old_data_w = (!isempty(old_data) && tempered_update_prior_weight == 0.0) ? 0.0 :
+                          log_prob_old_data
 
     # Checkpoint seed takes precedence on resume; a caller-supplied seed must match it.
     # Checkpoints written before the seeding (no smc_seed) still resume, with a new seed.
@@ -306,7 +317,7 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
                      ϕ_n; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data,
                      old_loglikelihood = old_loglikelihood, regime_switching = regime_switching,
                      toggle = toggle, tempered_update_prior_weight = tempered_update_prior_weight,
-                     log_prob_old_data = log_prob_old_data, n_failed = n_failed,
+                     log_prob_old_data = log_prob_old_data_w, n_failed = n_failed,    # B1
                      n_accepted = n_accepted)
         return track_blocks ? vcat(p, n_failed[], n_accepted) : vcat(p, n_failed[])
     end
@@ -674,7 +685,7 @@ while ϕ_n < 1.
                                                        tempering_target,
                                                        resampled_last_period,
                                                        tempered_update_prior_weight = tempered_update_prior_weight,
-                                                       log_prob_old_data = log_prob_old_data)
+                                                       log_prob_old_data = log_prob_old_data_w)    # B1
         end
 
         #############################################################################
@@ -683,7 +694,7 @@ while ϕ_n < 1.
     # Calculate incremental weights (if no old data, get_old_loglh(cloud) = 0)
         incremental_weights = bridge_incremental_weights(get_loglh(cloud), get_old_loglh(cloud),
                                                          ϕ_n, ϕ_n1, tempered_update_prior_weight,
-                                                         log_prob_old_data)
+                                                         log_prob_old_data_w)    # B1
 
         previous_weights = get_weights(cloud)
         inf_cloud        = count(==(-Inf), get_loglh(cloud))
@@ -926,6 +937,11 @@ update_cloud!(cloud, new_particles[1:end-1, :])
     θ_free  = cloud.particles[:, free_para_inds]
     weights = get_weights(cloud)
     log_mdd = smc_log_mdd(w_matrix, W_matrix)
+    # B1: the weights of a μ = 0 bridge leave out Δϕ log p̃(Ỹ); its sum over the stages is
+    # log p̃(Ỹ) (Σ Δϕ = 1), so add it back once. log_prob_old_data is 0.0 when not given, so
+    # `smc` keeps its meaning: the level log p(Y) if log p̃(Ỹ) is supplied, else the increment
+    # log p(Y) - log p̃(Ỹ). Zero for every other run.
+    log_mdd += log_prob_old_data - log_prob_old_data_w
     estimates = Dict{String, Any}(
         "smc"       => log_mdd,
         "smc_level" => smc_log_mdd_level(log_mdd; tempered_update = tempered_update,
