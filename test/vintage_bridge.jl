@@ -292,8 +292,8 @@ mktempdir() do dir
         @test a["cloud"].stage_index > 2
     end
 
-    @testset "7. Known weaknesses (documented as broken)" begin
-        # 7a. A μ = 0 bridge keeps the old cloud's last ESS entry, which SMC records BEFORE
+    @testset "7. Known weaknesses (7a fixed by B2; 7b documented as broken)" begin
+        # 7a. B2. A μ = 0 bridge used to keep the old cloud's last ESS entry, which SMC records BEFORE
         # resampling. If the old run resampled at its last stage, ESS[end] < N/2 while the weights
         # are uniform, so the first bridge stage targets 0.95 * ESS[end] instead of 0.95 * N.
         oc = vb_exact_cloud(VB_Y_REV, VB_N; seed = 19)
@@ -302,7 +302,7 @@ mktempdir() do dir
                      log_prob_old_data = lmdd_rev, smc_seed = 9)
         ess1 = out["stage_health"]["ess"][1]
         println("  stale ESS: first-stage ESS/N = $(round(ess1, digits = 3)) (tempering target 0.95)")
-        @test_broken ess1 > 0.9
+        @test ess1 > 0.9                           # B2: was 0.428 (0.95 * 0.45)
 
         # 7b. At ϕ_n = 1 the target has no old-data term, but a proposal whose old likelihood is
         # -Inf gives (1 - ϕ_n) * (-Inf - finite) = NaN, so it is always rejected.

@@ -203,7 +203,15 @@ function initialize_cloud_settings!(cloud::Cloud; tempered_update::Bool = false,
                                     n_parts::Int = 5_000, n_Φ::Int = 300, c::S = 0.5,
                                     accept::S = 0.25) where {S<:AbstractFloat}
     if tempered_update
+        # B2: start from the ESS of the old cloud's weights, not its last ESS entry. SMC records
+        # ESS[i] before resampling, so if the old run resampled at its last stage ESS[end] < N/2
+        # while the weights are uniform, and the first bridge stage would target 0.95 ESS[end]
+        # instead of 0.95 N. (Same formula as set_last_ESS_from_weights!; = N for uniform weights.)
+        w = get_weights(cloud)
+        cloud.ESS = [sum(w)^2 / sum(abs2, w)]
+        #= Old: stale if the old run resampled at its last stage
         cloud.ESS = [cloud.ESS[end]]
+        =#
     else
         cloud.ESS[1] = n_parts
     end
