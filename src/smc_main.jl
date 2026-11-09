@@ -53,15 +53,23 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     ρ_σ_w its own block and puts all other free parameters in a second one.
 - `blockwise_c::Bool = false`: Give each fixed block, and the remaining parameters together,
     its own scale c_b, adapted every stage from that group's own acceptance rate with the same
-    rule and `target` as `c` (all start at `c`). The random blocks of the remaining parameters
-    share one scale. `cloud.c` and the `c` column of `stage_health` then hold the remaining
-    parameters' scale (the last block's if every parameter is listed). Without `param_blocks`
+    rule and `target` as `c` (all start at `c`, or at `initial_c_blocks`). The random blocks of
+    the remaining parameters share one scale. `cloud.c` and the `c` column of `stage_health`
+    then hold the remaining parameters' scale (the last block's if every parameter is listed). Without `param_blocks`
     there is a single group, so this is the shared scale again.
     With `param_blocks` or `blockwise_c`, `stage_health` also records each group's acceptance
     rate and scale (`accept_blocks`, `c_blocks`, `block_labels`), the CSV gets an `accept_<label>`
     and a `c_<label>` column per group, and the JLD2 files save the scales and the blocks
     (`c_blocks`, `accept_blocks`, `param_blocks`, `blockwise_c`) so `continue_intermediate`
     resumes them; resuming with other blocks or another `blockwise_c` raises an `ArgumentError`.
+- `initial_c_blocks = nothing`: With `blockwise_c`, the scale each block group starts from instead
+    of `c`, e.g. the final `c_blocks` of the previous estimation when starting a bridge from its
+    cloud. Either a `Dict` from block label (as in `stage_health["block_labels"]`: the parameter
+    name for a one-parameter block, `"block<k>"` for the k-th fixed block with several, then
+    `"rest"`, or `"all"` without `param_blocks`) to scale, with exactly one entry per group, or a
+    vector with one scale per group in that order (the `param_blocks` order, then the rest).
+    Scales must be finite and positive. `nothing` (the default) starts every group at `c`. Ignored
+    with `continue_intermediate`, which resumes the checkpoint's scales.
 - `n_mh_steps::Int = 1`: Number of Metropolis Hastings steps to attempt during the mutation step.
 - `λ::S = 2.1`: The 'bending coefficient' λ in Φ(n) = (n/N(Φ))^λ
 - `n_Φ::Int = 300`: Number of stages in the tempering schedule.
@@ -205,6 +213,7 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
              n_mh_steps::Int = 1,
              param_blocks::AbstractVector = Vector{Vector{Int}}(),
              blockwise_c::Bool = false,
+             initial_c_blocks::Union{Nothing, AbstractVector{<:Real}, AbstractDict} = nothing,
 
              λ::S = 2.1,
              n_Φ::Int64 = 300,
@@ -411,6 +420,14 @@ n_fixed_para = length(fixed_para_inds)
     end
     blockwise_c && isempty(fixed_blocks) &&
         @warn "blockwise_c without param_blocks: all parameters share one scale, as without blockwise_c"
+    # Starting scales of the block groups (checked here, before any likelihood is evaluated)
+    c_blocks_start = if initial_c_blocks === nothing || continue_intermediate
+        (initial_c_blocks !== nothing && verbose != :none) &&
+            @info "initial_c_blocks ignored: continue_intermediate resumes the checkpoint's block scales"
+        fill(c, n_groups)
+    else
+        Vector{S}(resolve_initial_c_blocks(initial_c_blocks, block_labels, blockwise_c))
+    end
 
     #################################################################################
     ### Initialize Algorithm: Draws from prior
@@ -649,11 +666,11 @@ end
     end
 
 
-    # Every block group starts from the initial c (the stage-1 adaptation then leaves it there,
-    # as for c, since cloud.accept starts at the target)
+    # Every block group starts from the initial c, or from initial_c_blocks (the stage-1
+    # adaptation then leaves it there, as for c, since cloud.accept starts at the target)
     if track_blocks
         if !continue_intermediate
-            c_blocks      = fill(c, n_groups)
+            c_blocks      = c_blocks_start
             accept_blocks = fill(cloud.accept, n_groups)
         end
         add_block_health!(health, block_labels)
