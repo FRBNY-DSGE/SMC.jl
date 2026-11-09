@@ -35,6 +35,7 @@ my_tests = [
             "diagnostics",
             "param_blocks",
             "param_blocks_coverage",
+            "vintage_bridge"
             "initial_c_blocks"
             ]
 

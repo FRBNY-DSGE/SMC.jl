@@ -219,8 +219,16 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                                            log_prob_old_data)
             bridge_old = bridge_log_factor(like_prev, tempered_update_prior_weight,
                                            log_prob_old_data)
+            # B3: at ϕ_n = 1 the target has no old-data term. Skip it, since (1 - ϕ_n) * (bridge_new -
+            # bridge_old) is 0 * -Inf = NaN when the proposal's old likelihood is -Inf, and a NaN η
+            # always rejects. For ϕ_n < 1 the expression is unchanged.
+            bridge_term = ϕ_n == 1.0 ? 0.0 : (1 - ϕ_n) * (bridge_new - bridge_old)
+            η = exp(ϕ_n * (like_new - like_init) + bridge_term +
+                    (prior_new - prior_init) + (q0 - q1))
+            #= Old: NaN at ϕ_n = 1 when like_old_data = -Inf
             η = exp(ϕ_n * (like_new - like_init) + (1 - ϕ_n) * (bridge_new - bridge_old) +
                     (prior_new - prior_init) + (q0 - q1))
+            =#
 
 
 

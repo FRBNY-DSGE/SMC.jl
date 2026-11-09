@@ -54,11 +54,27 @@ end
         resized_level = bridge_run("resized_level", n + 1, 0.0; supply_old_mdd = true)
         mixed = bridge_run("mixed", n, 0.25; supply_old_mdd = true)
 
+        function log_mdd_w(run)
+            w, W = run["w"], run["W"]
+            count = size(w, 1)
+            return sum(log.(vec(sum(w[:, 2:end] .* W[:, 1:end-1] ./ count, dims = 1))))
+        end
+        # B1: the saved w of a μ = 0 bridge leave out log p̃(Ỹ) (it would underflow them); the
+        # reported `smc` estimate adds it back once. Elsewhere `smc` is the w-based estimate.
+        log_mdd(run) = run["log_mdd_estimates"]["smc"]
+        for run in (same, resized, mixed)
+            @test log_mdd(run) ≈ log_mdd_w(run) atol = 1e-10
+        end
+        for run in (leveled, resized_level)
+            @test log_mdd(run) ≈ log_mdd_w(run) + (-1.0) atol = 1e-10
+        end
+        #= Old (before B1): the saved w of every bridge with log_prob_old_data were on the level scale
         function log_mdd(run)
             w, W = run["w"], run["W"]
             count = size(w, 1)
             return sum(log.(vec(sum(w[:, 2:end] .* W[:, 1:end-1] ./ count, dims = 1))))
         end
+        =#
 
         # Exact evidence for θ ~ N(0, 1), L(θ) = exp(-0.5(θ+0.5)^2) 1(θ ≤ 0).
         analytic = -0.5 * log(2.0) - 1 / 16 + log(cdf(Normal(), 1 / (2sqrt(2))))
