@@ -178,7 +178,6 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
             like_init, prior_init = like, logprior
             prior_new = like_new = like_old_data = -Inf
             try
-                @assert length(para_new) == sum(ModelConstructors.n_param_regs(parameters)) ## Delete for speed after testing
                 update!(parameters, para_new)
                 prior_new = prior(parameters)
                 like_new  = loglikelihood(parameters, data)
