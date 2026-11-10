@@ -275,3 +275,26 @@ function record_drift_health!(h::AbstractDict, row::NamedTuple, delta::AbstractV
     h["drift_dir"]   = hcat(h["drift_dir"], dir)
     return h
 end
+
+"""
+```
+write_drift_health(path, h; para_names = nothing, n_top = 5)
+```
+Write the drift diagnostic per stage as CSV (a sidecar of `write_stage_health`, whose layout is
+unchanged): `stage`, `phi`, the `DRIFT_COLUMNS`, and the `n_top` parameters with the largest
+weights in the leading direction u used at that stage (`dir_top`, as `name:+0.41;…`).
+"""
+function write_drift_health(path::AbstractString, h::AbstractDict; para_names = nothing, n_top::Int = 5)
+    name(k) = para_names === nothing ? string(k) : string(para_names[k])
+    open(path, "w") do io
+        println(io, join(("stage", "phi", DRIFT_COLUMNS..., "dir_top"), ","))
+        for s in 1:n_stages(h)
+            u = h["drift_dir"][:, s]
+            top = all(x -> isnan(x) || iszero(x), u) ? "" :
+                join(["$(name(k)):$(round(u[k], digits = 3))" for k in sortperm(abs.(replace(u, NaN => 0.0)), rev = true)[1:min(n_top, length(u))]], ";")
+            row = vcat(string(h["stage"][s]), string(h["phi"][s]), [string(h[col][s]) for col in DRIFT_COLUMNS], top)
+            println(io, join(row, ","))
+        end
+    end
+    return path
+end

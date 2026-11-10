@@ -155,7 +155,9 @@ the extra columns below).
   (u'δ), `drift_proj_se`, `drift_z`, `drift_cos` (cos(u, δ)), `drift_dloglh` and `drift_dloglh_z`
   (the same shift of the log likelihood: a direction-free lag signal), `drift_alarm` (1 fire, -1
   calm, 0 neither), `n_mh`, `ridge_on`, `ridge_tried`, `ridge_accept`, `ridge_c`, `ridge_step`, and
-  the n_free × stages matrices `drift_delta` (δ) and `drift_dir` (u). The CSV gets the scalars.
+  the n_free × stages matrices `drift_delta` (δ) and `drift_dir` (u). The scalars, with the top
+  parameters of u, are also written to `<savepath>_drift.csv`; `<savepath>_stage_health.csv` keeps
+  its layout.
 - `drift_params::AbstractVector = []`: free parameters (names or indices, as in `param_blocks`)
   that the leading direction, `drift_rms` and the ridge move use; empty = all free parameters.
 - `drift_ewma_span::Int = 10`: span m of the EWMA (weight 2/(m+1) on the newest δ).
@@ -1179,6 +1181,8 @@ update_cloud!(cloud, new_particles[1:end-1, :])
             end
         end
         write_stage_health(replace(savepath, r"\.jld2$" => "") * "_stage_health.csv", health;
+                           para_names = para_symbols[free_para_inds])
+        write_drift_health(replace(savepath, r"\.jld2$" => "") * "_drift.csv", health;
                            para_names = para_symbols[free_para_inds])
     end
     return result

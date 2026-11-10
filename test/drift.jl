@@ -277,10 +277,11 @@ mktempdir() do dir
         finally
             isempty(added) || Distributed.rmprocs(added)
         end
-        # The CSV has the drift columns
-        csv = readlines(joinpath(dir, "fix_serial_stage_health.csv"))
-        @test occursin("drift_z", csv[1]) && occursin("ridge_accept", csv[1])
+        # The drift columns go to the sidecar CSV; the stage health CSV keeps its layout
+        csv = readlines(joinpath(dir, "fix_serial_drift.csv"))
+        @test startswith(csv[1], "stage,phi,drift_rms") && occursin("ridge_accept", csv[1]) && endswith(csv[1], "dir_top")
         @test length(csv) == length(h["stage"]) + 1
+        @test !occursin("drift", readlines(joinpath(dir, "fix_serial_stage_health.csv"))[1])
         # Bad settings are refused before any likelihood is evaluated
         @test_throws ArgumentError drift_run("bad1", drift_gauss3_loglh, drift_parameters(3, 2.0);
                                              smc_seed = 1, n_parts = 50, n_Φ = 5, ridge_mode = :sometimes)
