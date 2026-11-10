@@ -254,9 +254,10 @@ function write_stage_health(path::AbstractString, h::AbstractDict; para_names = 
     nanmax(v) = isempty(v) || all(isnan, v) ? (NaN, 0) : findmax(x -> isnan(x) ? -Inf : x, v)
     nanmin(v) = isempty(v) || all(isnan, v) ? (NaN, 0) : findmin(x -> isnan(x) ? Inf : x, v)
     labels = haskey(h, "block_labels") ? h["block_labels"] : String[]
+    dcols  = haskey(h, "drift_z") ? collect(DRIFT_COLUMNS) : String[]
     open(path, "w") do io
         println(io, join((STAGE_HEALTH_COLUMNS..., "max_corr", "max_corr_para", "min_esjd", "min_esjd_para",
-                          ("accept_" .* labels)..., ("c_" .* labels)...), ","))
+                          ("accept_" .* labels)..., ("c_" .* labels)..., dcols...), ","))
         for s in 1:n_stages(h)
             mc, kc = nanmax(h["corr"][:, s])
             me, ke = nanmin(h["esjd"][:, s])
@@ -264,6 +265,9 @@ function write_stage_health(path::AbstractString, h::AbstractDict; para_names = 
             push!(row, string(mc), kc == 0 ? "" : name(kc), string(me), ke == 0 ? "" : name(ke))
             if !isempty(labels)
                 append!(row, string.(h["accept_blocks"][:, s]), string.(h["c_blocks"][:, s]))
+            end
+            for col in dcols
+                push!(row, string(h[col][s]))
             end
             println(io, join(row, ","))
         end
