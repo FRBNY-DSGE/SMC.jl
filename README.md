@@ -32,6 +32,11 @@ The package requires our auxiliary package, [ModelConstructors.jl](https://githu
 
 For examples of how to set up a model in the form SMC can estimate, see scripts in the [`examples/`](https://github.com/FRBNY-DSGE/SMC.jl/tree/main/examples) folder.
 
+For the log marginal data density, use `bridge_sampling` on the final cloud (real line, t
+proposal), not the SMC sum of incremental weights alone: that sum is biased low when the
+mutation lags the tempered posterior. See the "Marginal Data Density" page of the docs
+(`docs/src/mdd.md`) for which estimator to use and why.
+
 ## Precompilation
 
 The `SMC.jl` package is not precompiled by default because when running code in parallel, we want to re-compile

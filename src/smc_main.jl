@@ -203,8 +203,13 @@ diagnostics (SMC reliability plan, step 3 part C):
     jump distance (also written to `<savepath>_stage_health.csv`);
 - `health_flags`: the flags these raise (also logged as warnings unless `verbose = :none`);
 - `log_mdd_estimates`: the incremental-weight log MDD (`smc`; `smc_level` on the level scale,
-    see `smc_log_mdd_level`), the modified harmonic mean (`mhm`), bridge sampling if requested,
-    and the ancestral-lineage NSEs (`smc_lineage_nse`, `mean_lineage_nse`, `n_eves`).
+    see `smc_log_mdd_level`), the modified harmonic mean (`mhm`, the mean over p = 0.1:0.1:0.9
+    as before; per p: `mhm_p`, `mhm_by_p`, the cluster-bootstrap SE `mhm_se` and the largest
+    term's share `mhm_max_share`), bridge sampling if requested (`bridge_sampling`,
+    `bridge_sampling_nse`; also `bridge_sampling_nse_batch`, `bridge_sampling_is`,
+    `bridge_sampling_is_max_share`; see `smc_bridge_sampling`), and the ancestral-lineage NSEs
+    (`smc_lineage_nse`, `mean_lineage_nse`, `n_eves`). All use the log prior as stored (not
+    renormalized to the bounds; see `effective_prior_lognorm`).
 
 ### Overview
 
@@ -1116,6 +1121,9 @@ update_cloud!(cloud, new_particles[1:end-1, :])
     # `smc` keeps its meaning: the level log p(Y) if log p̃(Ỹ) is supplied, else the increment
     # log p(Y) - log p̃(Ỹ). Zero for every other run.
     log_mdd += log_prob_old_data - log_prob_old_data_w
+    # Same estimator and log_mdd as before; the bootstrap has its own stream
+    mhm = modified_harmonic_mean(θ_free, get_logpost(cloud), weights;
+                                 rng = Xoshiro(stream_seed(run_seed, :mhm_bootstrap)))
     estimates = Dict{String, Any}(
         "smc"       => log_mdd,
         "smc_level" => smc_log_mdd_level(log_mdd; tempered_update = tempered_update,
@@ -1126,7 +1134,15 @@ update_cloud!(cloud, new_particles[1:end-1, :])
                                          tempered_update_prior_weight = tempered_update_prior_weight,
                                          log_prob_old_data = log_prob_old_data),
         =#
+        "mhm"       => mhm.log_mdd,
+        #= Old: the mean over p only
         "mhm"       => modified_harmonic_mean(θ_free, get_logpost(cloud), weights).log_mdd)
+        =#
+        # Per p (0.1:0.1:0.9), the duplicate-cluster bootstrap SE and the largest term's share
+        "mhm_p"         => mhm.p,
+        "mhm_by_p"      => mhm.by_p,
+        "mhm_se"        => mhm.se_by_p,
+        "mhm_max_share" => mhm.max_share)
     if lineage_valid
         lineage = lineage_nse(eve, n_resample_events, weights, θ_free)
         estimates["smc_lineage_nse"] = lineage.log_mdd_nse
@@ -1137,10 +1153,19 @@ update_cloud!(cloud, new_particles[1:end-1, :])
         bs = smc_bridge_sampling(loglikelihood, parameters, data, cloud, free_para_inds;
                                  n_draws = n_bridge_draws > 0 ? n_bridge_draws : n_parts,
                                  rng = Xoshiro(stream_seed(run_seed, :bridge_sampling)),
-                                 parallel = parallel, toggle = toggle)
+                                 parallel = parallel, toggle = toggle, regime_switching = regime_switching)
         estimates["bridge_sampling"]     = bs.log_mdd
         estimates["bridge_sampling_nse"] = bs.nse
+        estimates["bridge_sampling_nse_batch"]    = bs.nse_batch
+        estimates["bridge_sampling_is"]           = bs.is_log_mdd
+        estimates["bridge_sampling_is_max_share"] = bs.is_max_share
     end
+    #= Old: a normal proposal in model space (see smc_bridge_sampling)
+        bs = smc_bridge_sampling(loglikelihood, parameters, data, cloud, free_para_inds;
+                                 n_draws = n_bridge_draws > 0 ? n_bridge_draws : n_parts,
+                                 rng = Xoshiro(stream_seed(run_seed, :bridge_sampling)),
+                                 parallel = parallel, toggle = toggle)
+    =#
 
     flags = stage_health_flags(health; thresholds = health_thresholds,
                                para_names = para_symbols[free_para_inds])

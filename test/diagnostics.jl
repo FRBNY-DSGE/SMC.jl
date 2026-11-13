@@ -198,6 +198,12 @@ end
     @test est["smc_level"] == est["smc"]
     @test est["bridge_sampling"] ≈ diag_truth atol = 0.3
     @test est["mhm"] ≈ diag_truth atol = 0.5
+    # The logged MHM is the mean of its per-p estimates (as before); per p also an SE and the max share
+    @test est["mhm_p"] == collect(0.1:0.1:0.9) && length(est["mhm_by_p"]) == 9
+    @test est["mhm"] == mean(filter(isfinite, est["mhm_by_p"]))
+    @test all(x -> x > 0, est["mhm_se"]) && all(x -> 0 < x <= 1, est["mhm_max_share"])
+    @test est["bridge_sampling_nse"] > 0 && isfinite(est["bridge_sampling_nse_batch"])
+    @test isfinite(est["bridge_sampling_is"]) && 0 < est["bridge_sampling_is_max_share"] <= 1
     @test est["n_eves"] >= 1
     # With this model's very diffuse prior the particles stop moving in the middle stages and
     # the incremental-weight estimate falls far below the exact value; the checks catch it

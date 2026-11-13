@@ -33,6 +33,7 @@ my_tests = [
             "regime_switching_smc",
             "add_parameters_to_cloud",
             "diagnostics",
+            "mdd_estimators",
             "param_blocks",
             "param_blocks_coverage",
             "vintage_bridge",

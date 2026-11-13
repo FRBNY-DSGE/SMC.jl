@@ -15,6 +15,7 @@ makedocs(modules = [SMC],
                      "Home"                                   => "index.md",
                      "Using SMC"                              => "smc.md",
                      "Helper Functions"                       => "helpers.md",
+                     "Marginal Data Density"                  => "mdd.md",
                      "License"                                => "license.md"
          ],
          doctest = false # for now
