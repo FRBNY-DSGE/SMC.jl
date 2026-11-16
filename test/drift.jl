@@ -255,17 +255,25 @@ mktempdir() do dir
                   for s in 1:length(h["n_mh"])-1)
     end
 
-    @testset "Every option off reproduces SMC main bitwise" begin
+    @testset "Every option off matches main and is bitwise across option spellings" begin
         ref = load(joinpath(@__DIR__, "reference", "drift_off_main.jld2"))
         @test ref["smc_commit"] != "unknown"
+        # CI can use a different Julia patch release from the fixture's. BLAS and
+        # floating-point reductions can differ at the last few bits across releases.
+        # Compare the fixture elementwise with a tight tolerance; keep the two runs made
+        # in this process exactly equal to verify that disabled options change nothing.
+        fixture_close(a::Number, b::Number) =
+            isequal(a, b) || isapprox(a, b; atol = 1e-10, rtol = 1e-10)
+        fixture_close(a::AbstractArray, b::AbstractArray) =
+            size(a) == size(b) && all(fixture_close(x, y) for (x, y) in zip(a, b))
         for (name, target, kw) in DRIFT_OFF_CONFIGS
             got = drift_off_run(dir, name, target; kw...)
             explicit = drift_off_run(dir, name * "_explicit", target; kw..., ridge_mode = :off,
                                      adaptive_mh = false, n_mh_max = kw.n_mh_steps, ridge_prob = 0.3,
                                      ridge_direction = :pc, drift_params = [:x1, :x2], drift_ewma_span = 4)
             for f in keys(ref["runs"][name])
-                @test got[f] == ref["runs"][name][f]
-                @test explicit[f] == ref["runs"][name][f]
+                @test fixture_close(got[f], ref["runs"][name][f])
+                @test isequal(got[f], explicit[f])
             end
         end
     end

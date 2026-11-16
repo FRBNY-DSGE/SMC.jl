@@ -1,6 +1,7 @@
 # The runs behind test/reference/drift_off_main.jld2: written by SMC main (95f0350) with
-# `drift_off_runs(dir)`, and rerun by drift.jl on the current code with every drift option
-# off (defaults, and the same values passed explicitly), which must reproduce them bitwise.
+# `drift_off_runs(dir)`, and rerun by drift.jl with every drift option off. The fixture
+# is compared within floating-point roundoff across Julia releases; default and explicit
+# off settings must be bitwise equal when run in the same process.
 # Needs drift_workers.jl.
 using ModelConstructors, Distributions, SMC, JLD2
 
