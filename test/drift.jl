@@ -223,6 +223,38 @@ mktempdir() do dir
         @test alarm(10.0) == 1 && alarm(0.5) == 0 && alarm(0.1) == 0 && alarm(-0.3) == -1
     end
 
+    @testset "Adaptive MH without a ridge move" begin
+        ds = SMC.DriftSettings(collect(1:3), 3; trigger_z = 3.0, trigger_stages = 2,
+                               calm_z = 2.0, adaptive_mh = true, n_mh_base = 1,
+                               n_mh_max = 3)
+        state = SMC.new_drift_state(3, ds)
+        step(z) = SMC.update_drift_state!(state, ds, z, zeros(3), NaN)
+        @test state["n_mh"] == 1 && !state["ridge_on"]
+        @test step(4.0) == 0 && state["n_mh"] == 1
+        @test step(4.0) == 1 && state["n_mh"] == 2
+        @test step(4.0) == 1 && state["n_mh"] == 3
+        @test step(4.0) == 1 && state["n_mh"] == 3
+        @test step(0.0) == 0 && state["n_mh"] == 3
+        @test step(0.0) == -1 && state["n_mh"] == 2
+        @test step(0.0) == -1 && state["n_mh"] == 1
+        @test !state["ridge_on"]
+
+        out = drift_run("adaptive_only", drift_ridge_loglh,
+                        drift_parameters(DRIFT_D, DRIFT_SDP);
+                        smc_seed = 5, n_parts = 300, n_mh_steps = 1, n_mh_max = 3,
+                        adaptive_mh = true, use_fixed_schedule = false,
+                        tempering_target = 0.95, c = 0.1, α = 0.9,
+                        drift_trigger_z = 0.0, drift_trigger_stages = 1,
+                        drift_calm_z = 0.0)
+        h = out["stage_health"]
+        @test any(h["drift_alarm"] .== 1)
+        @test maximum(h["n_mh"]) > 1 && maximum(h["n_mh"]) <= 3
+        @test all(h["ridge_on"] .== 0) && all(h["ridge_tried"] .== 0)
+        @test all(isnan, h["ridge_accept"])
+        @test all(h["n_mh"][s + 1] == clamp(h["n_mh"][s] + h["drift_alarm"][s], 1, 3)
+                  for s in 1:length(h["n_mh"])-1)
+    end
+
     @testset "Every option off reproduces SMC main bitwise" begin
         ref = load(joinpath(@__DIR__, "reference", "drift_off_main.jld2"))
         @test ref["smc_commit"] != "unknown"
