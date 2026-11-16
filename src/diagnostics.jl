@@ -24,6 +24,15 @@ normalized (`W`) weight matrices that `smc` saves. Same formula as DSGE's
 `marginal_data_density(...; calculation_method = :incremental_weights)` uses for files without
 `log_mdd_estimates`. For a μ = 0 bridge with `log_prob_old_data`, `log_mdd_estimates["smc"]` =
 this + `log_prob_old_data` (B1: the saved `w` leave that particle-constant factor out).
+
+!!! warning
+    The sum is unbiased only if the mutation keeps the cloud distributed as each tempered
+    posterior. When the mutation mixes slowly and the cloud lags the moving target, every
+    stage's increment is averaged over particles with too low a likelihood, and the
+    shortfall accumulates over the stages: the estimate is then biased **low**, by tens of
+    log points in large models (the bookkeeping can be exactly right). Check it against
+    `bridge_sampling` on the final cloud (and `is_lower_bound`, an estimate below which is
+    wrong) before using it to compare models.
 """
 function smc_log_mdd(w::AbstractMatrix, W::AbstractMatrix)
     size(w, 2) < 2 && return 0.0
@@ -328,13 +337,101 @@ end
 
 """
 ```
-modified_harmonic_mean(θ, logpost, weights; p = 0.1:0.1:0.9)
+modified_harmonic_mean(θ, logpost, weights; p = 0.1:0.1:0.9, lognorm = 0.0,
+                       real_line = false, bounds = nothing, support_correction = false,
+                       n_support_draws = 100_000, se = :bootstrap, n_boot = 100,
+                       n_batches = 10, clusters = :duplicates, rng = Xoshiro(0))
 ```
 Geweke's (1999) modified harmonic mean estimate of log p(Y) from the final cloud: θ is the
 N × d matrix of free parameters, `logpost` the log likelihood + log prior. The weighting
-density is a normal fitted to the weighted cloud, truncated at the p-quantile of χ²_d.
-Returns `(log_mdd, by_p)`, `log_mdd` the mean over p. Uses no new likelihood evaluations.
+density f is a normal fitted to the weighted cloud, truncated at the p-quantile of χ²_d, and
+1/p̂ = Σᵢ Wᵢ f(θᵢ)/k(θᵢ). Uses no new likelihood evaluations.
+
+Options:
+- `lognorm`: added to every estimate (the prior's log normalizing constant; see
+  `effective_prior_lognorm` for SMC's effective prior).
+- `real_line = true` (needs `bounds`, a `BoundsTransform` or `(lb, ub)`): the estimator runs
+  on y = T(θ) with the log Jacobian added to `logpost` (see `BoundsTransform`). Then f's
+  support (ℝ^d) is the posterior's, which removes the support bias below.
+- In model space (the default) f puts mass outside the value bounds whenever the posterior
+  sits near a bound; there k = 0, and the estimator converges to log p(Y) - log F_τ with
+  F_τ = P_f(θ in the support) < 1: it is biased **up** by -log F_τ. `support_correction = true`
+  (needs `bounds`) estimates log F_τ (the in-bounds share of `n_support_draws` draws from f;
+  no likelihood evaluations) and adds it to each estimate. It does not count draws inside the
+  bounds whose likelihood is -Inf; add the log of that share (measured on a subsample of f's
+  in-bounds draws) to `lognorm` if it is not ≈ 1.
+- `se`: `:bootstrap` (`n_boot` resamples of the clusters with replacement), `:batch`
+  (`n_batches` disjoint random batches of clusters, SE = sd/√K; each batch is a smaller
+  sample, so this carries the estimator's small-sample bias) or `:none`. `clusters` as in
+  `bridge_draws` (`:duplicates`: identical rows, i.e. resampling duplicates, are resampled
+  together). Neither SE sees a bias from regions of low kernel that the cloud never visits:
+  check `max_share`, and prefer `bridge_sampling`.
+
+Returns `(log_mdd, by_p, p, se_by_p, max_share, n_inside, log_F, lognorm, real_line,
+se_method, n_clusters)`: `by_p` the estimate per p (with `lognorm` and, if requested, `log_F`),
+`log_mdd` their mean over the finite ones (unchanged from earlier versions at the defaults),
+`max_share` per p the share of the harmonic sum carried by the single largest term (≳ 0.1
+means the estimate is unreliable).
 """
+function modified_harmonic_mean(θ::AbstractMatrix, logpost::AbstractVector, weights::AbstractVector;
+                                p = 0.1:0.1:0.9, lognorm::Real = 0.0, real_line::Bool = false,
+                                bounds = nothing, support_correction::Bool = false,
+                                n_support_draws::Integer = 100_000, se::Symbol = :bootstrap,
+                                n_boot::Integer = 100, n_batches::Integer = 10, clusters = :duplicates,
+                                rng::AbstractRNG = Xoshiro(0))
+    se in (:bootstrap, :batch, :none) || throw(ArgumentError("se must be :bootstrap, :batch or :none"))
+    keep = findall(i -> isfinite(logpost[i]) && weights[i] > 0, eachindex(logpost))
+    θ, logpost, W = θ[keep, :], logpost[keep], weights[keep] ./ sum(weights[keep])
+    bt = nothing
+    if real_line || support_correction
+        bounds === nothing && throw(ArgumentError("real_line and support_correction need `bounds`"))
+        bt = bounds isa Tuple ? bounds_transform(bounds...) : bounds_transform(bounds)
+        length(bt) == size(θ, 2) || throw(DimensionMismatch("bounds for $(length(bt)) parameters, θ has $(size(θ, 2))"))
+    end
+    if real_line
+        support_correction && throw(ArgumentError("support_correction applies to model space only (real_line = false)"))
+        lj = bounds_logjac(bt, θ)
+        ok = findall(isfinite, lj)
+        length(ok) < length(lj) && @warn "$(length(lj) - length(ok)) draw(s) on a bound dropped (zero density on the real line)"
+        θ = bounds_to_real(bt, θ[ok, :]); logpost = logpost[ok] .+ lj[ok]; W = W[ok] ./ sum(W[ok])
+    end
+    core = _mhm_core(θ, logpost, W, p)
+    log_F = zeros(length(p))
+    if support_correction
+        d = size(θ, 2)
+        Z = randn(rng, d, n_support_draws); q = vec(sum(abs2, Z, dims = 1))
+        D = Matrix((core.μ .+ core.C.L * Z)')
+        inb = bounds_in_support(bt, D)
+        log_F = [log(count(inb .& (q .< quantile(Chisq(d), τ))) / count(q .< quantile(Chisq(d), τ))) for τ in p]
+    end
+    by_p = core.by_p .+ log_F .+ lognorm
+    # Standard errors over clusters (duplicate rows move together)
+    cl = _relabel(_resolve_clusters(clusters, θ))
+    G = maximum(cl; init = 0)
+    members = [Int[] for _ in 1:G]
+    for i in eachindex(cl); push!(members[cl[i]], i); end
+    se_by_p = fill(NaN, length(p))
+    if se === :bootstrap && n_boot >= 2 && G >= 2
+        reps = zeros(n_boot, length(p))
+        for b in 1:n_boot
+            idx = reduce(vcat, members[rand(rng, 1:G, G)])
+            reps[b, :] = _mhm_core(θ[idx, :], logpost[idx], W[idx] ./ sum(W[idx]), p).by_p
+        end
+        se_by_p = [std(Base.filter(isfinite, reps[:, k])) for k in eachindex(p)]
+    elseif se === :batch && n_batches >= 2 && G >= n_batches
+        perm = randperm(rng, G); g = G ÷ n_batches
+        reps = zeros(n_batches, length(p))
+        for k in 1:n_batches
+            idx = reduce(vcat, members[perm[(k-1)*g+1:k*g]])
+            reps[k, :] = _mhm_core(θ[idx, :], logpost[idx], W[idx] ./ sum(W[idx]), p).by_p
+        end
+        se_by_p = [std(Base.filter(isfinite, reps[:, k])) / sqrt(n_batches) for k in eachindex(p)]
+    end
+    return (log_mdd = mean(filter(isfinite, by_p)), by_p = by_p, p = collect(p), se_by_p = se_by_p,
+            max_share = core.max_share, n_inside = core.n_inside, log_F = log_F,
+            lognorm = Float64(lognorm), real_line = real_line, se_method = se, n_clusters = G)
+end
+#= Old: per-p estimates and their mean only (no SE, max share, lognorm, real line or support correction)
 function modified_harmonic_mean(θ::AbstractMatrix, logpost::AbstractVector, weights::AbstractVector;
                                 p = 0.1:0.1:0.9)
     keep = findall(i -> isfinite(logpost[i]) && weights[i] > 0, eachindex(logpost))
@@ -353,6 +450,30 @@ function modified_harmonic_mean(θ::AbstractMatrix, logpost::AbstractVector, wei
     end
     return (log_mdd = mean(filter(isfinite, by_p)), by_p = collect(by_p))
 end
+=#
+
+# Geweke's estimator per p on (θ, logpost) with normalized weights W: the arithmetic of the
+# original modified_harmonic_mean, so its by_p are bitwise unchanged
+function _mhm_core(θ::AbstractMatrix, logpost::AbstractVector, W::AbstractVector, p)
+    d = size(θ, 2)
+    μ, Σ = weighted_mean_cov(θ, W)
+    C = cholesky(Symmetric(floored_cov(Σ)))
+    dist2 = vec(sum(abs2, (θ .- μ') / C.U, dims = 2))
+    lognormf = -d / 2 * log(2π) - logdet(C) / 2
+    by_p = Float64[]; max_share = Float64[]; n_inside = Int[]
+    for q in p
+        inside = dist2 .< quantile(Chisq(d), q)
+        push!(n_inside, count(inside))
+        if !any(inside)
+            push!(by_p, NaN); push!(max_share, NaN); continue
+        end
+        # 1/p̂ = Σ Wᵢ f(θᵢ)/k(θᵢ), f the truncated normal
+        terms = log.(W[inside]) .+ (lognormf - log(q)) .- dist2[inside] ./ 2 .- logpost[inside]
+        s = logsumexp(terms)
+        push!(by_p, -s); push!(max_share, exp(maximum(terms) - s))
+    end
+    return (by_p = by_p, max_share = max_share, n_inside = n_inside, μ = μ, C = C)
+end
 
 """
 ```
@@ -363,6 +484,9 @@ log posterior kernels (log likelihood + log prior) and `logg_*` log proposal den
 posterior draws (with weights `w_post`) and at draws from the proposal. Returns
 `(log_mdd, nse, iterations)`, where `nse` is Frühwirth-Schnatter's (2004) approximate relative
 error treating both samples as independent (posterior sample size = its ESS).
+
+Low level, kept for compatibility: `bridge_estimate` takes the same log ratios and adds the
+cluster-robust and batch-means SEs and the IS estimate; `bridge_sampling` does the whole job.
 """
 function bridge_sampling_estimate(logq_post::AbstractVector, logg_post::AbstractVector,
                                   w_post::AbstractVector, logq_prop::AbstractVector,
@@ -429,13 +553,48 @@ end
 
 """
 ```
-smc_bridge_sampling(loglikelihood, parameters, data, cloud, free_para_inds; n_draws, rng, ...)
+smc_bridge_sampling(loglikelihood, parameters, data, cloud, free_para_inds; n_draws,
+                    rng = Xoshiro(0), parallel = false, toggle = true,
+                    regime_switching = false, bounds = nothing, real_line = true, ν = 7.0,
+                    lognorm = 0.0, se_method = :cluster)
 ```
-Item 3(b): bridge sampling estimate of log p(Y) from the final cloud. The particles are split
-at random in two halves (Overstall and Forster 2010): a normal proposal g is fitted to the
-first, weighted half, and the second half are the posterior draws. `n_draws` draws from g
-(fixed parameters at their values) cost one likelihood evaluation each.
+Item 3(b): bridge sampling estimate of log p(Y) from the final cloud, as used by
+`smc(...; bridge_sampling = true)`. A thin wrapper of `bridge_draws` / `bridge_combine` (see
+`bridge_sampling`) that evaluates the `n_draws` proposal draws with `loglikelihood` and the
+prior of `parameters` (`evaluate_log_kernel`, through `@distributed` when `parallel`).
+
+Defaults: the real line on the free slots' value bounds (`bounds_transform(parameters;
+regime_switching)`; pass `bounds` to override), a multivariate t (ν = 7) fitted to a random
+half of the duplicate clusters, the other half the posterior side, and the cluster-robust
+Frühwirth-Schnatter SE. `real_line = false, ν = Inf` gives a normal proposal in model space
+(the earlier method, whose proposal put mass outside the bounds). The log prior is used as
+stored (`lognorm = 0`), as for the other estimates `smc` logs. Returns the named tuple of
+`bridge_combine` (`log_mdd`, `nse`, `iterations`, … as before, plus the new fields).
 """
+function smc_bridge_sampling(loglikelihood::Function, parameters::ParameterVector, data::Matrix{Float64},
+                             cloud::Cloud, free_para_inds::Vector{Int}; n_draws::Int = length(cloud),
+                             rng::AbstractRNG = Xoshiro(0), parallel::Bool = false, toggle::Bool = true,
+                             regime_switching::Bool = false, bounds = nothing, real_line::Bool = true,
+                             ν::Real = 7.0, lognorm::Real = 0.0, se_method::Symbol = :cluster)
+    bt = bounds === nothing ? bounds_transform(parameters; regime_switching = regime_switching, toggle = toggle) :
+                              _resolve_bounds(bounds, length(free_para_inds))
+    length(bt) == length(free_para_inds) ||
+        throw(ArgumentError("bounds for $(length(bt)) free slots but $(length(free_para_inds)) free_para_inds " *
+                            "(pass regime_switching = true for a regime-switching cloud)"))
+    P = cloud.particles[:, 1:ind_para_end(size(cloud.particles, 2))]
+    bd = bridge_draws(P, get_logpost(cloud), get_weights(cloud); free_para_inds = free_para_inds,
+                      bounds = bt, real_line = real_line, ν = ν, M = n_draws, rng = rng)
+    rows = findall(bd.in_support)
+    lk = fill(-Inf, n_draws)
+    if !isempty(rows)
+        loglh, logprior = evaluate_log_kernel(loglikelihood, parameters, data, proposal_parameters(bd)[rows, :];
+                                              parallel = parallel, toggle = toggle)
+        lk[rows] = loglh .+ logprior
+    end
+    return bridge_combine(bd, lk; lognorm = lognorm, se_method = se_method)
+end
+#= Old: a normal proposal fitted in model space (mass outside the value bounds, where the
+# kernel is 0), split by particle (duplicates on both sides), the i.i.d.-ESS SE
 function smc_bridge_sampling(loglikelihood::Function, parameters::ParameterVector, data::Matrix{Float64},
                              cloud::Cloud, free_para_inds::Vector{Int}; n_draws::Int = length(cloud),
                              rng::AbstractRNG = Xoshiro(0), parallel::Bool = false, toggle::Bool = true)
@@ -453,6 +612,7 @@ function smc_bridge_sampling(loglikelihood::Function, parameters::ParameterVecto
     return bridge_sampling_estimate(get_logpost(cloud)[post], logpdf(g, θ[post, :]'), W[post],
                                     loglh .+ logprior, logpdf(g, draws[:, free_para_inds]'))
 end
+=#
 
 """
 ```

@@ -58,6 +58,72 @@ function mutation_proposal_densities(θ_new::Vector{S}, θ_old::Vector{S},
     end
     return q0, q1
 end
+# Log likelihood, log prior and old-data log likelihood of a proposed parameter vector (all
+# -Inf if it is out of bounds or the likelihood cannot be evaluated). Shared by the block
+# proposals and the ridge move.
+function evaluate_mh_proposal(loglikelihood::Function, parameters::ParameterVector{U},
+                              data::Matrix{S}, para_new::Vector{S},
+                              old_data::AbstractMatrix{S}, old_loglikelihood::Function,
+                              tempered_update_prior_weight::S,
+                              toggle::Bool) where {S<:AbstractFloat, U<:Number}
+    prior_new = like_new = like_old_data = -Inf
+    try
+        update!(parameters, para_new)
+        prior_new = prior(parameters)
+        like_new  = loglikelihood(parameters, data)
+        if toggle
+            toggle_regime!(parameters, 1)
+        end
+        if like_new == -Inf
+            prior_new = like_old_data = -Inf
+        end
+
+
+        if isempty(old_data) || tempered_update_prior_weight == 1.0
+            like_old_data = 0.
+        elseif old_loglikelihood === loglikelihood
+            like_old_data = old_loglikelihood(parameters, old_data)
+        else
+            like_old_data = old_loglikelihood(parameters, old_data; new_model_params = true)
+        end
+        if toggle && isempty(old_data)
+            toggle_regime!(parameters, 1)
+        end
+
+    catch err
+        if isa(err, ParamBoundsError) || isa(err, LinearAlgebra.LAPACKException) ||
+           isa(err, PosDefException)  || isa(err, SingularException)             ||
+           isa(err, DomainError)
+            prior_new = like_new = like_old_data = -Inf
+        else
+            throw(err)
+        end
+    end
+    return prior_new, like_new, like_old_data
+end
+
+# The MH acceptance probability (before min(1, ⋅)) of moving from (like_init, prior_init,
+# like_prev) to the proposal, with q0 - q1 the log proposal density ratio (0 for a symmetric
+# proposal such as the ridge move).
+function mh_acceptance_ratio(ϕ_n::S, like_new::S, like_init::S, prior_new::S, prior_init::S,
+                             like_old_data::S, like_prev::S, q0::S, q1::S,
+                             tempered_update_prior_weight::S,
+                             log_prob_old_data::S) where {S<:AbstractFloat}
+    bridge_new = bridge_log_factor(like_old_data, tempered_update_prior_weight,
+                                   log_prob_old_data)
+    bridge_old = bridge_log_factor(like_prev, tempered_update_prior_weight,
+                                   log_prob_old_data)
+    # B3: at ϕ_n = 1 the target has no old-data term. Skip it, since (1 - ϕ_n) * (bridge_new -
+    # bridge_old) is 0 * -Inf = NaN when the proposal's old likelihood is -Inf, and a NaN η
+    # always rejects. For ϕ_n < 1 the expression is unchanged.
+    bridge_term = ϕ_n == 1.0 ? 0.0 : (1 - ϕ_n) * (bridge_new - bridge_old)
+    return exp(ϕ_n * (like_new - like_init) + bridge_term +
+               (prior_new - prior_init) + (q0 - q1))
+    #= Old: NaN at ϕ_n = 1 when like_old_data = -Inf
+    η = exp(ϕ_n * (like_new - like_init) + (1 - ϕ_n) * (bridge_new - bridge_old) +
+            (prior_new - prior_init) + (q0 - q1))
+    =#
+end
 
 """
 ```
@@ -71,7 +137,9 @@ mutation(loglikelihood::Function, parameters::ParameterVector{U},
          tempered_update_prior_weight::S = 0., log_prob_old_data::S = 0.,
          regime_switching::Bool = false, toggle::Bool = true,
          n_failed::Union{Nothing, Base.RefValue{Int}} = nothing,
-         n_accepted::Union{Nothing, Vector{Int}} = nothing) where {S<:AbstractFloat, U<:Number}
+         n_accepted::Union{Nothing, Vector{Int}} = nothing,
+         ridge::Union{Nothing, NamedTuple} = nothing,
+         ridge_counts::Union{Nothing, Vector{Int}} = nothing) where {S<:AbstractFloat, U<:Number}
 ```
 
 Execute one proposed move of the Metropolis-Hastings algorithm for a given parameter
@@ -121,6 +189,14 @@ Execute one proposed move of the Metropolis-Hastings algorithm for a given param
     proposal whose log-likelihood is -Inf or cannot be evaluated.
 - `n_accepted::Union{Nothing, Vector{Int}} = nothing`: if given (one entry per block),
     `n_accepted[b]` is incremented once for every accepted proposal of block `b`.
+- `ridge::Union{Nothing, NamedTuple} = nothing`: opt-in ridge move, a NamedTuple
+    `(direction, step, prob)`. After each MH step's block sweep, with probability `prob` the
+    particle proposes θ* = θ + `step` ⋅ ξ ⋅ `direction`, ξ ~ N(0, 1), over the full parameter
+    vector (`direction` has one entry per parameter, zero for fixed ones), and accepts it with
+    π_ϕ(θ*)/π_ϕ(θ): the proposal is symmetric because `direction` and `step` are the same for
+    every particle and state within the stage. `nothing` (the default) draws no extra random
+    numbers, so the mutation is then exactly the block sampler.
+- `ridge_counts::Union{Nothing, Vector{Int}} = nothing`: if given, `[tried, accepted]` ridge moves.
 
 ### Outputs:
 - `p::Vector{Float64}`: An updated particle containing updated parameter values,
@@ -138,7 +214,9 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                   regime_switching::Bool = false,
                   toggle::Bool = true,
                   n_failed::Union{Nothing, Base.RefValue{Int}} = nothing,
-                  n_accepted::Union{Nothing, Vector{Int}} = nothing) where {S<:AbstractFloat, U<:Number}
+                  n_accepted::Union{Nothing, Vector{Int}} = nothing,
+                  ridge::Union{Nothing, NamedTuple} = nothing,
+                  ridge_counts::Union{Nothing, Vector{Int}} = nothing) where {S<:AbstractFloat, U<:Number}
 
     0.0 <= tempered_update_prior_weight <= 1.0 ||
         throw(ArgumentError("tempered_update_prior_weight must be in [0, 1]"))
@@ -146,6 +224,12 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
         throw(ArgumentError("c has $(length(c)) entries but there are $(length(blocks_free)) blocks"))
     n_accepted === nothing || length(n_accepted) == length(blocks_free) ||
         throw(ArgumentError("n_accepted needs one entry per block"))
+    if ridge !== nothing
+        0.0 <= ridge.prob <= 1.0 || throw(ArgumentError("ridge.prob must be in [0, 1]"))
+        (ridge.step > 0 && isfinite(ridge.step)) || throw(ArgumentError("ridge.step must be finite and positive"))
+        ridge_counts === nothing || length(ridge_counts) == 2 ||
+            throw(ArgumentError("ridge_counts needs two entries (tried, accepted)"))
+    end
 
     step_prob   = rand() # Draw initial step probability
 
@@ -155,6 +239,11 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
     logprior  = p[ind_logprior(N)]
     like_prev = p[ind_old_loglh(N)] # Likelihood evaluated at the old data (for time tempering)
     accept    = 0.0
+
+    if ridge !== nothing
+        length(ridge.direction) == length(para) ||
+            throw(ArgumentError("ridge.direction has $(length(ridge.direction)) entries for $(length(para)) parameters"))
+    end
 
     if n_mh_steps <= 0
         update_mutation!(p, para, like, logprior, like_prev, 0.0)
@@ -176,60 +265,17 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
             para_new          = deepcopy(para)
             para_new[block_a] = para_draw
             like_init, prior_init = like, logprior
-            prior_new = like_new = like_old_data = -Inf
-            try
-                update!(parameters, para_new)
-                prior_new = prior(parameters)
-                like_new  = loglikelihood(parameters, data)
-                if toggle
-                    toggle_regime!(parameters, 1)
-                end
-                if like_new == -Inf
-                    prior_new = like_old_data = -Inf
-                end
-
-
-                if isempty(old_data) || tempered_update_prior_weight == 1.0
-                    like_old_data = 0.
-                elseif old_loglikelihood === loglikelihood
-                    like_old_data = old_loglikelihood(parameters, old_data)
-                else
-                    like_old_data = old_loglikelihood(parameters, old_data; new_model_params = true)
-                end
-                if toggle && isempty(old_data)
-                    toggle_regime!(parameters, 1)
-                end
-
-            catch err
-                if isa(err, ParamBoundsError) || isa(err, LinearAlgebra.LAPACKException) ||
-                   isa(err, PosDefException)  || isa(err, SingularException)             ||
-                   isa(err, DomainError)
-                    prior_new = like_new = like_old_data = -Inf
-                else
-                    throw(err)
-                end
-            end
+            prior_new, like_new, like_old_data =
+                evaluate_mh_proposal(loglikelihood, parameters, data, para_new, old_data,
+                                     old_loglikelihood, tempered_update_prior_weight, toggle)
 
             if like_new == -Inf && n_failed !== nothing
                 n_failed[] += 1
             end
 
-            bridge_new = bridge_log_factor(like_old_data, tempered_update_prior_weight,
-                                           log_prob_old_data)
-            bridge_old = bridge_log_factor(like_prev, tempered_update_prior_weight,
-                                           log_prob_old_data)
-            # B3: at ϕ_n = 1 the target has no old-data term. Skip it, since (1 - ϕ_n) * (bridge_new -
-            # bridge_old) is 0 * -Inf = NaN when the proposal's old likelihood is -Inf, and a NaN η
-            # always rejects. For ϕ_n < 1 the expression is unchanged.
-            bridge_term = ϕ_n == 1.0 ? 0.0 : (1 - ϕ_n) * (bridge_new - bridge_old)
-            η = exp(ϕ_n * (like_new - like_init) + bridge_term +
-                    (prior_new - prior_init) + (q0 - q1))
-            #= Old: NaN at ϕ_n = 1 when like_old_data = -Inf
-            η = exp(ϕ_n * (like_new - like_init) + (1 - ϕ_n) * (bridge_new - bridge_old) +
-                    (prior_new - prior_init) + (q0 - q1))
-            =#
-
-
+            η = mh_acceptance_ratio(ϕ_n, like_new, like_init, prior_new, prior_init,
+                                    like_old_data, like_prev, q0, q1,
+                                    tempered_update_prior_weight, log_prob_old_data)
 
             if step_prob < η
                 para      = para_new
@@ -243,9 +289,39 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
             end
             step_prob = rand() # Draw again for next step
         end
+
+        # Ridge move (opt-in): with probability ridge.prob, a 1-D symmetric random walk along
+        # the fixed direction e = ridge.direction, θ* = θ + ridge.step ⋅ ξ ⋅ e with ξ ~ N(0, 1).
+        # e and the step are the same for every particle within the stage, so the proposal
+        # density is symmetric and cancels: accept with π_ϕ(θ*)/π_ϕ(θ). No random numbers are
+        # drawn without a ridge, so the block moves' stream is then unchanged.
+        if ridge !== nothing && rand() < ridge.prob
+            ξ = randn()
+            para_new  = para .+ (ridge.step * ξ) .* ridge.direction
+            like_init, prior_init = like, logprior
+            prior_new, like_new, like_old_data =
+                evaluate_mh_proposal(loglikelihood, parameters, data, para_new, old_data,
+                                     old_loglikelihood, tempered_update_prior_weight, toggle)
+            if like_new == -Inf && n_failed !== nothing
+                n_failed[] += 1
+            end
+            η = mh_acceptance_ratio(ϕ_n, like_new, like_init, prior_new, prior_init,
+                                    like_old_data, like_prev, zero(S), zero(S),
+                                    tempered_update_prior_weight, log_prob_old_data)
+            ridge_counts === nothing || (ridge_counts[1] += 1)
+            if step_prob < η
+                para      = para_new
+                like      = like_new
+                logprior  = prior_new
+                like_prev = like_old_data
+                ridge_counts === nothing || (ridge_counts[2] += 1)
+            end
+            step_prob = rand()
+        end
     end
 
     # Acceptance per MH step, so the adaptation of c targets the same rate for any n_mh_steps
+    # (the block proposals only: the ridge move has its own rate, ridge_counts)
     update_mutation!(p, para, like, logprior, like_prev, accept / (n_free_para * n_mh_steps))
     return p
 end

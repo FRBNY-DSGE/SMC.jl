@@ -1,6 +1,19 @@
 # Unreleased
 
 New Features:
+- Marginal data density estimators (`src/mdd_estimators.jl`, docs page "Marginal Data
+  Density"): `bridge_sampling` (Meng–Wong on the real line with a multivariate t proposal;
+  one-shot with any `map`/`pmap`, or `bridge_draws` → evaluate `proposal_parameters` →
+  `bridge_combine` for SGE arrays), with the Frühwirth-Schnatter SE (cluster-robust over
+  duplicate particles or Eves, or the earlier i.i.d.-ESS form), a batch-means SE and the IS
+  estimate from the same draws; `is_lower_bound`; `effective_prior_lognorm` (SMC's effective
+  prior: in-bounds masses from the CDFs, RootInverseGamma via the InverseGamma CDF of θ², and
+  P(finite likelihood)); `bounds_transform` and friends; `parameter_slots`.
+- `modified_harmonic_mean` returns per-p estimates with a cluster-bootstrap (or batch) SE,
+  the largest term's share and the number of particles inside each ellipsoid, and takes
+  `lognorm`, `real_line = true` (with `bounds`) and `support_correction`. Its `log_mdd`
+  (and `smc`'s `log_mdd_estimates["mhm"]`) is unchanged; `smc` also saves `mhm_p`,
+  `mhm_by_p`, `mhm_se` and `mhm_max_share`.
 - `mvnormal_mixture_draw` takes an `rng` keyword (default: the global RNG), so callers such as
   DSGE's Metropolis–Hastings can draw proposals from their own RNG. SMC results are unchanged.
 - `smc` takes `param_blocks`: fixed mutation blocks of free parameters (by name or index),
@@ -10,6 +23,16 @@ New Features:
   acceptance and scales are recorded in `stage_health` (extra CSV columns) and saved in
   checkpoints (with `blockwise_c`; resuming with other blocks or another `blockwise_c` is
   refused). Both are off by default, and default runs are bitwise unchanged.
+
+Changes:
+- `smc(...; bridge_sampling = true)` / `smc_bridge_sampling` now use the real-line t
+  proposal on the free slots' value bounds (it was a normal in model space, whose mass outside
+  the bounds wasted draws), split the cloud by duplicate clusters, and report the
+  cluster-robust SE; `log_mdd_estimates` gains `bridge_sampling_nse_batch`,
+  `bridge_sampling_is` and `bridge_sampling_is_max_share`. Seeded `bridge_sampling` numbers
+  change; everything else in a run is bitwise unchanged.
+- `smc_log_mdd`'s docstring warns that the incremental-weight estimate is biased low when the
+  mutation lags the target.
 
 Bug Fixes:
 - Adaptive bridge tempering now handles particles with `-Inf` new-data likelihood without
@@ -30,6 +53,30 @@ Bug Fixes:
 
 # SMC.jl 0.1.15 Release Notes
 New Features:
+- Marginal data density estimators (`src/mdd_estimators.jl`, docs page "Marginal Data
+  Density"): `bridge_sampling` (Meng–Wong on the real line with a multivariate t proposal;
+  one-shot with any `map`/`pmap`, or `bridge_draws` → evaluate `proposal_parameters` →
+  `bridge_combine` for SGE arrays), with the Frühwirth-Schnatter SE (cluster-robust over
+  duplicate particles or Eves, or the earlier i.i.d.-ESS form), a batch-means SE and the IS
+  estimate from the same draws; `is_lower_bound`; `effective_prior_lognorm` (SMC's effective
+  prior: in-bounds masses from the CDFs, RootInverseGamma via the InverseGamma CDF of θ², and
+  P(finite likelihood)); `bounds_transform` and friends; `parameter_slots`.
+- `modified_harmonic_mean` returns per-p estimates with a cluster-bootstrap (or batch) SE,
+  the largest term's share and the number of particles inside each ellipsoid, and takes
+  `lognorm`, `real_line = true` (with `bounds`) and `support_correction`. Its `log_mdd`
+  (and `smc`'s `log_mdd_estimates["mhm"]`) is unchanged; `smc` also saves `mhm_p`,
+  `mhm_by_p`, `mhm_se` and `mhm_max_share`.
+
+Changes:
+- `smc(...; bridge_sampling = true)` / `smc_bridge_sampling` now use the real-line t
+  proposal on the free slots' value bounds (it was a normal in model space, whose mass outside
+  the bounds wasted draws), split the cloud by duplicate clusters, and report the
+  cluster-robust SE; `log_mdd_estimates` gains `bridge_sampling_nse_batch`,
+  `bridge_sampling_is` and `bridge_sampling_is_max_share`. Seeded `bridge_sampling` numbers
+  change; everything else in a run is bitwise unchanged.
+- `smc_log_mdd`'s docstring warns that the incremental-weight estimate is biased low when the
+  mutation lags the target.
+
 - Option to use different likelihood functions with tempered updates
 - Option to make near zero diagonals for proposal densities exactly zero to avoid errors
 
@@ -51,6 +98,30 @@ Miscelleanous:
 
 # SMC.jl 0.1.12 Release Notes
 New Features:
+- Marginal data density estimators (`src/mdd_estimators.jl`, docs page "Marginal Data
+  Density"): `bridge_sampling` (Meng–Wong on the real line with a multivariate t proposal;
+  one-shot with any `map`/`pmap`, or `bridge_draws` → evaluate `proposal_parameters` →
+  `bridge_combine` for SGE arrays), with the Frühwirth-Schnatter SE (cluster-robust over
+  duplicate particles or Eves, or the earlier i.i.d.-ESS form), a batch-means SE and the IS
+  estimate from the same draws; `is_lower_bound`; `effective_prior_lognorm` (SMC's effective
+  prior: in-bounds masses from the CDFs, RootInverseGamma via the InverseGamma CDF of θ², and
+  P(finite likelihood)); `bounds_transform` and friends; `parameter_slots`.
+- `modified_harmonic_mean` returns per-p estimates with a cluster-bootstrap (or batch) SE,
+  the largest term's share and the number of particles inside each ellipsoid, and takes
+  `lognorm`, `real_line = true` (with `bounds`) and `support_correction`. Its `log_mdd`
+  (and `smc`'s `log_mdd_estimates["mhm"]`) is unchanged; `smc` also saves `mhm_p`,
+  `mhm_by_p`, `mhm_se` and `mhm_max_share`.
+
+Changes:
+- `smc(...; bridge_sampling = true)` / `smc_bridge_sampling` now use the real-line t
+  proposal on the free slots' value bounds (it was a normal in model space, whose mass outside
+  the bounds wasted draws), split the cloud by duplicate clusters, and report the
+  cluster-robust SE; `log_mdd_estimates` gains `bridge_sampling_nse_batch`,
+  `bridge_sampling_is` and `bridge_sampling_is_max_share`. Seeded `bridge_sampling` numbers
+  change; everything else in a run is bitwise unchanged.
+- `smc_log_mdd`'s docstring warns that the incremental-weight estimate is biased low when the
+  mutation lags the target.
+
 - Better print statements during estimation
 - Parallel multinomial sampling
 
@@ -59,22 +130,142 @@ Bug Fixes:
 
 # SMC.jl 0.1.11 Release Notes
 New Features:
+- Marginal data density estimators (`src/mdd_estimators.jl`, docs page "Marginal Data
+  Density"): `bridge_sampling` (Meng–Wong on the real line with a multivariate t proposal;
+  one-shot with any `map`/`pmap`, or `bridge_draws` → evaluate `proposal_parameters` →
+  `bridge_combine` for SGE arrays), with the Frühwirth-Schnatter SE (cluster-robust over
+  duplicate particles or Eves, or the earlier i.i.d.-ESS form), a batch-means SE and the IS
+  estimate from the same draws; `is_lower_bound`; `effective_prior_lognorm` (SMC's effective
+  prior: in-bounds masses from the CDFs, RootInverseGamma via the InverseGamma CDF of θ², and
+  P(finite likelihood)); `bounds_transform` and friends; `parameter_slots`.
+- `modified_harmonic_mean` returns per-p estimates with a cluster-bootstrap (or batch) SE,
+  the largest term's share and the number of particles inside each ellipsoid, and takes
+  `lognorm`, `real_line = true` (with `bounds`) and `support_correction`. Its `log_mdd`
+  (and `smc`'s `log_mdd_estimates["mhm"]`) is unchanged; `smc` also saves `mhm_p`,
+  `mhm_by_p`, `mhm_se` and `mhm_max_share`.
+
+Changes:
+- `smc(...; bridge_sampling = true)` / `smc_bridge_sampling` now use the real-line t
+  proposal on the free slots' value bounds (it was a normal in model space, whose mass outside
+  the bounds wasted draws), split the cloud by duplicate clusters, and report the
+  cluster-robust SE; `log_mdd_estimates` gains `bridge_sampling_nse_batch`,
+  `bridge_sampling_is` and `bridge_sampling_is_max_share`. Seeded `bridge_sampling` numbers
+  change; everything else in a run is bitwise unchanged.
+- `smc_log_mdd`'s docstring warns that the incremental-weight estimate is biased low when the
+  mutation lags the target.
+
 - Estimate regime switching parameters
 
 # SMC.jl 0.1.10 Release Notes
 New Features:
+- Marginal data density estimators (`src/mdd_estimators.jl`, docs page "Marginal Data
+  Density"): `bridge_sampling` (Meng–Wong on the real line with a multivariate t proposal;
+  one-shot with any `map`/`pmap`, or `bridge_draws` → evaluate `proposal_parameters` →
+  `bridge_combine` for SGE arrays), with the Frühwirth-Schnatter SE (cluster-robust over
+  duplicate particles or Eves, or the earlier i.i.d.-ESS form), a batch-means SE and the IS
+  estimate from the same draws; `is_lower_bound`; `effective_prior_lognorm` (SMC's effective
+  prior: in-bounds masses from the CDFs, RootInverseGamma via the InverseGamma CDF of θ², and
+  P(finite likelihood)); `bounds_transform` and friends; `parameter_slots`.
+- `modified_harmonic_mean` returns per-p estimates with a cluster-bootstrap (or batch) SE,
+  the largest term's share and the number of particles inside each ellipsoid, and takes
+  `lognorm`, `real_line = true` (with `bounds`) and `support_correction`. Its `log_mdd`
+  (and `smc`'s `log_mdd_estimates["mhm"]`) is unchanged; `smc` also saves `mhm_p`,
+  `mhm_by_p`, `mhm_se` and `mhm_max_share`.
+
+Changes:
+- `smc(...; bridge_sampling = true)` / `smc_bridge_sampling` now use the real-line t
+  proposal on the free slots' value bounds (it was a normal in model space, whose mass outside
+  the bounds wasted draws), split the cloud by duplicate clusters, and report the
+  cluster-robust SE; `log_mdd_estimates` gains `bridge_sampling_nse_batch`,
+  `bridge_sampling_is` and `bridge_sampling_is_max_share`. Seeded `bridge_sampling` numbers
+  change; everything else in a run is bitwise unchanged.
+- `smc_log_mdd`'s docstring warns that the incremental-weight estimate is biased low when the
+  mutation lags the target.
+
 - Bug fixes from last release (save rejoined cloud ater rejoining)"
 
 # SMC.jl 0.1.9 Release Notes
 New Features:
+- Marginal data density estimators (`src/mdd_estimators.jl`, docs page "Marginal Data
+  Density"): `bridge_sampling` (Meng–Wong on the real line with a multivariate t proposal;
+  one-shot with any `map`/`pmap`, or `bridge_draws` → evaluate `proposal_parameters` →
+  `bridge_combine` for SGE arrays), with the Frühwirth-Schnatter SE (cluster-robust over
+  duplicate particles or Eves, or the earlier i.i.d.-ESS form), a batch-means SE and the IS
+  estimate from the same draws; `is_lower_bound`; `effective_prior_lognorm` (SMC's effective
+  prior: in-bounds masses from the CDFs, RootInverseGamma via the InverseGamma CDF of θ², and
+  P(finite likelihood)); `bounds_transform` and friends; `parameter_slots`.
+- `modified_harmonic_mean` returns per-p estimates with a cluster-bootstrap (or batch) SE,
+  the largest term's share and the number of particles inside each ellipsoid, and takes
+  `lognorm`, `real_line = true` (with `bounds`) and `support_correction`. Its `log_mdd`
+  (and `smc`'s `log_mdd_estimates["mhm"]`) is unchanged; `smc` also saves `mhm_p`,
+  `mhm_by_p`, `mhm_se` and `mhm_max_share`.
+
+Changes:
+- `smc(...; bridge_sampling = true)` / `smc_bridge_sampling` now use the real-line t
+  proposal on the free slots' value bounds (it was a normal in model space, whose mass outside
+  the bounds wasted draws), split the cloud by duplicate clusters, and report the
+  cluster-robust SE; `log_mdd_estimates` gains `bridge_sampling_nse_batch`,
+  `bridge_sampling_is` and `bridge_sampling_is_max_share`. Seeded `bridge_sampling` numbers
+  change; everything else in a run is bitwise unchanged.
+- `smc_log_mdd`'s docstring warns that the incremental-weight estimate is biased low when the
+  mutation lags the target.
+
 - New functionality to split and join (after splitting) Clouds (allows users to split a large Cloud into smaller Clouds under the Github size limit, to be rejoined by user).
 
 # SMC.jl 0.1.8 Release Notes
 New Features:
+- Marginal data density estimators (`src/mdd_estimators.jl`, docs page "Marginal Data
+  Density"): `bridge_sampling` (Meng–Wong on the real line with a multivariate t proposal;
+  one-shot with any `map`/`pmap`, or `bridge_draws` → evaluate `proposal_parameters` →
+  `bridge_combine` for SGE arrays), with the Frühwirth-Schnatter SE (cluster-robust over
+  duplicate particles or Eves, or the earlier i.i.d.-ESS form), a batch-means SE and the IS
+  estimate from the same draws; `is_lower_bound`; `effective_prior_lognorm` (SMC's effective
+  prior: in-bounds masses from the CDFs, RootInverseGamma via the InverseGamma CDF of θ², and
+  P(finite likelihood)); `bounds_transform` and friends; `parameter_slots`.
+- `modified_harmonic_mean` returns per-p estimates with a cluster-bootstrap (or batch) SE,
+  the largest term's share and the number of particles inside each ellipsoid, and takes
+  `lognorm`, `real_line = true` (with `bounds`) and `support_correction`. Its `log_mdd`
+  (and `smc`'s `log_mdd_estimates["mhm"]`) is unchanged; `smc` also saves `mhm_p`,
+  `mhm_by_p`, `mhm_se` and `mhm_max_share`.
+
+Changes:
+- `smc(...; bridge_sampling = true)` / `smc_bridge_sampling` now use the real-line t
+  proposal on the free slots' value bounds (it was a normal in model space, whose mass outside
+  the bounds wasted draws), split the cloud by duplicate clusters, and report the
+  cluster-robust SE; `log_mdd_estimates` gains `bridge_sampling_nse_batch`,
+  `bridge_sampling_is` and `bridge_sampling_is_max_share`. Seeded `bridge_sampling` numbers
+  change; everything else in a run is bitwise unchanged.
+- `smc_log_mdd`'s docstring warns that the incremental-weight estimate is biased low when the
+  mutation lags the target.
+
 - Bug fixes and cleanup:
 
 # SMC.jl 0.1.7 Release Notes
 New Features:
+- Marginal data density estimators (`src/mdd_estimators.jl`, docs page "Marginal Data
+  Density"): `bridge_sampling` (Meng–Wong on the real line with a multivariate t proposal;
+  one-shot with any `map`/`pmap`, or `bridge_draws` → evaluate `proposal_parameters` →
+  `bridge_combine` for SGE arrays), with the Frühwirth-Schnatter SE (cluster-robust over
+  duplicate particles or Eves, or the earlier i.i.d.-ESS form), a batch-means SE and the IS
+  estimate from the same draws; `is_lower_bound`; `effective_prior_lognorm` (SMC's effective
+  prior: in-bounds masses from the CDFs, RootInverseGamma via the InverseGamma CDF of θ², and
+  P(finite likelihood)); `bounds_transform` and friends; `parameter_slots`.
+- `modified_harmonic_mean` returns per-p estimates with a cluster-bootstrap (or batch) SE,
+  the largest term's share and the number of particles inside each ellipsoid, and takes
+  `lognorm`, `real_line = true` (with `bounds`) and `support_correction`. Its `log_mdd`
+  (and `smc`'s `log_mdd_estimates["mhm"]`) is unchanged; `smc` also saves `mhm_p`,
+  `mhm_by_p`, `mhm_se` and `mhm_max_share`.
+
+Changes:
+- `smc(...; bridge_sampling = true)` / `smc_bridge_sampling` now use the real-line t
+  proposal on the free slots' value bounds (it was a normal in model space, whose mass outside
+  the bounds wasted draws), split the cloud by duplicate clusters, and report the
+  cluster-robust SE; `log_mdd_estimates` gains `bridge_sampling_nse_batch`,
+  `bridge_sampling_is` and `bridge_sampling_is_max_share`. Seeded `bridge_sampling` numbers
+  change; everything else in a run is bitwise unchanged.
+- `smc_log_mdd`'s docstring warns that the incremental-weight estimate is biased low when the
+  mutation lags the target.
+
 - Permit bridging between clouds with differing numbers of particles
 
 Bug fixes and cleanup:

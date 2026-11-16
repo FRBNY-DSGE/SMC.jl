@@ -139,6 +139,56 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     share strictly between zero and one requires this value to normalize the mixture, and
     there it stays in the weights.
 
+#### Mutation drift diagnostic and fixes (src/drift.jl)
+The diagnostic is always computed (it uses no random numbers and no likelihood evaluations).
+Every fix is off by default; with all of them off, a run is bitwise identical to one without
+them (same random streams, particles, weights and log MDD; only the stage health record has
+the extra columns below).
+- Per stage, the mutation shift δ = (weighted mean after mutation - before) / pre-mutation sd
+  per free parameter, its paired SE (copies of one resampled particle count as one cluster;
+  ≈ √(2(1 - ρ)/ESS) with ρ the pre/post correlation), the leading direction u (the normalized
+  EWMA of the previous stages' δ, leaving out the last `drift_direction_lag`, i.e. from previous
+  stages only) and z = u'δ / SE(u'δ), which is
+  ≈ N(0, 1) when mutation leaves a cloud that is already distributed as the stage target where it
+  is, and large and positive when the cloud lags the target along u. Recorded in `stage_health`:
+  `drift_rms` (RMS of δ over `drift_params`) and `drift_rms_null` (its noise level), `drift_proj`
+  (u'δ), `drift_proj_se`, `drift_z`, `drift_cos` (cos(u, δ)), `drift_dloglh` and `drift_dloglh_z`
+  (the same shift of the log likelihood: a direction-free lag signal), `drift_alarm` (1 fire, -1
+  calm, 0 neither), `n_mh`, `ridge_on`, `ridge_tried`, `ridge_accept`, `ridge_c`, `ridge_step`, and
+  the n_free × stages matrices `drift_delta` (δ) and `drift_dir` (u). The scalars, with the top
+  parameters of u, are also written to `<savepath>_drift.csv`; `<savepath>_stage_health.csv` keeps
+  its layout.
+- `drift_params::AbstractVector = []`: free parameters (names or indices, as in `param_blocks`)
+  that the leading direction, `drift_rms` and the ridge move use; empty = all free parameters.
+- `drift_ewma_span::Int = 10`: span m of the EWMA (weight 2/(m+1) on the newest δ).
+- `drift_direction_lag::Int = 3`: the direction used at stage n leaves out δ_{n-1}, …, δ_{n-L}.
+  A mixing kernel partly reverts the previous stages' mutation noise, so the latest shifts are
+  negatively correlated with δ_n and an unlagged direction biases z below zero under
+  invariance (see src/drift.jl).
+- `drift_initial_direction = nothing`: a starting leading direction (one entry per free
+  parameter, sd units) for a run without drift history, e.g. a resume from a checkpoint written
+  before the diagnostic existed: the EWMA starts at it with norm 0.02 (a typical per-stage shift).
+  It must come from earlier stages or another run, not from the stages it is used on.
+- `drift_trigger_z = 3.0`, `drift_trigger_stages::Int = 3`, `drift_calm_z = 2.0`: the alarm
+  *fires* when the last `drift_trigger_stages` values of z all exceed `drift_trigger_z`, and is
+  *calm* when they all have |z| < `drift_calm_z`.
+- `ridge_mode::Symbol = :off`: `:always` adds the ridge move from the first stage with a
+  direction; `:trigger` switches it on when the alarm fires and off when it is calm.
+- `ridge_prob = 1.0`: after each MH step's block sweep, the probability of one ridge move.
+- `ridge_direction = :drift`: `:drift` (the EWMA leading direction), `:pc` (the top eigenvector of
+  the previous stage's weighted correlation matrix of the drift parameters) or a fixed vector
+  over the free parameters, in sd units. The move is θ* = θ + c_r √(e'Σe) ξ e, ξ ~ N(0, 1), with
+  e = s ⊙ u / ‖s ⊙ u‖ (s, Σ the stage's pre-mutation sd and covariance), accepted with
+  π_ϕ(θ*)/π_ϕ(θ) (symmetric proposal).
+- `ridge_c = 1.0`, `ridge_target = 0.35`: initial ridge scale c_r, adapted every stage by the
+  factor exp(3 (acceptance - target)) kept in [0.5, 2].
+- `adaptive_mh::Bool = false`, `n_mh_max::Int = n_mh_steps`: when the alarm fires, the next stage
+  uses one more MH step (up to `n_mh_max`); when it is calm, one fewer (down to `n_mh_steps`).
+- Random blocking (`n_blocks > 1`) composes with `param_blocks`: it splits only the parameters
+  no fixed block lists, so a run can compare fixed groups with random sub-blocks of "rest".
+The diagnostic's state (EWMA, current MH steps, ridge switch and scale) is saved in checkpoints
+as `drift_state` and resumed by `continue_intermediate`.
+
 ### Outputs
 
 - `cloud`: The Cloud object containing all of the information about the
@@ -153,8 +203,13 @@ diagnostics (SMC reliability plan, step 3 part C):
     jump distance (also written to `<savepath>_stage_health.csv`);
 - `health_flags`: the flags these raise (also logged as warnings unless `verbose = :none`);
 - `log_mdd_estimates`: the incremental-weight log MDD (`smc`; `smc_level` on the level scale,
-    see `smc_log_mdd_level`), the modified harmonic mean (`mhm`), bridge sampling if requested,
-    and the ancestral-lineage NSEs (`smc_lineage_nse`, `mean_lineage_nse`, `n_eves`).
+    see `smc_log_mdd_level`), the modified harmonic mean (`mhm`, the mean over p = 0.1:0.1:0.9
+    as before; per p: `mhm_p`, `mhm_by_p`, the cluster-bootstrap SE `mhm_se` and the largest
+    term's share `mhm_max_share`), bridge sampling if requested (`bridge_sampling`,
+    `bridge_sampling_nse`; also `bridge_sampling_nse_batch`, `bridge_sampling_is`,
+    `bridge_sampling_is_max_share`; see `smc_bridge_sampling`), and the ancestral-lineage NSEs
+    (`smc_lineage_nse`, `mean_lineage_nse`, `n_eves`). All use the log prior as stored (not
+    renormalized to the bounds; see `effective_prior_lognorm`).
 
 ### Overview
 
@@ -254,7 +309,22 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
              smc_seed::Union{Nothing, Integer} = nothing,
              run_info::AbstractDict{<:AbstractString, <:AbstractString} = Dict{String, String}(),
              health_thresholds = DEFAULT_HEALTH_THRESHOLDS,
-             bridge_sampling::Bool = false, n_bridge_draws::Int = 0) where {S<:AbstractFloat, U<:Number}
+             bridge_sampling::Bool = false, n_bridge_draws::Int = 0,
+             # Mutation drift diagnostic (always computed) and the opt-in fixes it drives
+             drift_params::AbstractVector = Symbol[],
+             drift_ewma_span::Int = 10,
+             drift_direction_lag::Int = 3,
+             drift_initial_direction::Union{Nothing, AbstractVector{<:Real}} = nothing,
+             drift_trigger_z::Real = 3.0,
+             drift_trigger_stages::Int = 3,
+             drift_calm_z::Real = 2.0,
+             ridge_mode::Symbol = :off,
+             ridge_prob::Real = 1.0,
+             ridge_direction = :drift,
+             ridge_c::Real = 1.0,
+             ridge_target::Real = 0.35,
+             adaptive_mh::Bool = false,
+             n_mh_max::Int = n_mh_steps) where {S<:AbstractFloat, U<:Number}
 
     ########################################################################################
     ### Settings
@@ -317,18 +387,22 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
                               blocks_free::Vector{Vector{Int64}}, blocks_all::Vector{Vector{Int64}},
                               ϕ_n::S; c::Union{S, Vector{S}} = 1.0, α::S = 1.0, n_mh_steps::Int = 1,
                               old_data::Matrix{S} = Matrix{S}(undef, size(data, 1), 0),
-                              track_blocks::Bool = false) where {S<:Float64}
-        # The mutated particle plus its number of -Inf proposals (for the stage health record)
-        # and, with track_blocks, its number of accepted proposals per block
+                              track_blocks::Bool = false,
+                              ridge::Union{Nothing, NamedTuple} = nothing) where {S<:Float64}
+        # The mutated particle plus its number of -Inf proposals (for the stage health record),
+        # with track_blocks its number of accepted proposals per block and, with a ridge move,
+        # its numbers of tried and accepted ridge moves
         n_failed   = Ref(0)
         n_accepted = track_blocks ? zeros(Int, length(blocks_free)) : nothing
+        ridge_counts = ridge === nothing ? nothing : zeros(Int, 2)
         p = mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, n_free_para, blocks_free, blocks_all,
                      ϕ_n; c = c, α = α, n_mh_steps = n_mh_steps, old_data = old_data,
                      old_loglikelihood = old_loglikelihood, regime_switching = regime_switching,
                      toggle = toggle, tempered_update_prior_weight = tempered_update_prior_weight,
                      log_prob_old_data = log_prob_old_data_w, n_failed = n_failed,    # B1
-                     n_accepted = n_accepted)
-        return track_blocks ? vcat(p, n_failed[], n_accepted) : vcat(p, n_failed[])
+                     n_accepted = n_accepted, ridge = ridge, ridge_counts = ridge_counts)
+        out = track_blocks ? vcat(p, n_failed[], n_accepted) : vcat(p, n_failed[])
+        return ridge === nothing ? out : vcat(out, ridge_counts)
     end
 
     (tempered_update_prior_weight == 0.0 || tempered_update_prior_weight == 1.0 || !isempty(old_data)) ||
@@ -418,6 +492,15 @@ n_fixed_para = length(fixed_para_inds)
             @info "SMC mutation block group $label ($(length(names)) parameters)" parameters = names
         end
     end
+    # Drift diagnostic: the free parameters its direction uses, and the settings of the fixes
+    drift_gate = isempty(drift_params) ? collect(1:n_free_para) :
+        resolve_param_blocks([drift_params], para_symbols, free_para_inds)[1][1]
+    drift_settings = DriftSettings(drift_gate, n_free_para; span = drift_ewma_span, lag = drift_direction_lag,
+                                   trigger_z = drift_trigger_z, trigger_stages = drift_trigger_stages,
+                                   calm_z = drift_calm_z, ridge_mode = ridge_mode, ridge_prob = ridge_prob,
+                                   ridge_direction = ridge_direction, ridge_c = ridge_c,
+                                   ridge_target = ridge_target, adaptive_mh = adaptive_mh,
+                                   n_mh_base = n_mh_steps, n_mh_max = n_mh_max)
     blockwise_c && isempty(fixed_blocks) &&
         @warn "blockwise_c without param_blocks: all parameters share one scale, as without blockwise_c"
     # Starting scales of the block groups (checked here, before any likelihood is evaluated)
@@ -676,6 +759,39 @@ end
         add_block_health!(health, block_labels)
     end
 
+    # Drift diagnostic state: resumed from the checkpoint if it has one (else fresh: no leading
+    # direction until the first resumed stage), and its columns in the stage health record
+    drift_state = new_drift_state(n_free_para, drift_settings)
+    if continue_intermediate && "drift_state" in checkpoint_keys
+        saved_state = load(loadpath, "drift_state")
+        length(saved_state["g"]) == n_free_para ||
+            throw(ArgumentError("checkpoint $loadpath has a drift_state for $(length(saved_state["g"])) " *
+                                "free parameters, this run has $n_free_para"))
+        drift_state["g"]        = Vector{Float64}(saved_state["g"])
+        drift_state["pc"]       = Vector{Float64}(saved_state["pc"])
+        drift_state["recent_z"] = Vector{Float64}(saved_state["recent_z"])
+        drift_state["pending"]  = [Vector{Float64}(d) for d in get(saved_state, "pending", Vector{Float64}[])]
+        # The fixes' state is kept only if the resumed run uses them (else their defaults)
+        drift_settings.ridge_mode == :trigger && (drift_state["ridge_on"] = saved_state["ridge_on"])
+        drift_settings.ridge_mode == :off || (drift_state["ridge_c"] = saved_state["ridge_c"])
+        drift_settings.adaptive_mh &&
+            (drift_state["n_mh"] = clamp(saved_state["n_mh"], n_mh_steps, n_mh_max))
+    end
+    add_drift_health!(health, n_free_para)
+    if drift_initial_direction !== nothing && !(continue_intermediate && "drift_state" in checkpoint_keys)
+        # A starting direction (free parameters, sd units) for a run without drift history, e.g.
+        # a resume from a checkpoint written before the diagnostic existed. It is the EWMA's
+        # starting value (norm 0.02, a typical per-stage shift), so the run's own shifts take over
+        # at the EWMA's rate.
+        length(drift_initial_direction) == n_free_para ||
+            throw(ArgumentError("drift_initial_direction has $(length(drift_initial_direction)) entries " *
+                                "for $n_free_para free parameters"))
+        g0 = zeros(n_free_para)
+        g0[drift_gate] = drift_initial_direction[drift_gate]
+        norm(g0) > 0 || throw(ArgumentError("drift_initial_direction is zero on drift_params"))
+        drift_state["g"] = g0 ./ norm(g0) .* 0.02      # as if past shifts of 0.02 sd per stage
+    end
+
     # Printing
     init_stage_print(cloud, para_symbols; verbose = verbose,
                      use_fixed_schedule = use_fixed_schedule)
@@ -851,33 +967,49 @@ c_mutation  = blockwise_c ? c_blocks[block_group] : c
 
 θ_selected      = cloud.particles[:, free_para_inds]
 weights_mutated = get_weights(cloud)
+loglh_selected  = copy(get_loglh(cloud))
 
-# Each column is a particle plus its number of -Inf (failed) proposals and, with blocks
-# tracked, its number of accepted proposals per block (the last length(blocks_free) rows)
+# Drift diagnostic and fixes: this stage's number of MH steps (n_mh_steps unless adaptive_mh
+# changed it), the pre-mutation sd, the leading direction from the previous stages, and the
+# ridge move (nothing unless ridge_mode is on and a direction exists)
+n_mh_stage  = drift_state["n_mh"]
+sd_selected = sqrt.(max.(diag(R_fr), 0.0))
+u_stage     = leading_direction(drift_state["g"])
+ridge_c_stage = drift_state["ridge_c"]
+ridge_stage = ridge_move_for_stage(drift_settings, drift_state, sd_selected, R_fr,
+                                   free_para_inds, ind_para_end(size(cloud.particles, 2)))
+
+# Each column is a particle plus its number of -Inf (failed) proposals, with blocks tracked its
+# number of accepted proposals per block (the next length(blocks_free) rows) and, with a ridge
+# move, its tried and accepted ridge moves (the last two rows)
 new_particles = if parallel
     @distributed (hcat) for k in 1:n_parts
         Random.seed!(stream_seed(run_seed, :mutation_particle, i, k))
         mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
                          blocks_free, blocks_all, ϕ_n; c = c_mutation, α = α,
-                         n_mh_steps = n_mh_steps, old_data = old_data,
-                         track_blocks = track_blocks)
+                         n_mh_steps = n_mh_stage, old_data = old_data,
+                         track_blocks = track_blocks, ridge = ridge_stage)
     end
 else
     hcat([begin
         Random.seed!(stream_seed(run_seed, :mutation_particle, i, k))
         mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
                            blocks_free, blocks_all, ϕ_n; c = c_mutation,
-                           α = α, n_mh_steps = n_mh_steps,
-                           old_data = old_data, track_blocks = track_blocks)
+                           α = α, n_mh_steps = n_mh_stage,
+                           old_data = old_data, track_blocks = track_blocks,
+                           ridge = ridge_stage)
     end for k=1:n_parts]...)
 end
 
+n_ridge_rows  = ridge_stage === nothing ? 0 : 2
+ridge_tried, ridge_accepted = ridge_stage === nothing ? (0, 0) :
+    (sum(new_particles[end-1, :]), sum(new_particles[end, :]))
 n_block_rows  = track_blocks ? length(blocks_free) : 0
-n_rows        = size(new_particles, 1) - n_block_rows
+n_rows        = size(new_particles, 1) - n_block_rows - n_ridge_rows
 inf_proposals = sum(new_particles[n_rows, :])
 if track_blocks
-    accept_blocks = group_acceptance(vec(sum(new_particles[n_rows+1:end, :], dims = 2)),
-                                     blocks_free, block_group, n_groups, n_parts * n_mh_steps)
+    accept_blocks = group_acceptance(vec(sum(new_particles[n_rows+1:n_rows+n_block_rows, :], dims = 2)),
+                                     blocks_free, block_group, n_groups, n_parts * n_mh_stage)
 end
 update_cloud!(cloud, new_particles[1:n_rows-1, :])
 update_acceptance_rate!(cloud)
@@ -905,7 +1037,7 @@ update_cloud!(cloud, new_particles[1:end-1, :])
                               # cloud.accept sums acceptances over the MH steps; record the rate
                               accept = cloud.accept,
                               c = c, inf_cloud = inf_cloud, inf_proposals = inf_proposals,
-                              n_proposals = n_parts * n_mh_steps * length(blocks_free),
+                              n_proposals = n_parts * n_mh_stage * length(blocks_free) + ridge_tried,
                               time = stage_sampling_time), corr, esjd)
         if track_blocks
             record_block_health!(health, accept_blocks, c_blocks)
@@ -913,6 +1045,35 @@ update_cloud!(cloud, new_particles[1:end-1, :])
                     join(["$l $(round(a, digits = 3)) (c = $(round(cg, digits = 4)))"
                           for (l, a, cg) in zip(block_labels, accept_blocks, c_blocks)], ", "))
         end
+
+        # Mutation drift diagnostic (no random numbers): shift, SE and z along u_stage
+        shift = mutation_shift(θ_selected, θ_mutated, weights_mutated;
+                               loglh_pre = loglh_selected, loglh_post = get_loglh(cloud),
+                               u = any(!iszero, u_stage) ? u_stage : nothing, sd = sd_selected)
+        drift_z  = shift.proj / shift.proj_se
+        δ_gate   = shift.delta[drift_settings.gate]
+        ridge_acc = ridge_tried > 0 ? ridge_accepted / ridge_tried : NaN
+        alarm    = update_drift_state!(drift_state, drift_settings, drift_z, shift.delta, ridge_acc)
+        if drift_settings.ridge_direction === :pc
+            drift_state["pc"] = top_correlation_pc(θ_mutated, weights_mutated, drift_settings.gate)
+        end
+        record_drift_health!(health,
+                             (drift_rms = sqrt(mean(abs2, δ_gate)),
+                              drift_rms_null = sqrt(mean(abs2, shift.se[drift_settings.gate])),
+                              drift_proj = shift.proj, drift_proj_se = shift.proj_se, drift_z = drift_z,
+                              drift_cos = any(!iszero, u_stage) && norm(δ_gate) > 0 ?
+                                  dot(u_stage[drift_settings.gate], δ_gate) / norm(δ_gate) : NaN,
+                              drift_dloglh = shift.dloglh, drift_dloglh_z = shift.dloglh / shift.dloglh_se,
+                              drift_alarm = alarm, n_mh = n_mh_stage,
+                              ridge_on = ridge_stage !== nothing, ridge_tried = ridge_tried,
+                              ridge_accept = ridge_acc, ridge_c = ridge_c_stage,
+                              ridge_step = ridge_stage === nothing ? NaN : ridge_stage.step),
+                             shift.delta, u_stage)
+        println(verbose, :low, "Mutation drift: z = $(round(drift_z, digits = 2)) along the leading " *
+                "direction, RMS shift $(round(sqrt(mean(abs2, δ_gate)), sigdigits = 3)) sd, " *
+                "Δloglh z = $(round(shift.dloglh / shift.dloglh_se, digits = 2)), n_mh $n_mh_stage" *
+                (ridge_stage === nothing ? "" :
+                 ", ridge acceptance $(round(ridge_acc, digits = 3)) (c_r = $(round(ridge_c_stage, digits = 3)))"))
 
         end_stage_print(cloud, para_symbols; verbose = verbose,
                         use_fixed_schedule = use_fixed_schedule)
@@ -937,6 +1098,7 @@ update_cloud!(cloud, new_particles[1:end-1, :])
                 write(file, "stage_health", health)
                 write(file, "eve", eve)
                 write(file, "n_resample_events", n_resample_events)
+                write(file, "drift_state", drift_state)
                 if track_blocks
                     write(file, "c_blocks", c_blocks)
                     write(file, "accept_blocks", accept_blocks)
@@ -959,6 +1121,9 @@ update_cloud!(cloud, new_particles[1:end-1, :])
     # `smc` keeps its meaning: the level log p(Y) if log p̃(Ỹ) is supplied, else the increment
     # log p(Y) - log p̃(Ỹ). Zero for every other run.
     log_mdd += log_prob_old_data - log_prob_old_data_w
+    # Same estimator and log_mdd as before; the bootstrap has its own stream
+    mhm = modified_harmonic_mean(θ_free, get_logpost(cloud), weights;
+                                 rng = Xoshiro(stream_seed(run_seed, :mhm_bootstrap)))
     estimates = Dict{String, Any}(
         "smc"       => log_mdd,
         "smc_level" => smc_log_mdd_level(log_mdd; tempered_update = tempered_update,
@@ -969,7 +1134,15 @@ update_cloud!(cloud, new_particles[1:end-1, :])
                                          tempered_update_prior_weight = tempered_update_prior_weight,
                                          log_prob_old_data = log_prob_old_data),
         =#
+        "mhm"       => mhm.log_mdd,
+        #= Old: the mean over p only
         "mhm"       => modified_harmonic_mean(θ_free, get_logpost(cloud), weights).log_mdd)
+        =#
+        # Per p (0.1:0.1:0.9), the duplicate-cluster bootstrap SE and the largest term's share
+        "mhm_p"         => mhm.p,
+        "mhm_by_p"      => mhm.by_p,
+        "mhm_se"        => mhm.se_by_p,
+        "mhm_max_share" => mhm.max_share)
     if lineage_valid
         lineage = lineage_nse(eve, n_resample_events, weights, θ_free)
         estimates["smc_lineage_nse"] = lineage.log_mdd_nse
@@ -980,10 +1153,19 @@ update_cloud!(cloud, new_particles[1:end-1, :])
         bs = smc_bridge_sampling(loglikelihood, parameters, data, cloud, free_para_inds;
                                  n_draws = n_bridge_draws > 0 ? n_bridge_draws : n_parts,
                                  rng = Xoshiro(stream_seed(run_seed, :bridge_sampling)),
-                                 parallel = parallel, toggle = toggle)
+                                 parallel = parallel, toggle = toggle, regime_switching = regime_switching)
         estimates["bridge_sampling"]     = bs.log_mdd
         estimates["bridge_sampling_nse"] = bs.nse
+        estimates["bridge_sampling_nse_batch"]    = bs.nse_batch
+        estimates["bridge_sampling_is"]           = bs.is_log_mdd
+        estimates["bridge_sampling_is_max_share"] = bs.is_max_share
     end
+    #= Old: a normal proposal in model space (see smc_bridge_sampling)
+        bs = smc_bridge_sampling(loglikelihood, parameters, data, cloud, free_para_inds;
+                                 n_draws = n_bridge_draws > 0 ? n_bridge_draws : n_parts,
+                                 rng = Xoshiro(stream_seed(run_seed, :bridge_sampling)),
+                                 parallel = parallel, toggle = toggle)
+    =#
 
     flags = stage_health_flags(health; thresholds = health_thresholds,
                                para_names = para_symbols[free_para_inds])
@@ -998,7 +1180,8 @@ update_cloud!(cloud, new_particles[1:end-1, :])
     result = Dict{String, Any}("cloud" => cloud, "w" => w_matrix, "W" => W_matrix,
                                "smc_seed" => run_seed, "smc_seed_version" => SMC_SEED_VERSION,
                                "run_info" => run_info, "stage_health" => health,
-                               "health_flags" => flags, "log_mdd_estimates" => estimates)
+                               "health_flags" => flags, "log_mdd_estimates" => estimates,
+                               "drift_state" => drift_state)
     if track_blocks
         result["c_blocks"]      = c_blocks
         result["accept_blocks"] = accept_blocks
@@ -1023,6 +1206,8 @@ update_cloud!(cloud, new_particles[1:end-1, :])
             end
         end
         write_stage_health(replace(savepath, r"\.jld2$" => "") * "_stage_health.csv", health;
+                           para_names = para_symbols[free_para_inds])
+        write_drift_health(replace(savepath, r"\.jld2$" => "") * "_drift.csv", health;
                            para_names = para_symbols[free_para_inds])
     end
     return result

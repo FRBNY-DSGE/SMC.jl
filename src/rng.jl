@@ -23,6 +23,7 @@
 #     :group                    0       g           run seed of particle group g (n_smc_groups > 1);
 #                                       0           split of a shared old cloud across the groups
 #     :bridge_sampling          0       0           split and proposal draws for bridge sampling
+#     :mhm_bootstrap            0       0           cluster bootstrap of the modified harmonic mean SE
 #
 # Resampling and blocks draw from an explicit Xoshiro(seed). Per-particle draws (which happen
 # inside model code such as rand(::ParameterVector)) instead Random.seed! the task-local RNG
