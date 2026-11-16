@@ -52,8 +52,8 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     random (one block with the default `n_blocks = 1`). E.g. `param_blocks = [[:ρ_σ_w]]` gives
     ρ_σ_w its own block and puts all other free parameters in a second one.
 - `blockwise_c::Bool = false`: Give each fixed block, and the remaining parameters together,
-    its own scale c_b, adapted every stage from that group's own acceptance rate with the same
-    rule and `target` as `c` (all start at `c`, or at `initial_c_blocks`). The random blocks of
+    its own scale c_b, adapted every stage by `scale_adaptation` (all start at `c`, or at
+    `initial_c_blocks`). The random blocks of
     the remaining parameters share one scale. `cloud.c` and the `c` column of `stage_health`
     then hold the remaining parameters' scale (the last block's if every parameter is listed). Without `param_blocks`
     there is a single group, so this is the shared scale again.
@@ -80,10 +80,28 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
 - `threshold_ratio::S = 0.5`: Threshold s.t. particles will be resampled when the population
     drops below threshold * N.
 - `c::S = 0.5`: Initial scaling factor for covariance of the particles. Controls size of steps in mutation step.
-    This value will be adaptively set afterward to reach an accept rate of `target` (see kwarg below).
+    Subsequent values follow `scale_adaptation`.
+- `scale_adaptation::Symbol = :acceptance`: `:acceptance` uses `target`; `:esjd` chooses the
+    candidate scale with the largest pilot expected squared jumping distance at each stage.
+    Each squared parameter jump is divided by its proposal variance before summing.
+- `esjd_multipliers = [0.5, 1.0, 2.0]`: Candidate scales relative to the current `c` (or each
+    group's scale with `blockwise_c`) when `scale_adaptation = :esjd`.
+- `esjd_pilot_particles::Int = 32`: Number of selected particles used per candidate for
+    ESJD estimation. Pilot proposals are discarded; more particles reduce score noise but
+    require more likelihood evaluations.
+- `esjd_diagnostic::Bool = false`: At selected stages, evaluate a grid of scales on all
+    pre-mutation particles without changing the scale used by the run. Save the snapshot and
+    results to `<savepath>_esjd_stage=<n>.jld2`, and a summary CSV at the end of the run.
+- `esjd_diagnostic_every::Int = 10`: Run that diagnostic at stages divisible by this value.
+- `esjd_diagnostic_n_scales::Int = 7`: Number of scales in the diagnostic grid, including
+    the current scale. `esjd_diagnostic_span` sets its log-spaced range around the current scale.
+- `esjd_diagnostic_span::Real = 4`: Search from `c/span` to `c*span`.
+- `esjd_diagnostic_scales = nothing`: Optional explicit vector of absolute scales in place
+    of the generated grid. The current scale is always included.
 - `α::S = 1.0`: The mixture proportion for the mutation step's proposal distribution. See `?mvnormal_mixture_draw` for details.
     Note that a value of 0.9 has commonly been used in applications to DSGE models (see citations below).
-- `target::S = 0.25`: The target acceptance rate for new particles during mutation.
+- `target::S = 0.25`: The target acceptance rate for new particles during mutation when
+    `scale_adaptation = :acceptance`.
 - `use_fixed_schedule::Bool = true`: Flag for whether or not to use a fixed tempering (ϕ) schedule.
 - `tempering_target::S = 0.97`: Coefficient of the sample size metric to be targeted when solving
     for an endogenous ϕ.
@@ -223,6 +241,14 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
 
              # Mutation Settings
              c::S = 0.5,       # step size
+             scale_adaptation::Symbol = :acceptance,
+             esjd_multipliers::AbstractVector{<:Real} = [0.5, 1.0, 2.0],
+             esjd_pilot_particles::Int = 32,
+             esjd_diagnostic::Bool = false,
+             esjd_diagnostic_every::Int = 10,
+             esjd_diagnostic_n_scales::Int = 7,
+             esjd_diagnostic_span::Real = 4.0,
+             esjd_diagnostic_scales::Union{Nothing, AbstractVector{<:Real}} = nothing,
              α::S = 1.0,       # mixture proportion
              target::S = 0.25, # target accept rate
 
@@ -262,6 +288,28 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
 
     0.0 <= tempered_update_prior_weight <= 1.0 ||
         throw(ArgumentError("tempered_update_prior_weight must be in [0, 1]"))
+    scale_adaptation in (:acceptance, :esjd) ||
+        throw(ArgumentError("scale_adaptation must be :acceptance or :esjd"))
+    if scale_adaptation == :esjd
+        n_mh_steps > 0 || throw(ArgumentError("ESJD adaptation needs n_mh_steps > 0"))
+        esjd_pilot_particles > 0 || throw(ArgumentError("esjd_pilot_particles must be positive"))
+        !isempty(esjd_multipliers) &&
+            all(x -> isfinite(x) && x > 0, esjd_multipliers) &&
+            any(==(1), esjd_multipliers) ||
+            throw(ArgumentError("esjd_multipliers must be positive, finite, and include 1"))
+    end
+    if esjd_diagnostic
+        n_mh_steps > 0 || throw(ArgumentError("ESJD diagnostic needs n_mh_steps > 0"))
+        esjd_diagnostic_every > 0 ||
+            throw(ArgumentError("esjd_diagnostic_every must be positive"))
+        if esjd_diagnostic_scales === nothing
+            esjd_scale_grid(c, esjd_diagnostic_n_scales, esjd_diagnostic_span)
+        else
+            !isempty(esjd_diagnostic_scales) &&
+                all(x -> isfinite(x) && x > 0, esjd_diagnostic_scales) ||
+                throw(ArgumentError("esjd_diagnostic_scales must be finite and positive"))
+        end
+    end
     if 0.0 < tempered_update_prior_weight < 1.0 && log_prob_old_data === nothing
         throw(ArgumentError("log_prob_old_data is required when tempered_update_prior_weight is between 0 and 1"))
     end
@@ -280,6 +328,33 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
     # Checkpoint seed takes precedence on resume; a caller-supplied seed must match it.
     # Checkpoints written before the seeding (no smc_seed) still resume, with a new seed.
     checkpoint_keys = continue_intermediate ? JLD2.jldopen(keys, loadpath, "r") : String[]
+    if continue_intermediate
+        saved_adaptation = "scale_adaptation" in checkpoint_keys ?
+            load(loadpath, "scale_adaptation") : :acceptance
+        saved_adaptation == scale_adaptation ||
+            throw(ArgumentError("scale_adaptation differs from the checkpoint's: $saved_adaptation"))
+        if scale_adaptation == :esjd
+            load(loadpath, "esjd_multipliers") == collect(esjd_multipliers) ||
+                throw(ArgumentError("esjd_multipliers differ from the checkpoint's"))
+            load(loadpath, "esjd_pilot_particles") == esjd_pilot_particles ||
+                throw(ArgumentError("esjd_pilot_particles differs from the checkpoint's"))
+        end
+        saved_diagnostic = "esjd_diagnostic" in checkpoint_keys ?
+            load(loadpath, "esjd_diagnostic") : false
+        saved_diagnostic == esjd_diagnostic ||
+            throw(ArgumentError("esjd_diagnostic differs from the checkpoint's"))
+        if esjd_diagnostic
+            load(loadpath, "esjd_diagnostic_every") == esjd_diagnostic_every ||
+                throw(ArgumentError("esjd_diagnostic_every differs from the checkpoint's"))
+            load(loadpath, "esjd_diagnostic_n_scales") == esjd_diagnostic_n_scales ||
+                throw(ArgumentError("esjd_diagnostic_n_scales differs from the checkpoint's"))
+            load(loadpath, "esjd_diagnostic_span") == esjd_diagnostic_span ||
+                throw(ArgumentError("esjd_diagnostic_span differs from the checkpoint's"))
+            load(loadpath, "esjd_diagnostic_scales") ==
+                (esjd_diagnostic_scales === nothing ? S[] : S.(esjd_diagnostic_scales)) ||
+                throw(ArgumentError("esjd_diagnostic_scales differ from the checkpoint's"))
+        end
+    end
     run_seed = if continue_intermediate && "smc_seed" in checkpoint_keys
         saved_seed = load(loadpath, "smc_seed")
         saved_version = load(loadpath, "smc_seed_version")
@@ -675,6 +750,12 @@ end
         end
         add_block_health!(health, block_labels)
     end
+    if scale_adaptation == :esjd && !haskey(health, "esjd_pilot_scores")
+        health["esjd_pilot_scores"] = Matrix{S}[]
+    end
+    if esjd_diagnostic && !haskey(health, "esjd_diagnostics")
+        health["esjd_diagnostics"] = Dict{String, Any}[]
+    end
 
     # Printing
     init_stage_print(cloud, para_symbols; verbose = verbose,
@@ -761,13 +842,15 @@ while ϕ_n < 1.
         # Calculate adaptive c-step for use as scaling coefficient in mutation MH step.
         # With blockwise_c, each block group's scale follows the same rule from its own
         # acceptance rate, and c (cloud.c) is the last group's.
-        if blockwise_c
-            c_blocks = [update_c(c_blocks[g], accept_blocks[g], target) for g in 1:n_groups]
-            c        = c_blocks[end]
-        else
-            c = update_c(c, cloud.accept, target)
-            if track_blocks
-                c_blocks = fill(c, n_groups)
+        if scale_adaptation == :acceptance
+            if blockwise_c
+                c_blocks = [update_c(c_blocks[g], accept_blocks[g], target) for g in 1:n_groups]
+                c        = c_blocks[end]
+            else
+                c = update_c(c, cloud.accept, target)
+                if track_blocks
+                    c_blocks = fill(c, n_groups)
+                end
             end
         end
         #= Old: inline (update_c is the same expression)
@@ -846,6 +929,102 @@ blocks_free = generate_free_blocks(n_free_para, n_blocks;
                                    rng = Xoshiro(stream_seed(run_seed, :stage_blocks, i)))
 =#
 blocks_all  = generate_all_blocks(blocks_free, free_para_inds)
+if scale_adaptation == :esjd
+    # Evaluate the actual MH proposal at nearby scales. Conditional on a proposal,
+    # its acceptance probability times its squared jump is an ESJD observation.
+    # The same variance denominator is used at every candidate scale, so parameter
+    # units cannot favor a candidate just because one parameter is numerically large.
+    variances = S.(max.(diag(R_fr_mix), eps(S)))
+    base_scales = blockwise_c ? c_blocks : S[c]
+    all(x -> isfinite(x) && x > 0, base_scales) ||
+        throw(ArgumentError("ESJD adaptation needs finite positive starting scales"))
+    pilot_indices = sample(Xoshiro(stream_seed(run_seed, :esjd_pilot_selection, i)),
+                           1:n_parts, Weights(get_weights(cloud)),
+                           min(esjd_pilot_particles, n_parts); replace = true)
+    n_score_groups = blockwise_c ? n_groups : 1
+    scores = zeros(S, length(esjd_multipliers), n_score_groups)
+    for g in 1:n_score_groups
+        group_blocks = blockwise_c ? findall(==(g), block_group) : collect(eachindex(blocks_free))
+        pilot_blocks_free = blocks_free[group_blocks]
+        pilot_blocks_all = blocks_all[group_blocks]
+        for candidate in eachindex(esjd_multipliers)
+            trial_c = S(base_scales[g] * esjd_multipliers[candidate])
+            if !(isfinite(trial_c) && trial_c > 0)
+                scores[candidate, g] = -Inf
+                continue
+            end
+            pilot_parameters = deepcopy(parameters)
+            block_scores = zeros(S, length(group_blocks))
+            for (draw, k) in enumerate(pilot_indices)
+                # Common random numbers make candidate comparisons less noisy. These
+                # streams are separate from the production mutation streams.
+                Random.seed!(stream_seed(run_seed, :esjd_pilot_particle, i, draw))
+                mutation(loglikelihood, pilot_parameters, data, copy(cloud.particles[k, :]),
+                         θ_bar_fr, R_fr_mix, n_free_para, pilot_blocks_free, pilot_blocks_all, ϕ_n;
+                         c = trial_c, α = α, n_mh_steps = 1, old_data = old_data,
+                         old_loglikelihood = old_loglikelihood, regime_switching = regime_switching,
+                         toggle = toggle, tempered_update_prior_weight = tempered_update_prior_weight,
+                         log_prob_old_data = log_prob_old_data_w,
+                         esjd_scores = block_scores, esjd_variances = variances)
+            end
+            scores[candidate, g] = all(isfinite, block_scores) ? sum(block_scores) : 0.0
+        end
+    end
+    baseline = findfirst(==(1), esjd_multipliers)
+    best = fill(baseline, n_score_groups)
+    for g in 1:n_score_groups, candidate in eachindex(esjd_multipliers)
+        scores[candidate, g] > scores[best[g], g] && (best[g] = candidate)
+    end
+    push!(health["esjd_pilot_scores"], scores ./ length(pilot_indices))
+    if blockwise_c
+        c_blocks = S[base_scales[g] * esjd_multipliers[best[g]] for g in 1:n_groups]
+        c = c_blocks[end]
+    else
+        c = S(base_scales[1] * esjd_multipliers[best[1]])
+        track_blocks && (c_blocks = fill(c, n_groups))
+    end
+    cloud.c = c
+end
+if esjd_diagnostic && mod(i, esjd_diagnostic_every) == 0
+    current_reference = c
+    trial_scales = esjd_diagnostic_scales === nothing ?
+        esjd_scale_grid(current_reference, esjd_diagnostic_n_scales, esjd_diagnostic_span) :
+        S.(esjd_diagnostic_scales)
+    trial_scales = sort!(unique(vcat(trial_scales, current_reference)))
+    current_scales = blockwise_c ? c_blocks : c
+    report = mutation_esjd_grid(loglikelihood, parameters, data, cloud.particles,
+                                get_weights(cloud), θ_bar_fr, R_fr_mix, blocks_free,
+                                blocks_all, ϕ_n, current_scales, trial_scales;
+                                block_group = block_group, α = α, old_data = old_data,
+                                old_loglikelihood = old_loglikelihood,
+                                regime_switching = regime_switching, toggle = toggle,
+                                tempered_update_prior_weight = tempered_update_prior_weight,
+                                log_prob_old_data = log_prob_old_data_w,
+                                run_seed = run_seed, stage = i)
+    report["stage"] = i
+    report["phi"] = ϕ_n
+    push!(health["esjd_diagnostics"], report)
+    snapshot_path = replace(savepath, r"\.jld2$" => "") * "_esjd_stage=$(i).jld2"
+    JLD2.jldopen(snapshot_path, "w") do file
+        write(file, "particles", copy(cloud.particles))
+        write(file, "weights", copy(get_weights(cloud)))
+        write(file, "empirical_covariance", R_fr)
+        write(file, "proposal_covariance", R_fr_mix)
+        write(file, "proposal_mean", θ_bar_fr)
+        write(file, "free_para_inds", free_para_inds)
+        write(file, "phi", ϕ_n)
+        write(file, "current_c", c)
+        write(file, "c_blocks", blockwise_c ? c_blocks : S[c])
+        write(file, "alpha", α)
+        write(file, "stage", i)
+        write(file, "smc_seed", run_seed)
+        write(file, "blocks_free", blocks_free)
+        write(file, "blocks_all", blocks_all)
+        write(file, "report", report)
+    end
+    write_esjd_diagnostics(replace(savepath, r"\.jld2$" => "") * "_esjd_diagnostic.csv",
+                           health["esjd_diagnostics"])
+end
 # Per-block scale with blockwise_c, else the shared scalar c
 c_mutation  = blockwise_c ? c_blocks[block_group] : c
 
@@ -937,6 +1116,19 @@ update_cloud!(cloud, new_particles[1:end-1, :])
                 write(file, "stage_health", health)
                 write(file, "eve", eve)
                 write(file, "n_resample_events", n_resample_events)
+                write(file, "scale_adaptation", scale_adaptation)
+                write(file, "esjd_diagnostic", esjd_diagnostic)
+                if esjd_diagnostic
+                    write(file, "esjd_diagnostic_every", esjd_diagnostic_every)
+                    write(file, "esjd_diagnostic_n_scales", esjd_diagnostic_n_scales)
+                    write(file, "esjd_diagnostic_span", esjd_diagnostic_span)
+                    write(file, "esjd_diagnostic_scales", esjd_diagnostic_scales === nothing ?
+                          S[] : S.(esjd_diagnostic_scales))
+                end
+                if scale_adaptation == :esjd
+                    write(file, "esjd_multipliers", collect(esjd_multipliers))
+                    write(file, "esjd_pilot_particles", esjd_pilot_particles)
+                end
                 if track_blocks
                     write(file, "c_blocks", c_blocks)
                     write(file, "accept_blocks", accept_blocks)
@@ -999,6 +1191,19 @@ update_cloud!(cloud, new_particles[1:end-1, :])
                                "smc_seed" => run_seed, "smc_seed_version" => SMC_SEED_VERSION,
                                "run_info" => run_info, "stage_health" => health,
                                "health_flags" => flags, "log_mdd_estimates" => estimates)
+    if scale_adaptation == :esjd
+        result["scale_adaptation"]    = scale_adaptation
+        result["esjd_multipliers"]     = collect(esjd_multipliers)
+        result["esjd_pilot_particles"] = esjd_pilot_particles
+    end
+    if esjd_diagnostic
+        result["esjd_diagnostic"] = true
+        result["esjd_diagnostic_every"] = esjd_diagnostic_every
+        result["esjd_diagnostic_n_scales"] = esjd_diagnostic_n_scales
+        result["esjd_diagnostic_span"] = esjd_diagnostic_span
+        result["esjd_diagnostic_scales"] = esjd_diagnostic_scales === nothing ?
+            S[] : S.(esjd_diagnostic_scales)
+    end
     if track_blocks
         result["c_blocks"]      = c_blocks
         result["accept_blocks"] = accept_blocks
@@ -1024,6 +1229,9 @@ update_cloud!(cloud, new_particles[1:end-1, :])
         end
         write_stage_health(replace(savepath, r"\.jld2$" => "") * "_stage_health.csv", health;
                            para_names = para_symbols[free_para_inds])
+        esjd_diagnostic && write_esjd_diagnostics(
+            replace(savepath, r"\.jld2$" => "") * "_esjd_diagnostic.csv",
+            health["esjd_diagnostics"])
     end
     return result
 end

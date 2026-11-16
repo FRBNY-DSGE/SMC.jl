@@ -36,7 +36,9 @@ my_tests = [
             "param_blocks",
             "param_blocks_coverage",
             "vintage_bridge",
-            "initial_c_blocks"
+            "initial_c_blocks",
+            "esjd_scaling",
+            "esjd_diagnostic"
             ]
 
 # Run every test file to completion, even if some throw, then report at the end.

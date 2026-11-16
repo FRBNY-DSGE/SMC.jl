@@ -32,6 +32,62 @@ The package requires our auxiliary package, [ModelConstructors.jl](https://githu
 
 For examples of how to set up a model in the form SMC can estimate, see scripts in the [`examples/`](https://github.com/FRBNY-DSGE/SMC.jl/tree/main/examples) folder.
 
+### ESJD mutation scaling
+
+Set `scale_adaptation = :esjd` to choose the mutation scale from pilot proposals at each
+tempering stage:
+
+```julia
+SMC.smc(loglikelihood, parameters, data;
+        scale_adaptation = :esjd,
+        esjd_multipliers = [0.5, 1.0, 2.0],
+        esjd_pilot_particles = 32)
+```
+
+Each candidate scale is a multiple of the current `c`. The pilot estimates expected squared
+jumping distance using the proposal's MH acceptance probability. Squared jumps are divided
+by each parameter's proposal variance so numerical units do not dominate the score. Pilot
+particles are sampled using their current weights, and the pilot proposals are discarded.
+With `blockwise_c = true`, each block group chooses its own scale. The chosen scales appear
+in `stage_health["c"]` or `stage_health["c_blocks"]`; candidate scores appear in
+`stage_health["esjd_pilot_scores"]`. More pilot particles give a less noisy choice at the cost
+of more likelihood evaluations. The default `scale_adaptation = :acceptance` retains the
+existing acceptance-rate rule.
+
+### Check mutation scale efficiency during a run
+
+Enable the full-cloud ESJD diagnostic to compare the current scaler with alternatives at
+regular tempering stages:
+
+```julia
+SMC.smc(loglikelihood, parameters, data;
+        esjd_diagnostic = true,
+        esjd_diagnostic_every = 10,    # stages 10, 20, 30, ...
+        esjd_diagnostic_n_scales = 7, # includes the current c
+        esjd_diagnostic_span = 4.0)  # grid from c/4 to 4c
+```
+
+For a fixed grid, set `esjd_diagnostic_scales = [0.05, 0.10, 0.20, 0.30, 0.50, 0.75, 1.0]`.
+The current `c` is included automatically. Every candidate is evaluated on all pre-mutation
+particles with their current weights, using the same target, proposal covariance, and random
+streams. These trials do not change production mutation. Each selected stage saves a JLD2
+snapshot containing the particles, weights, empirical and actual proposal covariance,
+tempering parameter, scaler, and candidate results. The run also saves
+`<savepath>_esjd_diagnostic.csv` with acceptance, raw and variance-normalized ESJD, the best
+grid scale, and `ESJD(current) / ESJD(best)`. With `blockwise_c`, each group's current scale
+is multiplied by the same trial factor. Reported acceptance is averaged over block proposals;
+ESJD sums their squared parameter jumps.
+The diagnostic performs one extra MH sweep per candidate scale, so 5,000 particles and
+seven scales require roughly 35,000 additional proposal evaluations at each checked stage.
+
+Plot the current and best scales across stages with:
+
+```sh
+python scripts/plot_esjd_diagnostic.py path/to/run_esjd_diagnostic.csv -o esjd_scales.png
+```
+
+The plot script requires `matplotlib`.
+
 ## Precompilation
 
 The `SMC.jl` package is not precompiled by default because when running code in parallel, we want to re-compile

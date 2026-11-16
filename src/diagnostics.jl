@@ -271,6 +271,28 @@ function write_stage_health(path::AbstractString, h::AbstractDict; para_names = 
     return path
 end
 
+"""
+    write_esjd_diagnostics(path, reports)
+
+Write one CSV row per stage and trial scale from the optional full-cloud ESJD diagnostic.
+"""
+function write_esjd_diagnostics(path::AbstractString, reports::AbstractVector)
+    open(path, "w") do io
+        println(io, "stage,phi,trial_c,acceptance,esjd,raw_esjd,current_c,best_c,efficiency,is_current,is_best")
+        for report in reports
+            for j in eachindex(report["scales"])
+                trial = report["scales"][j]
+                println(io, join((report["stage"], report["phi"], trial,
+                                  report["acceptance"][j], report["esjd"][j],
+                                  report["raw_esjd"][j], report["current_c"],
+                                  report["best_c"], report["efficiency"],
+                                  trial == report["current_c"], trial == report["best_c"]), ","))
+            end
+        end
+    end
+    return path
+end
+
 ########################################################################################
 ### Item 1 cross-check: ancestral-lineage variance estimators
 ########################################################################################

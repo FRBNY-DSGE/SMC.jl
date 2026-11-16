@@ -59,6 +59,9 @@ function mutation_proposal_densities(θ_new::Vector{S}, θ_old::Vector{S},
     return q0, q1
 end
 
+standardized_squared_jump(θ_new, θ_old, variances, block) =
+    sum(abs2(θ_new[j] - θ_old[j]) / variances[block[j]] for j in eachindex(θ_new))
+
 """
 ```
 mutation(loglikelihood::Function, parameters::ParameterVector{U},
@@ -71,7 +74,11 @@ mutation(loglikelihood::Function, parameters::ParameterVector{U},
          tempered_update_prior_weight::S = 0., log_prob_old_data::S = 0.,
          regime_switching::Bool = false, toggle::Bool = true,
          n_failed::Union{Nothing, Base.RefValue{Int}} = nothing,
-         n_accepted::Union{Nothing, Vector{Int}} = nothing) where {S<:AbstractFloat, U<:Number}
+         n_accepted::Union{Nothing, Vector{Int}} = nothing,
+         esjd_scores::Union{Nothing, Vector{S}} = nothing,
+         esjd_variances::Union{Nothing, Vector{S}} = nothing,
+         raw_esjd_scores::Union{Nothing, Vector{S}} = nothing,
+         acceptance_scores::Union{Nothing, Vector{S}} = nothing) where {S<:AbstractFloat, U<:Number}
 ```
 
 Execute one proposed move of the Metropolis-Hastings algorithm for a given parameter
@@ -121,6 +128,11 @@ Execute one proposed move of the Metropolis-Hastings algorithm for a given param
     proposal whose log-likelihood is -Inf or cannot be evaluated.
 - `n_accepted::Union{Nothing, Vector{Int}} = nothing`: if given (one entry per block),
     `n_accepted[b]` is incremented once for every accepted proposal of block `b`.
+- `esjd_scores::Union{Nothing, Vector{Float64}} = nothing`: if given, accumulate the
+    acceptance-probability-weighted squared jump for each block, standardized by
+    `esjd_variances` (one positive variance per free parameter).
+- `raw_esjd_scores`, `acceptance_scores`: optional per-block sums of the unscaled
+    acceptance-weighted squared jump and the MH acceptance probability.
 
 ### Outputs:
 - `p::Vector{Float64}`: An updated particle containing updated parameter values,
@@ -138,7 +150,11 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                   regime_switching::Bool = false,
                   toggle::Bool = true,
                   n_failed::Union{Nothing, Base.RefValue{Int}} = nothing,
-                  n_accepted::Union{Nothing, Vector{Int}} = nothing) where {S<:AbstractFloat, U<:Number}
+                  n_accepted::Union{Nothing, Vector{Int}} = nothing,
+                  esjd_scores::Union{Nothing, Vector{S}} = nothing,
+                  esjd_variances::Union{Nothing, Vector{S}} = nothing,
+                  raw_esjd_scores::Union{Nothing, Vector{S}} = nothing,
+                  acceptance_scores::Union{Nothing, Vector{S}} = nothing) where {S<:AbstractFloat, U<:Number}
 
     0.0 <= tempered_update_prior_weight <= 1.0 ||
         throw(ArgumentError("tempered_update_prior_weight must be in [0, 1]"))
@@ -146,6 +162,20 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
         throw(ArgumentError("c has $(length(c)) entries but there are $(length(blocks_free)) blocks"))
     n_accepted === nothing || length(n_accepted) == length(blocks_free) ||
         throw(ArgumentError("n_accepted needs one entry per block"))
+    if esjd_scores !== nothing
+        length(esjd_scores) == length(blocks_free) ||
+            throw(ArgumentError("esjd_scores needs one entry per block"))
+        esjd_variances === nothing && throw(ArgumentError("esjd_variances is required with esjd_scores"))
+        length(esjd_variances) == n_free_para ||
+            throw(ArgumentError("esjd_variances needs one entry per free parameter"))
+        all(x -> isfinite(x) && x > 0, esjd_variances) ||
+            throw(ArgumentError("esjd_variances must be finite and positive"))
+    end
+    for (name, values) in (("raw_esjd_scores", raw_esjd_scores),
+                           ("acceptance_scores", acceptance_scores))
+        values === nothing || length(values) == length(blocks_free) ||
+            throw(ArgumentError("$name needs one entry per block"))
+    end
 
     step_prob   = rand() # Draw initial step probability
 
@@ -224,6 +254,22 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
             bridge_term = ϕ_n == 1.0 ? 0.0 : (1 - ϕ_n) * (bridge_new - bridge_old)
             η = exp(ϕ_n * (like_new - like_init) + bridge_term +
                     (prior_new - prior_init) + (q0 - q1))
+            if esjd_scores !== nothing || raw_esjd_scores !== nothing || acceptance_scores !== nothing
+                # E[accepted jump²] = E[acceptance probability × proposed jump²].
+                # A rejected or NaN-ratio proposal contributes zero.
+                acceptance_probability = η > 0 ? min(1.0, η) : 0.0
+                acceptance_scores === nothing ||
+                    (acceptance_scores[b] += acceptance_probability)
+                if acceptance_probability > 0
+                    raw_esjd_scores === nothing ||
+                        (raw_esjd_scores[b] += acceptance_probability *
+                         sum(abs2(para_draw[j] - para_subset[j]) for j in eachindex(para_draw)))
+                    esjd_scores === nothing ||
+                        (esjd_scores[b] += acceptance_probability *
+                         standardized_squared_jump(para_draw, para_subset, esjd_variances,
+                                                   blocks_free[b]))
+                end
+            end
             #= Old: NaN at ϕ_n = 1 when like_old_data = -Inf
             η = exp(ϕ_n * (like_new - like_init) + (1 - ϕ_n) * (bridge_new - bridge_old) +
                     (prior_new - prior_init) + (q0 - q1))
@@ -258,4 +304,94 @@ function mutation(loglikelihood::Function, parameters::ParameterVector{U},
                   blocks_all::Vector{Vector{Int}}, ϕ_n::S, ::S; kwargs...) where {S<:AbstractFloat, U<:Number}
     return mutation(loglikelihood, parameters, data, p, d_μ, d_Σ, n_free_para,
                     blocks_free, blocks_all, ϕ_n; kwargs...)
+end
+
+"""
+    esjd_scale_grid(c, n_scales, span)
+
+Return `n_scales` positive trial scales spanning `c/span` to `c*span` on a log scale,
+including `c`. An explicit grid can instead be passed to `mutation_esjd_grid`.
+"""
+function esjd_scale_grid(c::S, n_scales::Int, span::Real) where {S<:AbstractFloat}
+    isfinite(c) && c > 0 || throw(ArgumentError("ESJD diagnostic needs a positive finite c"))
+    n_scales >= 2 || throw(ArgumentError("esjd_diagnostic_n_scales must be at least 2"))
+    isfinite(span) && span > 1 ||
+        throw(ArgumentError("esjd_diagnostic_span must be finite and greater than 1"))
+    exponents = collect(range(-log(span), log(span); length = n_scales))
+    exponents[argmin(abs.(exponents))] = 0
+    scales = S.(c .* exp.(exponents))
+    all(x -> isfinite(x) && x > 0, scales) ||
+        throw(ArgumentError("ESJD diagnostic grid contains an invalid scale"))
+    return scales
+end
+
+"""
+    mutation_esjd_grid(...)
+
+Evaluate a fixed scale grid from the same pre-mutation particles and weights. Each
+candidate uses the same per-particle random streams, one MH sweep, and the same
+proposal covariance. No candidate changes the production particle cloud.
+"""
+function mutation_esjd_grid(loglikelihood::Function, parameters::ParameterVector{U},
+                            data::Matrix{S}, particles::Matrix{S}, weights::Vector{S},
+                            μ::Vector{S}, Σ::Matrix{S}, blocks_free::Vector{Vector{Int}},
+                            blocks_all::Vector{Vector{Int}}, ϕ_n::S,
+                            current_c::Union{S, Vector{S}}, candidate_scales::Vector{S};
+                            block_group::Vector{Int} = ones(Int, length(blocks_free)),
+                            α::S = one(S), old_data::AbstractMatrix{S} = Matrix{S}(undef, size(data, 1), 0),
+                            old_loglikelihood::Function = loglikelihood,
+                            regime_switching::Bool = false, toggle::Bool = true,
+                            tempered_update_prior_weight::S = zero(S),
+                            log_prob_old_data::S = zero(S), run_seed::UInt64 = zero(UInt64),
+                            stage::Int = 0) where {S<:AbstractFloat, U<:Number}
+    n_parts = size(particles, 1)
+    n_parts == length(weights) || throw(ArgumentError("ESJD weights must match the particles"))
+    all(x -> isfinite(x) && x >= 0, weights) && sum(weights) > 0 ||
+        throw(ArgumentError("ESJD weights must be nonnegative with a positive sum"))
+    !isempty(candidate_scales) && all(x -> isfinite(x) && x > 0, candidate_scales) ||
+        throw(ArgumentError("ESJD candidate scales must be finite and positive"))
+    current_reference = current_c isa Vector ? current_c[end] : current_c
+    isfinite(current_reference) && current_reference > 0 ||
+        throw(ArgumentError("ESJD diagnostic needs a positive finite current c"))
+    length(block_group) == length(blocks_free) ||
+        throw(ArgumentError("ESJD block_group must match the mutation blocks"))
+    variances = S.(max.(diag(Σ), eps(S)))
+    W = weights ./ sum(weights)
+    n_candidates = length(candidate_scales)
+    acceptance = zeros(S, n_candidates)
+    esjd = zeros(S, n_candidates)
+    raw_esjd = zeros(S, n_candidates)
+    for (j, trial_reference) in enumerate(candidate_scales)
+        trial_c = current_c isa Vector ?
+            S.(current_c[block_group] .* (trial_reference / current_reference)) : trial_reference
+        pilot_parameters = deepcopy(parameters)
+        for k in 1:n_parts
+            Random.seed!(stream_seed(run_seed, :esjd_diagnostic_particle, stage, k))
+            a = zeros(S, length(blocks_free))
+            d = zeros(S, length(blocks_free))
+            d_raw = zeros(S, length(blocks_free))
+            mutation(loglikelihood, pilot_parameters, data, copy(particles[k, :]),
+                     μ, Σ, length(μ), blocks_free, blocks_all, ϕ_n;
+                     c = trial_c, α = α, n_mh_steps = 1, old_data = old_data,
+                     old_loglikelihood = old_loglikelihood, regime_switching = regime_switching,
+                     toggle = toggle, tempered_update_prior_weight = tempered_update_prior_weight,
+                     log_prob_old_data = log_prob_old_data, acceptance_scores = a,
+                     esjd_scores = d, esjd_variances = variances, raw_esjd_scores = d_raw)
+            acceptance[j] += W[k] * sum(a) / length(a)
+            esjd[j] += W[k] * sum(d)
+            raw_esjd[j] += W[k] * sum(d_raw)
+        end
+    end
+    current_index = findfirst(==(current_reference), candidate_scales)
+    current_index === nothing && throw(ArgumentError("ESJD candidate scales must include current c"))
+    best_index = current_index
+    for j in eachindex(esjd)
+        esjd[j] > esjd[best_index] && (best_index = j)
+    end
+    best_esjd = esjd[best_index]
+    efficiency = best_esjd > 0 ? esjd[current_index] / best_esjd : NaN
+    return Dict{String, Any}("scales" => candidate_scales, "acceptance" => acceptance,
+                             "esjd" => esjd, "raw_esjd" => raw_esjd,
+                             "current_c" => current_reference, "best_c" => candidate_scales[best_index],
+                             "efficiency" => efficiency)
 end
