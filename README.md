@@ -32,6 +32,29 @@ The package requires our auxiliary package, [ModelConstructors.jl](https://githu
 
 For examples of how to set up a model in the form SMC can estimate, see scripts in the [`examples/`](https://github.com/FRBNY-DSGE/SMC.jl/tree/main/examples) folder.
 
+### Adaptive MH steps
+
+When resampling leaves duplicates or mutation barely changes a parameter,
+SMC can increase the number of MH steps at the next stage, up to a cost limit:
+
+```julia
+SMC.smc(loglikelihood, parameters, data;
+        n_mh_steps = 2,
+        adaptive_mh_steps = true,
+        max_mh_steps = 10,
+        mh_target_distinct = 0.9,
+        mh_target_corr = 0.9)
+```
+
+The rule uses the selected cloud's distinct-particle share, the previous
+stage's acceptance rate, and its largest pre/post-mutation parameter correlation.
+It estimates how many MH steps might reach the two targets and clips the count
+to `max_mh_steps`. The actual count at each stage is
+`stage_health["n_proposals"] / (n_parts * number_of_mutation_blocks)`.
+The rule is heuristic; compare independent runs' marginal likelihoods and
+proposal counts before relying on it for a new model. The benchmark in
+`scripts/marginal_likelihood` uses a model with a separately known answer.
+
 ## Precompilation
 
 The `SMC.jl` package is not precompiled by default because when running code in parallel, we want to re-compile

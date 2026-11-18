@@ -24,6 +24,11 @@ include("modelsetup.jl")
 end
 
 @testset "Stage health pieces" begin
+    @test SMC.adaptive_mh_step_count(2, 10, 1.0, 0.25, 0.5, 2) == 2
+    @test SMC.adaptive_mh_step_count(2, 10, 0.5, 0.25, 0.5, 2) == 6
+    @test SMC.adaptive_mh_step_count(2, 10, 1.0, 0.25, 0.98, 2) == 10
+    @test SMC.adaptive_mh_step_count(2, 10, 0.5, 0.0, 0.5, 2) == 10
+    @test_throws ArgumentError SMC.adaptive_mh_step_count(2, 1, 0.5, 0.25, 0.5, 2)
     @test SMC.conditional_ess(ones(5), ones(5)) ≈ 1.0
     @test SMC.conditional_ess([1.0, 0.0], [0.5, 0.5]) ≈ 0.5
     @test SMC.distinct_share([1. 2.; 1. 2.; 3. 4.; 5. 6.]) == 0.75

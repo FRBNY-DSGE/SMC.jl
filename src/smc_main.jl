@@ -71,6 +71,13 @@ function smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Matr
     Scales must be finite and positive. `nothing` (the default) starts every group at `c`. Ignored
     with `continue_intermediate`, which resumes the checkpoint's scales.
 - `n_mh_steps::Int = 1`: Number of Metropolis Hastings steps to attempt during the mutation step.
+- `adaptive_mh_steps::Bool = false`: Increase MH steps at stages with many selected duplicates
+    or high pre/post-mutation correlation at the previous stage. The chosen count is capped by
+    `max_mh_steps` and is visible as `n_proposals / (n_parts * number_of_blocks)` in
+    `stage_health`. The default keeps the fixed `n_mh_steps` behavior.
+- `max_mh_steps::Int = 10`: Maximum steps when `adaptive_mh_steps = true`.
+- `mh_target_distinct::Float64 = 0.9`: Desired share of distinct particles after mutation.
+- `mh_target_corr::Float64 = 0.9`: Desired maximum pre/post-mutation correlation.
 - `λ::S = 2.1`: The 'bending coefficient' λ in Φ(n) = (n/N(Φ))^λ
 - `n_Φ::Int = 300`: Number of stages in the tempering schedule.
 - `resampling_method::Symbol`: Which resampling method to use.
@@ -211,6 +218,10 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
              n_parts::Int    = 5_000,
              n_blocks::Int   = 1,
              n_mh_steps::Int = 1,
+             adaptive_mh_steps::Bool = false,
+             max_mh_steps::Int = 10,
+             mh_target_distinct::S = 0.9,
+             mh_target_corr::S = 0.9,
              param_blocks::AbstractVector = Vector{Vector{Int}}(),
              blockwise_c::Bool = false,
              initial_c_blocks::Union{Nothing, AbstractVector{<:Real}, AbstractDict} = nothing,
@@ -262,6 +273,12 @@ function _smc(loglikelihood::Function, parameters::ParameterVector{U}, data::Mat
 
     0.0 <= tempered_update_prior_weight <= 1.0 ||
         throw(ArgumentError("tempered_update_prior_weight must be in [0, 1]"))
+    if adaptive_mh_steps
+        n_mh_steps > 0 && max_mh_steps >= n_mh_steps ||
+            throw(ArgumentError("adaptive MH needs 0 < n_mh_steps <= max_mh_steps"))
+        0 < mh_target_distinct < 1 && 0 < mh_target_corr < 1 ||
+            throw(ArgumentError("adaptive MH targets must lie strictly between 0 and 1"))
+    end
     if 0.0 < tempered_update_prior_weight < 1.0 && log_prob_old_data === nothing
         throw(ArgumentError("log_prob_old_data is required when tempered_update_prior_weight is between 0 and 1"))
     end
@@ -851,6 +868,19 @@ c_mutation  = blockwise_c ? c_blocks[block_group] : c
 
 θ_selected      = cloud.particles[:, free_para_inds]
 weights_mutated = get_weights(cloud)
+selected_distinct = distinct_share(θ_selected)
+stage_mh_steps = n_mh_steps
+if adaptive_mh_steps
+    previous_corr = isempty(health["stage"]) || size(health["corr"], 1) == 0 ? 0.0 :
+        maximum(x -> isfinite(x) ? x : -Inf, health["corr"][:, end])
+    previous_steps = isempty(health["stage"]) ? n_mh_steps :
+        round(Int, health["n_proposals"][end] / (n_parts * length(blocks_free)))
+    stage_mh_steps = adaptive_mh_step_count(n_mh_steps, max_mh_steps, selected_distinct,
+                                            isempty(health["stage"]) ? target : cloud.accept,
+                                            previous_corr, previous_steps;
+                                            target_distinct = mh_target_distinct,
+                                            target_corr = mh_target_corr)
+end
 
 # Each column is a particle plus its number of -Inf (failed) proposals and, with blocks
 # tracked, its number of accepted proposals per block (the last length(blocks_free) rows)
@@ -859,7 +889,7 @@ new_particles = if parallel
         Random.seed!(stream_seed(run_seed, :mutation_particle, i, k))
         mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
                          blocks_free, blocks_all, ϕ_n; c = c_mutation, α = α,
-                         n_mh_steps = n_mh_steps, old_data = old_data,
+                         n_mh_steps = stage_mh_steps, old_data = old_data,
                          track_blocks = track_blocks)
     end
 else
@@ -867,7 +897,7 @@ else
         Random.seed!(stream_seed(run_seed, :mutation_particle, i, k))
         mutation_closure(cloud.particles[k, :], θ_bar_fr, R_fr_mix, n_free_para,
                            blocks_free, blocks_all, ϕ_n; c = c_mutation,
-                           α = α, n_mh_steps = n_mh_steps,
+                           α = α, n_mh_steps = stage_mh_steps,
                            old_data = old_data, track_blocks = track_blocks)
     end for k=1:n_parts]...)
 end
@@ -877,7 +907,7 @@ n_rows        = size(new_particles, 1) - n_block_rows
 inf_proposals = sum(new_particles[n_rows, :])
 if track_blocks
     accept_blocks = group_acceptance(vec(sum(new_particles[n_rows+1:end, :], dims = 2)),
-                                     blocks_free, block_group, n_groups, n_parts * n_mh_steps)
+                                     blocks_free, block_group, n_groups, n_parts * stage_mh_steps)
 end
 update_cloud!(cloud, new_particles[1:n_rows-1, :])
 update_acceptance_rate!(cloud)
@@ -900,12 +930,12 @@ update_cloud!(cloud, new_particles[1:end-1, :])
                               cess = conditional_ess(incremental_weights, previous_weights),
                               max_weight = maximum(normalized_weights) / n_parts,
                               resampled = cloud.ESS[i] < threshold,
-                              distinct_selected = distinct_share(θ_selected),
+                              distinct_selected = selected_distinct,
                               distinct_mutated = distinct_share(θ_mutated),
                               # cloud.accept sums acceptances over the MH steps; record the rate
                               accept = cloud.accept,
                               c = c, inf_cloud = inf_cloud, inf_proposals = inf_proposals,
-                              n_proposals = n_parts * n_mh_steps * length(blocks_free),
+                              n_proposals = n_parts * stage_mh_steps * length(blocks_free),
                               time = stage_sampling_time), corr, esjd)
         if track_blocks
             record_block_health!(health, accept_blocks, c_blocks)

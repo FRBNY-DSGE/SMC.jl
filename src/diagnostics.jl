@@ -148,6 +148,40 @@ end
 distinct_share(X::AbstractMatrix) = length(unique(eachrow(X))) / size(X, 1)
 
 """
+    adaptive_mh_step_count(base, cap, distinct, previous_accept, previous_corr,
+                           previous_steps; target_distinct = 0.9, target_corr = 0.9)
+
+Choose a stage's MH steps from the selected cloud and the previous stage's movement.
+The distinctness calculation assumes that an accepted proposal gives a duplicate a new
+position; the correlation calculation extrapolates geometric decay. Both are heuristics,
+so `cap` bounds the likelihood cost. `base` is always respected.
+"""
+function adaptive_mh_step_count(base::Int, cap::Int, distinct::Real,
+                                previous_accept::Real, previous_corr::Real,
+                                previous_steps::Int;
+                                target_distinct::Real = 0.9, target_corr::Real = 0.9)
+    base > 0 && cap >= base && previous_steps > 0 ||
+        throw(ArgumentError("adaptive MH needs 0 < base <= cap and previous_steps > 0"))
+    0 < target_distinct < 1 && 0 < target_corr < 1 ||
+        throw(ArgumentError("adaptive MH targets must lie strictly between 0 and 1"))
+    0 < distinct <= 1 || throw(ArgumentError("distinct share must lie in (0, 1]"))
+
+    steps = base
+    if distinct < target_distinct
+        a = isfinite(previous_accept) ? clamp(previous_accept, 0.0, 1.0) : 0.0
+        needed = a == 0 ? cap : a == 1 ? 1 :
+            ceil(Int, min(cap, log((1 - target_distinct) / (1 - distinct)) / log1p(-a)))
+        steps = max(steps, needed)
+    end
+    if isfinite(previous_corr) && previous_corr > target_corr
+        needed = previous_corr >= 1 ? cap :
+            ceil(Int, min(cap, previous_steps * log(target_corr) / log(previous_corr)))
+        steps = max(steps, needed)
+    end
+    return min(steps, cap)
+end
+
+"""
 ```
 particle_movement(before, after, weights)
 ```
