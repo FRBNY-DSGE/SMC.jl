@@ -168,7 +168,7 @@ mktempdir() do dir
                             n_parts = 1000, n_mh_steps = 8, n_Φ = 60, λ = 2.0, use_fixed_schedule = true,
                             α = 1.0, c = 0.5)
             h = out["stage_health"]
-            append!(zs, filter(isfinite, h["drift_z"][15:end]))     # after the first stages
+            append!(zs, Base.filter(isfinite, h["drift_z"][15:end]))     # after the first stages
             @test length(h["drift_z"]) == length(h["stage"]) && size(h["drift_delta"], 2) == length(h["stage"])
         end
         @test abs(mean(zs)) < 0.35
@@ -294,7 +294,7 @@ mktempdir() do dir
         @test base["cloud"].tempering_schedule[end] == 1.0
         @test maximum(h["n_mh"]) <= 3
         # resume from a checkpoint after the fixes have switched on
-        ck = filter(s -> s >= on[1] + 1, 10:10:length(h["stage"]) - 1)
+        ck = Base.filter(s -> s >= on[1] + 1, 10:10:length(h["stage"]) - 1)
         @test !isempty(ck)
         resumed = drift_run("fix_serial_resumed", drift_ridge_loglh, drift_parameters(DRIFT_D, DRIFT_SDP); kw...,
                             continue_intermediate = true, intermediate_stage_start = ck[1],
